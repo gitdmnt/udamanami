@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use anyhow::Context as _;
 use dashmap::DashMap;
 use serenity::async_trait;
@@ -12,14 +14,9 @@ use tracing::{error, info};
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 
-const DEBUG_ROOM_ID: u64 = 1245427348698824784;
-const FREETALK1_ROOM_ID: u64 = 1066470646827204719;
-const FREETALK2_ROOM_ID: u64 = 1066483929848217680;
-const MADSISTERS_ROOM_ID: u64 = 1066639830735396924;
-const SHYBOYS_ROOM_ID: u64 = 1067059988276727859;
-
 struct Bot {
     userdata: DashMap<UserId, UserData>,
+    channel_ids: Vec<ChannelId>,
 }
 
 struct UserData {
@@ -54,7 +51,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // Get the user data
     let mut user = bot.userdata.entry(author).or_insert(UserData {
-        room_pointer: ChannelId::from(FREETALK1_ROOM_ID),
+        room_pointer: bot.channel_ids[0],
         is_erogaki: false,
     });
     // erogaki role check
@@ -70,7 +67,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match msg.content.chars().nth(0) {
         Some('!') => {
             // Handle command
-            handle_command(ctx, msg, &mut *user).await;
+            handle_command(ctx, msg, &bot.channel_ids, &mut *user).await;
         }
         _ => {
             // Forward the message to the room
@@ -81,7 +78,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
+async fn handle_command(
+    ctx: &Context,
+    msg: &Message,
+    channels: &Vec<ChannelId>,
+    user: &mut UserData,
+) {
     let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
     let command_name = &split_message[0][1..]; // 先頭の "!" を削除
     let command_args = &split_message[1..];
@@ -90,7 +92,7 @@ async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
         "ping" => ping(ctx, msg, user).await,
         "help" => help(ctx, msg).await,
         "erocheck" => erocheck(ctx, msg, user).await,
-        "channel" => channel(ctx, msg, command_args, user).await,
+        "channel" => channel(ctx, msg, command_args, channels, user).await,
 
         // Unknown command
         _ => {
@@ -145,15 +147,15 @@ async fn erocheck(ctx: &Context, msg: &Message, user: &mut UserData) {
 }
 
 // change channel
-async fn channel(ctx: &Context, msg: &Message, args: &[&str], user: &mut UserData) {
+async fn channel(
+    ctx: &Context,
+    msg: &Message,
+    args: &[&str],
+    channels: &Vec<ChannelId>,
+    user: &mut UserData,
+) {
     // Get the channel list from the guild
-    let channels = [
-        ChannelId::from(FREETALK1_ROOM_ID),
-        ChannelId::from(FREETALK2_ROOM_ID),
-        ChannelId::from(MADSISTERS_ROOM_ID),
-        ChannelId::from(SHYBOYS_ROOM_ID),
-        ChannelId::from(DEBUG_ROOM_ID),
-    ];
+
     if args.len() == 0 {
         let mut response = MessageBuilder::new();
         response
@@ -203,9 +205,22 @@ async fn serenity(
         | GatewayIntents::DIRECT_MESSAGES;
 
     let userdata = DashMap::new();
+    let channel_ids = vec![
+        secrets.get("FREETALK1_ROOM_ID"),
+        secrets.get("FREETALK2_ROOM_ID"),
+        secrets.get("MADSISTERS_ROOM_ID"),
+        secrets.get("SHYBOYS_ROOM_ID"),
+        secrets.get("DEBUG_ROOM_ID"),
+    ]
+    .into_iter()
+    .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
+    .collect();
 
     let client = Client::builder(&token, intents)
-        .event_handler(Bot { userdata })
+        .event_handler(Bot {
+            userdata,
+            channel_ids,
+        })
         .await
         .expect("Err creating client");
 
