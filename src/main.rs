@@ -89,6 +89,7 @@ async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
 
     match command {
         "ping" => ping(ctx, msg, user).await,
+        "help" => help(ctx, msg).await,
         "erocheck" => erocheck(ctx, msg, user).await,
         "channel" => channel(ctx, msg, args, user).await,
 
@@ -109,6 +110,23 @@ async fn ping(ctx: &Context, msg: &Message, _: &mut UserData) {
     msg.channel_id.say(&ctx.http, "pong").await.unwrap();
 }
 
+async fn help(ctx: &Context, msg: &Message) {
+    msg.channel_id
+        .say(
+            &ctx.http,
+            MessageBuilder::new()
+                .push("```")
+                .push("!ping\tpong!\n")
+                .push("!help\tこのヘルプを表示するよ\n")
+                .push("!erocheck\tあなたがエロガキかどうかを判定するよ\n")
+                .push("!channel\t代筆先のチャンネルについてだよ\n")
+                .push("```")
+                .build(),
+        )
+        .await
+        .unwrap();
+}
+
 // erogaki status check
 async fn erocheck(ctx: &Context, msg: &Message, user: &mut UserData) {
     match user.is_erogaki {
@@ -127,6 +145,7 @@ async fn erocheck(ctx: &Context, msg: &Message, user: &mut UserData) {
     }
 }
 
+// change channel
 async fn channel(ctx: &Context, msg: &Message, args: &[&str], user: &mut UserData) {
     // Get the channel list from the guild
     let channels = [
@@ -139,18 +158,17 @@ async fn channel(ctx: &Context, msg: &Message, args: &[&str], user: &mut UserDat
     if args.len() == 0 {
         let mut response = MessageBuilder::new();
         response
-            .push("あなたは今")
+            .push("今は")
             .channel(user.room_pointer)
-            .push("にいるよ\n")
-            .push("```チャンネル一覧\n");
+            .push("で代筆してるよ\n")
+            .push("```チャンネル一覧だよ\n");
         for (i, channel) in channels.iter().enumerate() {
             response
-                .push(format!("{i}"))
-                .push(": ")
+                .push(format!("{i:>2}\t"))
                 .push(channel.name(&ctx).await.unwrap())
                 .push("\n");
         }
-        let response = response.push("```").push("使い方: !channel <ID>").build();
+        let response = response.push("```").push("使い方: `!channel <ID>`").build();
 
         msg.channel_id.say(&ctx.http, &response).await.unwrap();
         return;

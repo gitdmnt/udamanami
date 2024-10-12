@@ -2586,6 +2586,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "poise",
+ "regex",
  "serenity",
  "shuttle-runtime",
  "shuttle-serenity",
