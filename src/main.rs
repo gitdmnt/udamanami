@@ -46,143 +46,127 @@ impl EventHandler for Bot {
     }
 }
 
-async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    let author = msg.author.id;
+//direct message
 
-    // Get the user data
-    let mut user = bot.userdata.entry(author).or_insert(UserData {
+async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    // get user data
+    let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
         room_pointer: bot.channel_ids[0],
         is_erogaki: false,
     });
-    // erogaki role check
-    user.is_erogaki = author
-        .to_user(&ctx.http)
-        .await
-        .unwrap()
-        .has_role(&ctx.http, KOCHIKITE_GUILD_ID, EROGAKI_ROLE_ID)
-        .await
-        .unwrap();
+    // update user data
+    let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
-    // command or not
-    match msg.content.chars().nth(0) {
-        Some('!') => {
-            // Handle command
-            handle_command(ctx, msg, &bot.channel_ids, &mut *user).await;
-        }
-        _ => {
-            // Forward the message to the room
-            if let Err(why) = user.room_pointer.say(&ctx.http, &msg.content).await {
-                error!("Error sending message: {:?}", why);
-            }
-        }
+    // if message is not command, forward to the room
+    if !&msg.content.starts_with("!") {
+        if let Err(why) = user.room_pointer.say(&ctx.http, &msg.content).await {
+            error!("Error sending message: {:?}", why);
+        };
+        return;
     }
-}
 
-async fn handle_command(
-    ctx: &Context,
-    msg: &Message,
-    channels: &Vec<ChannelId>,
-    user: &mut UserData,
-) {
+    // if message is command, handle command
+    // handle command
     let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
     let command_name = &split_message[0][1..]; // 先頭の "!" を削除
     let command_args = &split_message[1..];
+    let dm = &msg.channel_id;
 
     match command_name {
-        "ping" => ping(ctx, msg, user).await,
-        "help" => help(ctx, msg).await,
-        "erocheck" => erocheck(ctx, msg, user).await,
-        "channel" => channel(ctx, msg, command_args, channels, user).await,
+        "ping" => ping(dm, ctx).await,
+        "help" => help(dm, ctx).await,
+        "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
+        "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
 
         // Unknown command
         _ => {
-            msg.channel_id
-                .say(&ctx.http, "しらないコマンドだよ")
-                .await
-                .unwrap();
+            dm.say(&ctx.http, "しらないコマンドだよ").await.unwrap();
         }
     }
 }
 
-// commands
-
-// ping command
-async fn ping(ctx: &Context, msg: &Message, _: &mut UserData) {
-    msg.channel_id.say(&ctx.http, "pong").await.unwrap();
+async fn update_user<'a>(
+    ctx: &Context,
+    user: &'a mut UserData,
+    author: &UserId,
+) -> Result<&'a mut UserData, anyhow::Error> {
+    // erogaki role check
+    user.is_erogaki = author
+        .to_user(&ctx.http)
+        .await?
+        .has_role(&ctx.http, KOCHIKITE_GUILD_ID, EROGAKI_ROLE_ID)
+        .await?;
+    Ok(user)
 }
 
-async fn help(ctx: &Context, msg: &Message) {
-    msg.channel_id
+// commands
+// ping command
+async fn ping(reply: &ChannelId, ctx: &Context) {
+    reply.say(&ctx.http, "pong").await.unwrap();
+}
+
+async fn help(reply: &ChannelId, ctx: &Context) {
+    reply
         .say(
             &ctx.http,
-            MessageBuilder::new()
-                .push("```")
-                .push("!ping\tpong!\n")
-                .push("!help\tこのヘルプを表示するよ\n")
-                .push("!erocheck\tあなたがエロガキかどうかを判定するよ\n")
-                .push("!channel\t代筆先のチャンネルについてだよ\n")
-                .push("```")
-                .build(),
+            r"```
+!ping       pong!
+!help       このヘルプを表示するよ
+!erocheck   あなたがエロガキかどうかを判定するよ
+!channel    代筆先のチャンネルについてだよ
+```",
         )
         .await
         .unwrap();
 }
 
 // erogaki status check
-async fn erocheck(ctx: &Context, msg: &Message, user: &mut UserData) {
-    match user.is_erogaki {
+async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
+    match is_erogaki {
         true => {
-            msg.channel_id
-                .say(&ctx.http, "エロガキ！！！！")
-                .await
-                .unwrap();
+            reply.say(&ctx.http, "エロガキ！！！！").await.unwrap();
         }
         false => {
-            msg.channel_id
-                .say(&ctx.http, "エロガキじゃないよ")
-                .await
-                .unwrap();
+            reply.say(&ctx.http, "エロガキじゃないよ").await.unwrap();
         }
     }
 }
 
 // change channel
 async fn channel(
+    reply: &ChannelId,
     ctx: &Context,
-    msg: &Message,
     args: &[&str],
     channels: &Vec<ChannelId>,
     user: &mut UserData,
 ) {
-    // Get the channel list from the guild
-
+    // 引数なしの場合はチャンネル一覧を表示
     if args.len() == 0 {
-        let mut response = MessageBuilder::new();
-        response
-            .push("今は")
+        let mut res = MessageBuilder::new();
+        res.push("今は")
             .channel(user.room_pointer)
             .push("で代筆してるよ\n")
             .push("```チャンネル一覧だよ\n");
-        for (i, channel) in channels.iter().enumerate() {
-            response
-                .push(format!("{i:>2}\t"))
-                .push(channel.name(&ctx).await.unwrap())
+        for (i, ch) in channels.iter().enumerate() {
+            res.push(format!("{i:>2}\t"))
+                .push(ch.name(&ctx.http).await.unwrap())
                 .push("\n");
         }
-        let response = response.push("```").push("使い方: `!channel <ID>`").build();
+        let res = res.push("```").push("使い方: `!channel <ID>`").build();
 
-        msg.channel_id.say(&ctx.http, &response).await.unwrap();
+        reply.say(&ctx.http, &res).await.unwrap();
         return;
     }
 
-    let channel = channels[args[0].parse::<usize>().unwrap()];
-    user.room_pointer = channel;
-    msg.channel_id
+    // それ以外の場合は指定されたチャンネルに切り替え
+    let next_pointer = channels[args[0].parse::<usize>().unwrap()];
+    user.room_pointer = next_pointer;
+    reply
         .say(
             &ctx.http,
             MessageBuilder::new()
                 .push("送信先を")
-                .channel(channel)
+                .channel(next_pointer)
                 .push("に設定したよ")
                 .build(),
         )
