@@ -4,12 +4,19 @@ use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, UserId};
 use serenity::prelude::*;
+use serenity::utils::MessageBuilder;
 use shuttle_runtime::SecretStore;
 use std::collections::HashMap;
 use tracing::{error, info};
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
+
+const DEBUG_ROOM_ID: u64 = 1245427348698824784;
+const FREETALK1_ROOM_ID: u64 = 1066470646827204719;
+const FREETALK2_ROOM_ID: u64 = 1066483929848217680;
+const MADSISTERS_ROOM_ID: u64 = 1066639830735396924;
+const SHYBOYS_ROOM_ID: u64 = 1067059988276727859;
 
 struct Bot {
     userdata: Mutex<HashMap<UserId, UserData>>,
@@ -23,6 +30,11 @@ struct UserData {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
+        // if message is from bot, ignore
+        if msg.author.bot {
+            return;
+        }
+
         // Check if the message is from direct message
         match msg.guild_id {
             Some(_) => {}
@@ -43,7 +55,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // Get the user data
     let mut user = bot.userdata.lock().await;
     let user = user.entry(author).or_insert(UserData {
-        room_pointer: ChannelId::from(1245427348698824784),
+        room_pointer: ChannelId::from(FREETALK1_ROOM_ID),
         is_erogaki: false,
     });
     // erogaki role check
@@ -72,24 +84,15 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
     let vec = msg.content.split_whitespace().collect::<Vec<&str>>();
-    let command = vec[0];
+    let command = &vec[0][1..];
     let args = &vec[1..];
 
     match command {
-        "erocheck" => match user.is_erogaki {
-            true => {
-                msg.channel_id
-                    .say(&ctx.http, "エロガキ！！！！")
-                    .await
-                    .unwrap();
-            }
-            false => {
-                msg.channel_id
-                    .say(&ctx.http, "エロガキじゃないよ")
-                    .await
-                    .unwrap();
-            }
-        },
+        "ping" => ping(ctx, msg, user).await,
+        "erocheck" => erocheck(ctx, msg, user).await,
+        "channel" => channel(ctx, msg, args, user).await,
+
+        // Unknown command
         _ => {
             msg.channel_id
                 .say(&ctx.http, "しらないコマンドだよ")
@@ -97,6 +100,75 @@ async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
                 .unwrap();
         }
     }
+}
+
+// commands
+
+// ping command
+async fn ping(ctx: &Context, msg: &Message, _: &mut UserData) {
+    msg.channel_id.say(&ctx.http, "pong").await.unwrap();
+}
+
+// erogaki status check
+async fn erocheck(ctx: &Context, msg: &Message, user: &mut UserData) {
+    match user.is_erogaki {
+        true => {
+            msg.channel_id
+                .say(&ctx.http, "エロガキ！！！！")
+                .await
+                .unwrap();
+        }
+        false => {
+            msg.channel_id
+                .say(&ctx.http, "エロガキじゃないよ")
+                .await
+                .unwrap();
+        }
+    }
+}
+
+async fn channel(ctx: &Context, msg: &Message, args: &[&str], user: &mut UserData) {
+    // Get the channel list from the guild
+    let channels = [
+        ChannelId::from(FREETALK1_ROOM_ID),
+        ChannelId::from(FREETALK2_ROOM_ID),
+        ChannelId::from(MADSISTERS_ROOM_ID),
+        ChannelId::from(SHYBOYS_ROOM_ID),
+        ChannelId::from(DEBUG_ROOM_ID),
+    ];
+    if args.len() == 0 {
+        let mut response = MessageBuilder::new();
+        response
+            .push("あなたは今")
+            .channel(user.room_pointer)
+            .push("にいるよ\n")
+            .push("```チャンネル一覧\n");
+        for (i, channel) in channels.iter().enumerate() {
+            response
+                .push(format!("{i}"))
+                .push(": ")
+                .push(channel.name(&ctx).await.unwrap())
+                .push("\n");
+        }
+        let response = response.push("```").push("使い方: !channel <ID>").build();
+
+        msg.channel_id.say(&ctx.http, &response).await.unwrap();
+        return;
+    }
+
+    let channel = channels[args[0].parse::<usize>().unwrap()];
+    user.room_pointer = channel;
+    msg.channel_id
+        .say(
+            &ctx.http,
+            MessageBuilder::new()
+                .push("送信先を")
+                .channel(channel)
+                .push("に設定したよ")
+                .build(),
+        )
+        .await
+        .unwrap();
 }
 
 #[shuttle_runtime::main]
