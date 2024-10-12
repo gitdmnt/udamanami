@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use dashmap::DashMap;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
@@ -6,7 +7,6 @@ use serenity::model::id::{ChannelId, UserId};
 use serenity::prelude::*;
 use serenity::utils::MessageBuilder;
 use shuttle_runtime::SecretStore;
-use std::collections::HashMap;
 use tracing::{error, info};
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
@@ -19,7 +19,7 @@ const MADSISTERS_ROOM_ID: u64 = 1066639830735396924;
 const SHYBOYS_ROOM_ID: u64 = 1067059988276727859;
 
 struct Bot {
-    userdata: Mutex<HashMap<UserId, UserData>>,
+    userdata: DashMap<UserId, UserData>,
 }
 
 struct UserData {
@@ -53,8 +53,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let author = msg.author.id;
 
     // Get the user data
-    let mut user = bot.userdata.lock().await;
-    let user = user.entry(author).or_insert(UserData {
+    let mut user = bot.userdata.entry(author).or_insert(UserData {
         room_pointer: ChannelId::from(FREETALK1_ROOM_ID),
         is_erogaki: false,
     });
@@ -71,7 +70,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match msg.content.chars().nth(0) {
         Some('!') => {
             // Handle command
-            handle_command(ctx, msg, user).await;
+            handle_command(ctx, msg, &mut *user).await;
         }
         _ => {
             // Forward the message to the room
@@ -83,15 +82,15 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn handle_command(ctx: &Context, msg: &Message, user: &mut UserData) {
-    let vec = msg.content.split_whitespace().collect::<Vec<&str>>();
-    let command = &vec[0][1..];
-    let args = &vec[1..];
+    let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
+    let command_name = &split_message[0][1..]; // 先頭の "!" を削除
+    let command_args = &split_message[1..];
 
-    match command {
+    match command_name {
         "ping" => ping(ctx, msg, user).await,
         "help" => help(ctx, msg).await,
         "erocheck" => erocheck(ctx, msg, user).await,
-        "channel" => channel(ctx, msg, args, user).await,
+        "channel" => channel(ctx, msg, command_args, user).await,
 
         // Unknown command
         _ => {
@@ -203,7 +202,7 @@ async fn serenity(
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
 
-    let userdata = Mutex::from(HashMap::new());
+    let userdata = DashMap::new();
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot { userdata })
