@@ -231,19 +231,37 @@ async fn channel(
 async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args: &[&str]) {
     let re = regex::Regex::new(r"(\d*)(d|D)(\d+)").unwrap();
     let caps = re.captures(command_name).unwrap();
-    let num: u128 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
-    let dice: u128 = caps.get(3).map_or(6, |m| m.as_str().parse().unwrap());
+    let num: u32 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
+
+    if num > 1000000 {
+        reply
+            .say(&ctx.http, "そんないっぱい振れないよ")
+            .await
+            .unwrap();
+        return;
+    } else if num == 0 {
+        reply.say(&ctx.http, "じゃあ振らないよ").await.unwrap();
+        return;
+    }
+
+    let dice: u64 = caps.get(3).map_or(6, |m| m.as_str().parse().unwrap());
+
     let mut sum = 0;
     let mut res = MessageBuilder::new();
     let mut vec = vec![];
 
     for _ in 0..num {
-        let r = rand::random::<u128>() % dice + 1;
+        let r = rand::random::<u64>() % dice + 1;
         vec.push(r.to_string());
-        sum += r;
+        sum += r as u128;
     }
     res.push(format!("{}D{} -> {}", num, dice, sum));
-    res.push(format!("({})", vec.join(", ")));
+
+    let items = format!("({})", vec.join(", "));
+
+    if 1 < dice && items.len() <= 100 {
+        res.push(items);
+    }
 
     if command_args.len() == 0 {
         reply.say(&ctx.http, &res.build()).await.unwrap();
