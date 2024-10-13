@@ -34,7 +34,9 @@ impl EventHandler for Bot {
 
         // Check if the message is from direct message
         match msg.guild_id {
-            Some(_) => {}
+            Some(_) => {
+                guild_message(self, &ctx, &msg).await;
+            }
             None => {
                 direct_message(self, &ctx, &msg).await;
             }
@@ -47,7 +49,6 @@ impl EventHandler for Bot {
 }
 
 //direct message
-
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
@@ -73,14 +74,53 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let dm = &msg.channel_id;
 
     match command_name {
-        "ping" => ping(dm, ctx).await,
-        "help" => help(dm, ctx).await,
-        "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
         "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
+        "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
+        "help" => help(dm, ctx).await,
+        "ping" => ping(dm, ctx).await,
 
         // Unknown command
         _ => {
             dm.say(&ctx.http, "しらないコマンドだよ").await.unwrap();
+        }
+    }
+}
+
+async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    // if message is not command, ignore
+    if !&msg.content.starts_with("!") {
+        return;
+    }
+
+    // get user data
+    let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
+        room_pointer: bot.channel_ids[0],
+        is_erogaki: false,
+    });
+    // update user data
+    let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
+
+    // handle command
+    let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
+    let command_name = &split_message[0][1..]; // 先頭の "!" を削除
+    let command_args = &split_message[1..];
+    let reply_channel = &msg.channel_id;
+
+    // dice command
+    let re = regex::Regex::new(r"(\d*)(d|D)(\d+)").unwrap();
+    if re.is_match(command_name) {
+        dice(reply_channel, ctx, command_name, command_args).await;
+        return;
+    }
+
+    match command_name {
+        "help" => help(reply_channel, ctx).await,
+        // Unknown command
+        _ => {
+            reply_channel
+                .say(&ctx.http, "しらないコマンドだよ")
+                .await
+                .unwrap();
         }
     }
 }
@@ -100,36 +140,27 @@ async fn update_user<'a>(
 }
 
 // commands
-// ping command
-async fn ping(reply: &ChannelId, ctx: &Context) {
-    reply.say(&ctx.http, "pong").await.unwrap();
-}
 
+// help command
 async fn help(reply: &ChannelId, ctx: &Context) {
     reply
         .say(
             &ctx.http,
-            r"```
-!ping       pong!
-!help       このヘルプを表示するよ
-!erocheck   あなたがエロガキかどうかを判定するよ
+            r"ダイレクトメッセージで使えるコマンドは次の通りだよ
+```
 !channel    代筆先のチャンネルについてだよ
+!erocheck   あなたがエロガキかどうかを判定するよ
+!help       このヘルプを表示するよ
+!ping       pong!
+```
+グループチャットで使えるコマンドは次の通りだよ
+```
+![n]d<m>    m面ダイスをn回振るよ
+!help       このヘルプを表示するよ
 ```",
         )
         .await
         .unwrap();
-}
-
-// erogaki status check
-async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
-    match is_erogaki {
-        true => {
-            reply.say(&ctx.http, "エロガキ！！！！").await.unwrap();
-        }
-        false => {
-            reply.say(&ctx.http, "エロガキじゃないよ").await.unwrap();
-        }
-    }
 }
 
 // change channel
@@ -190,6 +221,78 @@ async fn channel(
         )
         .await
         .unwrap();
+}
+
+// dice command
+async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args: &[&str]) {
+    let re = regex::Regex::new(r"(\d*)(d|D)(\d+)").unwrap();
+    let caps = re.captures(command_name).unwrap();
+    let num: u128 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
+    let dice: u128 = caps.get(3).map_or(6, |m| m.as_str().parse().unwrap());
+    let mut sum = 0;
+    let mut res = MessageBuilder::new();
+    let mut vec = vec![];
+
+    for _ in 0..num {
+        let r = rand::random::<u128>() % dice + 1;
+        vec.push(r.to_string());
+        sum += r;
+    }
+    res.push(format!("{}D{} -> {}", num, dice, sum));
+    res.push(format!("({})", vec.join(", ")));
+
+    if command_args.len() == 0 {
+        reply.say(&ctx.http, &res.build()).await.unwrap();
+        return;
+    } else if command_args.len() != 2 {
+        reply.say(&ctx.http, &res.build()).await.unwrap();
+        reply
+            .say(&ctx.http, "使い方: `!<num>d<dice> [<operator> <num>]`")
+            .await
+            .unwrap();
+        return;
+    }
+
+    let operator = command_args[0];
+    let operand = command_args[1].parse::<u128>().unwrap();
+    let is_ok = match operator {
+        "<=" => sum <= operand,
+        "<" => sum < operand,
+        "=" => sum == operand,
+        "==" => sum == operand,
+        "!=" => sum != operand,
+        ">" => sum > operand,
+        ">=" => sum >= operand,
+        _ => {
+            reply.say(&ctx.http, &res.build()).await.unwrap();
+            reply
+                .say(&ctx.http, "`<operator> = <|<=|=|==|!=|>|>=`だよ")
+                .await
+                .unwrap();
+            return;
+        }
+    };
+    let is_ok = if is_ok { "OK" } else { "NG" };
+    res.push(format!(" {} {} -> {}", operator, operand, is_ok));
+
+    reply.say(&ctx.http, &res.build()).await.unwrap();
+}
+
+// erogaki status check
+async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
+    match is_erogaki {
+        true => {
+            reply.say(&ctx.http, "エロガキ！！！！").await.unwrap();
+        }
+        false => {
+            reply.say(&ctx.http, "エロガキじゃないよ").await.unwrap();
+        }
+    }
+}
+
+// ping command
+async fn ping(reply: &ChannelId, ctx: &Context) {
+    reply.say(&ctx.http, "pong").await.unwrap();
 }
 
 #[shuttle_runtime::main]
