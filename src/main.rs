@@ -159,7 +159,25 @@ async fn channel(
     }
 
     // それ以外の場合は指定されたチャンネルに切り替え
-    let next_pointer = channels[args[0].parse::<usize>().unwrap()];
+    let selector = match args[0].parse::<usize>() {
+        Ok(i) => {
+            if i >= channels.len() {
+                reply
+                    .say(&ctx.http, "しらないチャンネルだよ")
+                    .await
+                    .unwrap();
+                return;
+            } else {
+                i
+            }
+        }
+        Err(_) => {
+            reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
+            return;
+        }
+    };
+
+    let next_pointer = channels[selector];
     user.room_pointer = next_pointer;
     reply
         .say(
