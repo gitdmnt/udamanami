@@ -231,7 +231,13 @@ async fn channel(
 async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args: &[&str]) {
     let re = regex::Regex::new(r"(\d*)(d|D)(\d+)").unwrap();
     let caps = re.captures(command_name).unwrap();
-    let num: u32 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
+    let num: u32 = match caps.get(1).map_or(Ok(1), |m| m.as_str().parse()) {
+        Ok(n) => n,
+        Err(_) => {
+            reply.say(&ctx.http, "数字がおかしいよ").await.unwrap();
+            return;
+        }
+    };
 
     if num > 1000000 {
         reply
@@ -244,7 +250,13 @@ async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args
         return;
     }
 
-    let dice: u64 = caps.get(3).map_or(6, |m| m.as_str().parse().unwrap());
+    let dice: u64 = match caps.get(3).map(|m| m.as_str().parse()).unwrap() {
+        Ok(d) => d,
+        Err(_) => {
+            reply.say(&ctx.http, "数字がおかしいよ").await.unwrap();
+            return;
+        }
+    };
 
     let mut sum = 0;
     let mut res = MessageBuilder::new();
@@ -269,7 +281,7 @@ async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args
     } else if command_args.len() != 2 {
         reply.say(&ctx.http, &res.build()).await.unwrap();
         reply
-            .say(&ctx.http, "使い方: `!<num>d<dice> [<operator> <num>]`")
+            .say(&ctx.http, "使い方: `![num]d<dice> [<operator> <num>]`")
             .await
             .unwrap();
         return;
