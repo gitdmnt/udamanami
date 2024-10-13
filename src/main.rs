@@ -231,13 +231,7 @@ async fn channel(
 async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args: &[&str]) {
     let re = regex::Regex::new(r"^([1-9]?\d*)(d|D)(\d+)").unwrap();
     let caps = re.captures(command_name).unwrap();
-    let num: u32 = match caps.get(1).map_or(Ok(1), |m| m.as_str().parse()) {
-        Ok(n) => n,
-        Err(_) => {
-            reply.say(&ctx.http, "数字がおかしいよ").await.unwrap();
-            return;
-        }
-    };
+    let num: u32 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
 
     if num > 1000000 {
         reply
