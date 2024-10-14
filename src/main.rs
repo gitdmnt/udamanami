@@ -20,6 +20,7 @@ use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
 mod parser;
+mod calculator;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
