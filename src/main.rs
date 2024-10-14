@@ -294,15 +294,8 @@ async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args
         res.push(items);
     }
 
-    if command_args.len() == 0 {
+    if command_args.len() != 2 {
         reply.say(&ctx.http, &res.build()).await.unwrap();
-        return;
-    } else if command_args.len() != 2 {
-        reply.say(&ctx.http, &res.build()).await.unwrap();
-        reply
-            .say(&ctx.http, "使い方: `![num]d<dice> [<operator> <num>]`")
-            .await
-            .unwrap();
         return;
     }
 
