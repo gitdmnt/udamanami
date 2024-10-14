@@ -179,22 +179,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
-    match parse_dice(&msg.content[1..]).finish() {
-        Ok((_, parsed)) => {
-            dice(&msg.channel_id, ctx, parsed).await;
-            return;
-        }
-        Err(err) => {
-            let Error { input: _, code } = err;
-            if let Some(detail) = match code {
-                ErrorKind::Digit => Some("数字がおかしいよ"),
-                ErrorKind::Alt => Some("`<operator> = <|<=|=|==|!=|>|>=`だよ"),
-                _ => None,
-            } {
-                msg.channel_id.say(&ctx.http, detail).await.unwrap();
-                return;
-            }
-        }
+    if let Ok((_, parsed)) = parse_dice(&msg.content[1..]) {
+        dice(&msg.channel_id, ctx, parsed).await;
+        return;
     }
 
     // handle other command
