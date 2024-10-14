@@ -38,46 +38,46 @@ struct UserData {
 
 #[derive(Clone)]
 enum CmpOperator {
-    LessThan,
-    LessEqual,
     Equal,
-    NotEqual,
-    GreaterThan,
     GreaterEqual,
+    GreaterThan,
+    LessEqual,
+    LessThan,
+    NotEqual,
 }
 
 impl Into<&str> for CmpOperator {
     fn into(self) -> &'static str {
         match self {
-            CmpOperator::LessThan => "<",
-            CmpOperator::LessEqual => "<=",
             CmpOperator::Equal => "==",
-            CmpOperator::NotEqual => "!=",
-            CmpOperator::GreaterThan => ">",
             CmpOperator::GreaterEqual => ">=",
+            CmpOperator::GreaterThan => ">",
+            CmpOperator::LessEqual => "<=",
+            CmpOperator::LessThan => "<",
+            CmpOperator::NotEqual => "!=",
         }
     }
 }
 
 fn cmp_with_operator(operator: &CmpOperator, left: u128, right: u128) -> bool {
     match operator {
-        CmpOperator::LessThan => left < right,
-        CmpOperator::LessEqual => left <= right,
         CmpOperator::Equal => left == right,
-        CmpOperator::NotEqual => left != right,
-        CmpOperator::GreaterThan => left > right,
         CmpOperator::GreaterEqual => left >= right,
+        CmpOperator::GreaterThan => left > right,
+        CmpOperator::LessEqual => left <= right,
+        CmpOperator::LessThan => left < right,
+        CmpOperator::NotEqual => left != right,
     }
 }
 
 fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
     alt((
+        value(CmpOperator::Equal, alt((tag("=="), tag("=")))),
+        value(CmpOperator::GreaterEqual, tag(">=")),
+        value(CmpOperator::GreaterThan, tag(">")),
         value(CmpOperator::LessEqual, tag("<=")),
         value(CmpOperator::LessThan, tag("<")),
-        value(CmpOperator::Equal, alt((tag("="), tag("==")))),
         value(CmpOperator::NotEqual, tag("!=")),
-        value(CmpOperator::GreaterThan, tag(">")),
-        value(CmpOperator::GreaterEqual, tag(">=")),
     ))(input)
 }
 
