@@ -319,6 +319,10 @@ impl std::fmt::Display for EvalError {
   }
 }
 
+pub fn error_str((e, expr) : (EvalError, Expr)) -> String {
+  format!("Error: {} at {}", e, expr)
+}
+
 
 fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   if step > 1000 {
