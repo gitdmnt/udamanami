@@ -164,14 +164,16 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
 !erocheck       あなたがエロガキかどうかを判定するよ
 !help           このヘルプを表示するよ
 !ping           pong!
-```";
+```
+";
 
     let about_guild = r"## まなみはグループチャットでコマンドを受け付けるよ！
 ```
 ![n]d<m>        m面ダイスをn回振るよ
 !help           このヘルプを表示するよ
 !isprime <n>    nが素数かどうかを判定するよ
-```";
+```
+";
 
     let mut content = MessageBuilder::new();
     content.push(about_me).push(about_ghostwrite);
