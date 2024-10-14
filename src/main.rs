@@ -2,10 +2,12 @@ use std::str::FromStr;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
+use serenity::all::GuildId;
 use serenity::async_trait;
 use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::id::{ChannelId, UserId};
+use serenity::model::user;
 use serenity::prelude::*;
 use serenity::utils::MessageBuilder;
 use shuttle_runtime::SecretStore;
@@ -50,6 +52,14 @@ impl EventHandler for Bot {
 
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    // ユーザーがこっちにきてはいけないに存在しない場合は無視
+    if let Err(_) = GuildId::from(KOCHIKITE_GUILD_ID)
+        .member(&ctx.http, &msg.author.id)
+        .await
+    {
+        return;
+    }
+
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
         room_pointer: bot.channel_ids[0],
@@ -76,7 +86,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
         "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
-        "help" => help(dm, ctx).await,
+        "help" => help(dm, ctx, &msg.author.id).await,
         "ping" => ping(dm, ctx).await,
 
         // Unknown command
@@ -114,7 +124,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     match command_name {
-        "help" => help(reply_channel, ctx).await,
+        "help" => help(reply_channel, ctx, &msg.author.id).await,
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
@@ -143,30 +153,41 @@ async fn update_user<'a>(
 // commands
 
 // help command
-async fn help(reply: &ChannelId, ctx: &Context) {
-    reply
-        .say(
-            &ctx.http,
-            r"# まなみの自己紹介だよ！
+async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
+    // 文章
+    let about_me = "# まなみの自己紹介だよ！\n";
+    let about_ghostwrite = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
 
-## 代筆機能があるよ！
-まなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！
-## まなみはDMでコマンドを受け付けるよ！
+    let about_dm = r"## まなみはDMでコマンドを受け付けるよ！
 ```
 !channel        代筆先のチャンネルについてだよ
 !erocheck       あなたがエロガキかどうかを判定するよ
 !help           このヘルプを表示するよ
 !ping           pong!
-```
-## まなみはグループチャットでもコマンドを受け付けるよ！
+```";
+
+    let about_guild = r"## まなみはグループチャットでコマンドを受け付けるよ！
 ```
 ![n]d<m>        m面ダイスをn回振るよ
 !help           このヘルプを表示するよ
 !isprime <n>    nが素数かどうかを判定するよ
-```",
-        )
+```";
+
+    let mut content = MessageBuilder::new();
+    content.push(about_me).push(about_ghostwrite);
+
+    // ユーザーがこっちにきてはいけないに存在する場合はDMの話もする
+    if let Ok(_) = GuildId::from(KOCHIKITE_GUILD_ID)
+        .member(&ctx.http, user_id)
         .await
-        .unwrap();
+    {
+        content.push(about_dm);
+    }
+
+    content.push(about_guild);
+    let content = content.build();
+
+    reply.say(&ctx.http, content).await.unwrap();
 }
 
 // change channel
@@ -329,9 +350,16 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
         return;
     }
 
-    let num = command_args[0].parse::<u64>().unwrap();
+    let num = if let Ok(num) = command_args[0].parse::<u64>() {
+        num
+    } else {
+        reply.say(&ctx.http, "わかんないよ").await.unwrap();
+        return;
+    };
+
     let (is_prime, factor) = match num {
-        0 | 1 => (false, vec![]),
+        0 => (false, vec![]),
+        1 => (false, vec![]),
         2 => (true, vec![2]),
         _ => {
             let mut num = num;
@@ -358,7 +386,7 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
                 factor.push(num);
             }
 
-            if factor.len() != 1 {
+            if factor.len() == 1 {
                 (true, factor)
             } else {
                 (false, factor)
@@ -372,7 +400,11 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
         if is_prime {
             "素数だよ".to_owned()
         } else {
-            format!("素数じゃないよ。素因数は{:?}だよ", factor)
+            if factor.len() == 0 {
+                format!("素数じゃないよ。あたりまえでしょ？")
+            } else {
+                format!("素数じゃないよ。素因数は{:?}だよ", factor)
+            }
         }
     );
     reply.say(&ctx.http, is_prime).await.unwrap();
