@@ -1,7 +1,17 @@
+use std::convert::Into;
 use std::str::FromStr;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, tag_no_case},
+    character::complete::{space0, u128, u32, u64},
+    combinator::{opt, value},
+    error::{Error, ErrorKind},
+    sequence::{separated_pair, tuple},
+    Finish, IResult,
+};
 use serenity::all::GuildId;
 use serenity::async_trait;
 use serenity::model::channel::Message;
@@ -24,6 +34,64 @@ struct Bot {
 struct UserData {
     room_pointer: ChannelId,
     is_erogaki: bool,
+}
+
+#[derive(Clone)]
+enum CmpOperator {
+    LessThan,
+    LessEqual,
+    Equal,
+    NotEqual,
+    GreaterThan,
+    GreaterEqual,
+}
+
+impl Into<&str> for CmpOperator {
+    fn into(self) -> &'static str {
+        match self {
+            CmpOperator::LessThan => "<",
+            CmpOperator::LessEqual => "<=",
+            CmpOperator::Equal => "==",
+            CmpOperator::NotEqual => "!=",
+            CmpOperator::GreaterThan => ">",
+            CmpOperator::GreaterEqual => ">=",
+        }
+    }
+}
+
+fn cmp_with_operator(operator: &CmpOperator, left: u128, right: u128) -> bool {
+    match operator {
+        CmpOperator::LessThan => left < right,
+        CmpOperator::LessEqual => left <= right,
+        CmpOperator::Equal => left == right,
+        CmpOperator::NotEqual => left != right,
+        CmpOperator::GreaterThan => left > right,
+        CmpOperator::GreaterEqual => left >= right,
+    }
+}
+
+fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
+    alt((
+        value(CmpOperator::LessEqual, tag("<=")),
+        value(CmpOperator::LessThan, tag("<")),
+        value(CmpOperator::Equal, alt((tag("="), tag("==")))),
+        value(CmpOperator::NotEqual, tag("!=")),
+        value(CmpOperator::GreaterThan, tag(">")),
+        value(CmpOperator::GreaterEqual, tag(">=")),
+    ))(input)
+}
+
+fn parse_dice(input: &str) -> IResult<&str, (u32, u64, Option<(CmpOperator, u128)>)> {
+    let (remaining_input, output) = tuple((
+        separated_pair(u32, tag_no_case("d"), u64),
+        opt(tuple((space0, parse_cmp_operator, space0, u128))),
+    ))(input)?;
+    let ((num, dice), cmp) = output;
+    if let Some((_, operator, _, operand)) = cmp {
+        Ok((remaining_input, (num, dice, Some((operator, operand)))))
+    } else {
+        Ok((remaining_input, (num, dice, None)))
+    }
 }
 
 #[async_trait]
@@ -110,18 +178,30 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // update user data
     let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
-    // handle command
+    // dice command
+    match parse_dice(&msg.content[1..]).finish() {
+        Ok((_, parsed)) => {
+            dice(&msg.channel_id, ctx, parsed).await;
+            return;
+        }
+        Err(err) => {
+            let Error { input: _, code } = err;
+            if let Some(detail) = match code {
+                ErrorKind::Digit => Some("数字がおかしいよ"),
+                ErrorKind::Alt => Some("`<operator> = <|<=|=|==|!=|>|>=`だよ"),
+                _ => None,
+            } {
+                msg.channel_id.say(&ctx.http, detail).await.unwrap();
+                return;
+            }
+        }
+    }
+
+    // handle other command
     let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
     let command_name = &split_message[0][1..]; // 先頭の "!" を削除
     let command_args = &split_message[1..];
     let reply_channel = &msg.channel_id;
-
-    // dice command
-    let re = regex::Regex::new(r"(\d*)(d|D)(\d+)").unwrap();
-    if re.is_match(command_name) {
-        dice(reply_channel, ctx, command_name, command_args).await;
-        return;
-    }
 
     match command_name {
         "help" => help(reply_channel, ctx, &msg.author.id).await,
@@ -253,10 +333,8 @@ async fn channel(
 }
 
 // dice command
-async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args: &[&str]) {
-    let re = regex::Regex::new(r"^([1-9]?\d*)(d|D)(\d+)").unwrap();
-    let caps = re.captures(command_name).unwrap();
-    let num: u32 = caps.get(1).map_or(1, |m| m.as_str().parse().unwrap());
+async fn dice(reply: &ChannelId, ctx: &Context, parsed: (u32, u64, Option<(CmpOperator, u128)>)) {
+    let (num, dice, cmp) = parsed;
 
     if num > 1000000 {
         reply
@@ -268,14 +346,6 @@ async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args
         reply.say(&ctx.http, "じゃあ振らないよ").await.unwrap();
         return;
     }
-
-    let dice: u64 = match caps.get(3).map(|m| m.as_str().parse()).unwrap() {
-        Ok(d) => d,
-        Err(_) => {
-            reply.say(&ctx.http, "数字がおかしいよ").await.unwrap();
-            return;
-        }
-    };
 
     let mut sum = 0;
     let mut res = MessageBuilder::new();
@@ -294,32 +364,20 @@ async fn dice(reply: &ChannelId, ctx: &Context, command_name: &str, command_args
         res.push(items);
     }
 
-    if command_args.len() != 2 {
+    if cmp.is_none() {
         reply.say(&ctx.http, &res.build()).await.unwrap();
         return;
     }
+    let (operator, operand) = cmp.unwrap();
 
-    let operator = command_args[0];
-    let operand = command_args[1].parse::<u128>().unwrap();
-    let is_ok = match operator {
-        "<=" => sum <= operand,
-        "<" => sum < operand,
-        "=" => sum == operand,
-        "==" => sum == operand,
-        "!=" => sum != operand,
-        ">" => sum > operand,
-        ">=" => sum >= operand,
-        _ => {
-            reply.say(&ctx.http, &res.build()).await.unwrap();
-            reply
-                .say(&ctx.http, "`<operator> = <|<=|=|==|!=|>|>=`だよ")
-                .await
-                .unwrap();
-            return;
-        }
-    };
+    let is_ok = cmp_with_operator(&operator, sum, operand);
     let is_ok = if is_ok { "OK" } else { "NG" };
-    res.push(format!(" {} {} -> {}", operator, operand, is_ok));
+    res.push(format!(
+        " {} {} -> {}",
+        Into::<&str>::into(operator),
+        operand,
+        is_ok
+    ));
 
     reply.say(&ctx.http, &res.build()).await.unwrap();
 }
