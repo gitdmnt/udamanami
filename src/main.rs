@@ -115,6 +115,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "help" => help(reply_channel, ctx).await,
+        "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
             reply_channel
@@ -152,15 +153,16 @@ async fn help(reply: &ChannelId, ctx: &Context) {
 まなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！
 ## まなみはDMでコマンドを受け付けるよ！
 ```
-!channel    代筆先のチャンネルについてだよ
-!erocheck   あなたがエロガキかどうかを判定するよ
-!help       このヘルプを表示するよ
-!ping       pong!
+!channel        代筆先のチャンネルについてだよ
+!erocheck       あなたがエロガキかどうかを判定するよ
+!help           このヘルプを表示するよ
+!ping           pong!
 ```
 ## まなみはグループチャットでもコマンドを受け付けるよ！
 ```
-![n]d<m>    m面ダイスをn回振るよ
-!help       このヘルプを表示するよ
+![n]d<m>        m面ダイスをn回振るよ
+!help           このヘルプを表示するよ
+!isprime <n>    nが素数かどうかを判定するよ
 ```",
         )
         .await
@@ -316,6 +318,64 @@ async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
             reply.say(&ctx.http, "エロガキじゃないよ").await.unwrap();
         }
     }
+}
+
+async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
+    if command_args.len() != 1 {
+        reply
+            .say(&ctx.http, "使い方: `!isprime <number>`")
+            .await
+            .unwrap();
+        return;
+    }
+
+    let num = command_args[0].parse::<u64>().unwrap();
+    let (is_prime, factor) = match num {
+        0 | 1 => (false, vec![]),
+        2 => (true, vec![2]),
+        _ => {
+            let mut num = num;
+            let mut i = 2;
+            let mut factor = vec![];
+
+            while num % 2 == 0 {
+                num /= 2;
+                factor.push(2);
+            }
+
+            i = 3;
+
+            while i * i <= num {
+                if num % i == 0 {
+                    num /= i;
+                    factor.push(i);
+                } else {
+                    i += 2;
+                }
+            }
+
+            if num != 1 {
+                factor.push(num);
+            }
+
+            if factor.len() != 1 {
+                (true, factor)
+            } else {
+                (false, factor)
+            }
+        }
+    };
+
+    let is_prime = format!(
+        "{}は{}",
+        num,
+        if is_prime {
+            "素数だよ".to_owned()
+        } else {
+            format!("素数じゃないよ。素因数は{:?}だよ", factor)
+        }
+    );
+    reply.say(&ctx.http, is_prime).await.unwrap();
 }
 
 // ping command
