@@ -1,13 +1,13 @@
 use nom::{
-  character::complete::{char, digit1, multispace0, alpha1, alphanumeric1, one_of},
+  character::complete::{char, digit1, multispace0, alpha1, alphanumeric1, one_of, none_of, anychar},
   bytes::complete::tag,
-  combinator::{map, recognize},
+  combinator::{map, recognize, value},
   sequence::{delimited, separated_pair, pair, preceded},
-  multi::{separated_list0, fold_many0, many0_count},
+  multi::{separated_list0, fold_many0, many0_count, many1_count, many0},
   branch::alt,
   IResult,
 };
-use std::collections::HashMap;
+use std::{collections::HashMap, f64::consts::E};
 use rand::Rng;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -54,6 +54,9 @@ impl std::fmt::Display for ExprOp1 {
 pub enum Expr {
   IVal(i64),
   FVal(f64),
+  SVal(String),
+  List(Vec<Box<Expr>>),
+  At(Box<Expr>, Box<Expr>),
   Const(String),
   Op1(ExprOp1, Box<Expr>),
   Op2(ExprOp2, Box<Expr>, Box<Expr>),
@@ -66,6 +69,9 @@ impl std::fmt::Display for Expr {
     match self {
       Expr::IVal(i) => write!(f, "{}", i),
       Expr::FVal(v) => write!(f, "{}", v),
+      Expr::SVal(s) => write!(f, "{:?}", s.escape_debug()),
+      Expr::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
+      Expr::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
       Expr::Const(s) => write!(f, "{}", s),
       Expr::Op1(op, e) => write!(f, "{}{}", op, e),
       Expr::Op2(op, e1, e2) => write!(f, "({} {} {})", e1, op, e2),
@@ -162,20 +168,6 @@ fn parse_named_const(input: &str) -> IResult<&str, Expr> {
   )(input)
 }
 
-fn parse_Apply(input: &str) -> IResult<&str, Expr> {
-  map(
-      pair(
-        parse_term00,
-          delimited(
-              char('('),
-              separated_list0(char(','), parse_expr),
-              char(')'),
-          ),
-      ),
-      |(term, args)| Expr::Apply(Box::new(term), args.into_iter().map(Box::new).collect()),
-  )(input)
-}
-
 // (x, y, z) => x + y + z
 // to Lambda(["x", "y", "z"], [Op2(Add, Op2(Add, Var("x"), Var("y")), Var("z"))])
 fn parse_lambda(input: &str) -> IResult<&str, Expr> {
@@ -188,25 +180,142 @@ fn parse_lambda(input: &str) -> IResult<&str, Expr> {
   )(input)
 }
 
+// x => x + 1
+fn parse_lambda_one(input: &str) -> IResult<&str, Expr> {
+  map(
+    pair(
+      preceded(multispace0, parse_identifier),
+      preceded(multispace0, preceded(tag("=>"), parse_expr)),
+    ),
+    |(arg, body)| Expr::Lambda(vec![arg.to_string()], Box::new(body)),
+  )(input)
+}
+
 fn parse_paren(input: &str) -> IResult<&str, Expr> {
   delimited(char('('), parse_expr, char(')'))(input)
 }
 
-fn parse_term00(input: &str) -> IResult<&str, Expr> {
+// \n -> CR, \t -> TAB, \u{1234} -> Unicode
+fn parse_special_escape(input: &str) -> IResult<&str, char> {
+  preceded(
+      tag("\\"),
+      alt((
+          value('\n', tag("n")),
+          value('\t', tag("t")),
+          map(
+              delimited(
+                  tag("u{"),
+                  recognize(many1_count(one_of("0123456789abcdefABCDEF"))),
+                  tag("}"),
+              ),
+              |s: &str| {
+                  let code = u32::from_str_radix(s, 16).unwrap();
+                  std::char::from_u32(code).unwrap()
+              },
+          ),
+      )),
+  )(input)
+}
+
+fn parse_escaped_char(input: &str) -> IResult<&str, char> {
+  preceded(
+      char('\\'),
+      anychar,
+  )(input)
+}
+
+fn parse_string_content(input: &str) -> IResult<&str, String> {
+  map(
+      many0(
+          alt((
+              parse_special_escape,
+              parse_escaped_char,
+              none_of("\""),
+          )),
+      ),
+      |chars| chars.into_iter().collect(),
+  )(input)
+}
+
+
+fn parse_string_literal(input: &str) -> IResult<&str, Expr> {
+  map(
+    delimited(
+    char('\"'),
+    parse_string_content,
+    char('\"'),
+    ),
+    |s| Expr::SVal(s),
+  )(input)
+}
+
+fn parse_list_literal(input: &str) -> IResult<&str, Expr> {
+  map(
+    delimited(
+      char('['),
+      separated_list0(char(','), parse_expr),
+      char(']'),
+    ),
+    |exprs| Expr::List(exprs.into_iter().map(Box::new).collect()),
+  )(input)
+}
+
+fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
   preceded(multispace0, alt((
     parse_lambda,
+    parse_lambda_one,
     parse_paren,
     parse_int,
     parse_float,
     parse_named_const,
+    parse_string_literal,
+    parse_list_literal,
   )))(input)
 }
 
+enum PostfixExprPart {
+  PEPApply(Vec<Box<Expr>>),
+  PEPListAt(Box<Expr>),
+}
+
+fn parse_apply(input: &str) -> IResult<&str, PostfixExprPart> {
+  map(
+      delimited(
+        preceded(multispace0, char('(')),
+        separated_list0(char(','), preceded(multispace0, parse_expr)),
+        preceded(multispace0, char(')')),
+      ),
+    |args| PostfixExprPart::PEPApply(args.into_iter().map(Box::new).collect()),
+  )(input)
+}
+
+fn parse_list_at(input: &str) -> IResult<&str, PostfixExprPart> {
+  map(
+    delimited(
+      preceded(multispace0, char('[')),
+      preceded(multispace0, parse_expr),
+      preceded(multispace0, char(']')),
+    ),
+    |ix| PostfixExprPart::PEPListAt(Box::new(ix)),
+  )(input)
+}
+
+fn postfix(expr: Expr, postfix: PostfixExprPart) -> Expr {
+  match postfix {
+    PostfixExprPart::PEPApply(args) => Expr::Apply(Box::new(expr), args.into_iter().collect()),
+    PostfixExprPart::PEPListAt(ix) => Expr::At(Box::new(expr), ix),
+  }
+}
+
+// postfix(ApplyとListAt)を全部処理
+// 方針：parse_term_before_postfixを取ったのち、parse_postfixを取れるだけ取って、左からたたみ込んで適用
 fn parse_term0(input: &str) -> IResult<&str, Expr> {
-  preceded(multispace0, alt((
-    parse_Apply,
-    parse_term00,
-  )))(input)
+  let (input, init) = parse_term_before_postfix(input)?;
+  fold_many0(
+    alt((parse_apply, parse_list_at)),
+    move || init.clone(),
+    |acc, pep| postfix(acc, pep),
+  )(input)
 }
 
 // 1: 単項演算子
@@ -275,9 +384,11 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
 
 #[derive(Debug, Clone, PartialEq)]
-enum EvalResult {
+pub enum EvalResult {
   IVal(i64),
   FVal(f64),
+  SVal(String),
+  List(Vec<Box<EvalResult>>),
   Lambda(Vec<String>, Box<Expr>),
   Error(String),
 }
@@ -287,31 +398,29 @@ impl std::fmt::Display for EvalResult {
     match self {
       EvalResult::IVal(i) => write!(f, "{}", i),
       EvalResult::FVal(v) => write!(f, "{}", v),
+      EvalResult::SVal(s) => write!(f, "\"{}\"", s),
+      EvalResult::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       EvalResult::Lambda(params, body) => write!(f, "({} => {})", params.join(", "), body),
       EvalResult::Error(s) => write!(f, "Error: {}", s),
     }
   }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-enum ResultType {
-  TypeI,
-  TypeF,
-  TypeLambda(usize),
-  TypeError,
-}
 
 #[derive(Debug, Clone, PartialEq)]
-enum EvalError {
+pub enum EvalError {
   NotANumber,
   NotAFunction,
   NegativeDice,
   InvalidDice,
   TooManyDice,
   UndefinedVar(String),
-  MismatchedType(ResultType, ResultType),
+  //MismatchedType(ResultType, ResultType),
   ArgCountMismatch(usize, usize),
   StepLimitExceeded,
+  NotAList,
+  NotAnIndex,
+  OutOfRange,
 }
 
 impl std::fmt::Display for EvalError {
@@ -323,9 +432,12 @@ impl std::fmt::Display for EvalError {
       EvalError::InvalidDice => write!(f, "Invalid dice"),
       EvalError::TooManyDice => write!(f, "Too many dice"),
       EvalError::UndefinedVar(s) => write!(f, "Undefined variable: {}", s),
-      EvalError::MismatchedType(t1, t2) => write!(f, "Mismatched type: {:?} and {:?}", t1, t2),
+      //EvalError::MismatchedType(t1, t2) => write!(f, "Mismatched type: {:?} and {:?}", t1, t2),
       EvalError::ArgCountMismatch(a, b) => write!(f, "Argument count mismatch: {} and {}", a, b),
       EvalError::StepLimitExceeded => write!(f, "Step limit exceeded"),
+      EvalError::NotAList => write!(f, "Not a list"),
+      EvalError::NotAnIndex => write!(f, "Not an index"),
+      EvalError::OutOfRange => write!(f, "Out of range"),
     }
   }
 }
@@ -342,6 +454,52 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
   match expr {
     Expr::IVal(i) => Ok((EvalResult::IVal(*i as i64), step)),
     Expr::FVal(f) => Ok((EvalResult::FVal(*f), step)),
+    Expr::SVal(s) => Ok((EvalResult::SVal(s.clone()), step)),
+    Expr::List(l) => {
+      let mut new_list = Vec::new();
+      let mut steps = step + 1;
+      for e in l {
+        let (val, next_step) = eval_expr_ctx(e, steps, context)?;
+        new_list.push(Box::new(val));
+        steps = next_step;
+      }
+      Ok((EvalResult::List(new_list), steps))
+    },
+
+    Expr::At(e1, e2) => {
+      let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
+      let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
+      match val1 {
+        (EvalResult::List(l)) => {
+          let index = match val2 {
+            EvalResult::IVal(i) => Ok(i as isize),
+            EvalResult::FVal(f) => Ok(f as isize),
+            _ => return Err((EvalError::NotAnIndex, expr.clone())),
+          }?;
+          if index < 0 || index >= l.len() as isize{
+            return Err((EvalError::OutOfRange, expr.clone()));
+          }
+          Ok((*l[index as usize].clone(), next_step + 1))
+        },
+        (EvalResult::SVal(str)) => {
+          let index = match val2 {
+            EvalResult::IVal(i) => Ok(i as isize),
+            EvalResult::FVal(f) => Ok(f as isize),
+            _ => return Err((EvalError::NotAnIndex, expr.clone())),
+          }?;
+          if index < 0 || index >= str.chars().count() as isize{
+            return Err((EvalError::OutOfRange, expr.clone()));
+          }
+          match str.chars().nth(index as usize) {
+            Some(c) => Ok((EvalResult::SVal(c.to_string()), next_step + 1)),
+            None => Err((EvalError::OutOfRange, expr.clone())),
+          }
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    
+    
     Expr::Const(s) => {
       match context.get(s) {
         Some(result) => Ok((result.clone(), step)),
@@ -432,7 +590,7 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
             return Err((EvalError::ArgCountMismatch(args.len(), params.len()), expr.clone()));
           }
           let mut new_context = context.clone();
-          let mut steps = step + 1;
+          let mut steps = next_step + 1;
           for (param, arg) in params.iter().zip(args.iter()) {
             let (val, next_step) = eval_expr_ctx(arg, steps, context)?;
             new_context.insert(param.clone(), val);
@@ -484,7 +642,7 @@ mod tests_parse {
   }
 
   #[test]
-  fn test_parse_Apply() {
+  fn test_parse_apply() {
     assert_eq!(
       parse_expr("f(1, 2)"),
       Ok((
@@ -557,6 +715,26 @@ mod tests_parse {
       )),
     );
   }
+  
+
+  #[test]
+  fn test_parse_string() {
+    assert_eq!(
+      parse_expr("\"Hello, \nworld!\""),
+      Ok(("", Expr::SVal("Hello, \nworld!".to_string()))),
+    );
+  }
+
+  #[test]
+  fn test_parse_list() {
+    assert_eq!(
+      parse_expr("[1, 2, 3]"),
+      Ok((
+        "",
+        Expr::List(vec![Box::new(Expr::IVal(1)), Box::new(Expr::IVal(2)), Box::new(Expr::IVal(3))]),
+      )),
+    );
+  }
 }
 
 #[cfg(test)]
@@ -596,6 +774,20 @@ use super::*;
       },
       _ => {
         println!("{:?}", result);
+        assert!(false);
+      },
+    }
+  }
+
+  #[test]
+  fn test_string() {
+    let expr = parse_expr("\"Hello, \\nworld!\\u{1f305}\"").unwrap().1;
+    let context = HashMap::new();
+    match eval_expr_ctx(&expr, 0, &context) {
+      Ok((EvalResult::SVal(s), _)) => {
+        println!("{}", s);
+      },
+      _ => {
         assert!(false);
       },
     }

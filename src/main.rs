@@ -24,7 +24,7 @@ mod parser;
 mod calculator;
 use calculator::{eval_str};
 
-const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
+const KOCHIKITE_GUILD_ID: u64 = 1245370208722489384; //TODO: commit前になおしておく
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 
 struct Bot {
