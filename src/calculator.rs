@@ -476,6 +476,7 @@ pub enum EvalStdLibFun {
   Tail,   // tail(list)
   Fix,    // Fix(f) = f(Fix(f))
   While,  // while(acc => cond, acc => nextacc, init)
+  Sort,   // sort(list)
 }
 
 impl std::fmt::Display for EvalStdLibFun {
@@ -504,6 +505,7 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::Tail    => write!(f, "tail"),
       EvalStdLibFun::Fix     => write!(f, "fix"),
       EvalStdLibFun::While   => write!(f, "while"),
+      EvalStdLibFun::Sort    => write!(f, "sort"),
     }
   }
 }
@@ -520,6 +522,15 @@ pub enum EvalResult {
   Closure(Vec<String>, Box<Expr>, Box<HashMap<String, EvalResult>>),
   FuncStdLib(EvalStdLibFun),
   Lazy(Box<Expr>) //適用を受けるまで遅延
+}
+
+impl PartialOrd for EvalResult {
+  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+    match (val_as_float(self), val_as_float(other)) {
+      (Some(f1), Some(f2)) => f1.partial_cmp(&f2),
+      _ => None,
+    }
+  }
 }
 
 impl std::fmt::Display for EvalResult {
@@ -1156,6 +1167,25 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
       }
       Ok((acc, step + 1))
     },
+    EvalStdLibFun::Sort => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match *args[0].clone() {
+        EvalResult::List(l) => {
+          let mut new_list = l.clone();
+          new_list.sort_by(|a, b| {
+            match (val_as_float(a), val_as_float(b)) {
+              (Some(f1), Some(f2)) => f1.partial_cmp(&f2).unwrap(),
+              _ => std::cmp::Ordering::Equal,
+            }
+          });
+          Ok((EvalResult::List(new_list), step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+          
+      }
+    },
   }
 }
 
@@ -1195,6 +1225,7 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
     "tail"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
     "fix"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
     "while"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::While)),
+    "sort"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sort)),
 
 
     _ => None,
