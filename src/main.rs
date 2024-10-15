@@ -19,6 +19,7 @@ use serenity::{
 };
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
+use regex::Regex;
 
 mod calculator;
 mod parser;
@@ -111,24 +112,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
-    let input_string: String = match msg.content.find('!') {
-        Some(i) => msg.content[i + 1..].chars().collect(),
-        None => match msg.content.find("まなみ、") {
-            Some(i) => msg.content[i..]
-                .chars()
-                .skip(4)
-                .take(msg.content.chars().count() - 4)
-                .collect(),
-            None => match msg.content.find("まなみちゃん、") {
-                Some(i) => msg.content[i..]
-                    .chars()
-                    .skip(7)
-                    .take(msg.content.chars().count() - 7)
-                    .collect(),
-                None => return,
-            },
-        },
-    };
+    let command_pattern = Regex::new(r"(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
+    let input_string: String =
+        match command_pattern.captures(&msg.content) {
+            Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+            None => return,
+        };
 
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
