@@ -734,6 +734,20 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
               _ => format!("{}", val2),
             };
             return Ok((EvalResult::SVal(format!("{}{}", str1, str2)), next_step + 1));
+          }else{
+            match (val1.clone(), val2.clone()) {
+              (EvalResult::List(l1), EvalResult::List(l2)) => {
+                let mut new_list = Vec::new();
+                for e in l1 {
+                  new_list.push(e.clone());
+                }
+                for e in l2 {
+                  new_list.push(e.clone());
+                }
+                return Ok((EvalResult::List(new_list), next_step + 1));
+              },
+              _ => (),
+            }
           }
         }
         _ => (),
