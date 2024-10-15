@@ -14,6 +14,7 @@ use serenity::{
     utils::MessageBuilder,
 };
 use shuttle_runtime::SecretStore;
+use tokio::time::interval_at;
 use tracing::{error, info};
 
 mod parser;
@@ -103,9 +104,11 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message is not command, ignore
-    if !&msg.content.starts_with("!") {
-        return;
-    }
+    let start_index = match &msg.content.find("!") {
+        Some(i) => *i,
+        None => return,
+    };
+    let input_string = msg.content[start_index + 1..].to_owned();
 
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
@@ -116,14 +119,14 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
-    if let Ok((_, parsed)) = parser::parse_dice(&msg.content[1..]) {
+    if let Ok((_, parsed)) = parser::parse_dice(&input_string) {
         dice(&msg.channel_id, ctx, parsed).await;
         return;
     }
 
     // handle other command
-    let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
-    let command_name = &split_message[0][1..]; // 先頭の "!" を削除
+    let split_message = input_string.split_whitespace().collect::<Vec<&str>>();
+    let command_name = split_message[0];
     let command_args = &split_message[1..];
     let reply_channel = &msg.channel_id;
 
