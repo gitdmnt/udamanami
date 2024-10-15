@@ -206,6 +206,7 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
 ![n]d<m>        m面ダイスをn回振るよ
 !help           このヘルプを表示するよ
 !isprime <n>    nが素数かどうかを判定するよ
+!calc <expr>    数式を計算するよ！さまざまな関数に対応してるよ！
 ```
 ";
 
