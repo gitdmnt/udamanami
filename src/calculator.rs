@@ -93,7 +93,7 @@ impl std::fmt::Display for Expr {
       Expr::IVal(i) => write!(f, "{}", i),
       Expr::FVal(v) => write!(f, "{}", v),
       Expr::BVal(b) => write!(f, "{}", b),
-      Expr::SVal(s) => write!(f, "{:?}", s.escape_debug()),
+      Expr::SVal(s) => write!(f, "\"{}\"", s.escape_debug()),
       Expr::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       Expr::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
       Expr::Const(s) => write!(f, "{}", s),
@@ -1036,10 +1036,10 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
       }
       match val_as_list(&args[2]) {
         Some(l) => {
-          let mut acc = *args[0].clone();
+          let mut acc = *args[1].clone();
           let mut step = step + 1;
           for e in l {
-            let (val, next_step) = eval_apply(expr, step, context, *args[1].clone(), vec![Box::new(acc), e.clone()])?;
+            let (val, next_step) = eval_apply(expr, step, context, *args[0].clone(), vec![Box::new(acc), e.clone()])?;
             acc = val;
             step = next_step;
           }
@@ -1054,10 +1054,10 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
       }
       match val_as_list(&args[2]) {
         Some(l) => {
-          let mut acc = *args[0].clone();
+          let mut acc = *args[1].clone();
           let mut step = step + 1;
           for e in l.iter().rev() {
-            let (val, next_step) = eval_apply(expr, step, context, *args[1].clone(), vec![e.clone(), Box::new(acc)])?;
+            let (val, next_step) = eval_apply(expr, step, context, *args[0].clone(), vec![e.clone(), Box::new(acc)])?;
             acc = val;
             step = next_step;
           }
