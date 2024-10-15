@@ -475,6 +475,7 @@ pub enum EvalStdLibFun {
   Head,   // head(list)
   Tail,   // tail(list)
   Fix,    // Fix(f) = f(Fix(f))
+  While,  // while(acc => cond, acc => nextacc, init)
 }
 
 impl std::fmt::Display for EvalStdLibFun {
@@ -502,6 +503,7 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::Head    => write!(f, "head"),
       EvalStdLibFun::Tail    => write!(f, "tail"),
       EvalStdLibFun::Fix     => write!(f, "fix"),
+      EvalStdLibFun::While   => write!(f, "while"),
     }
   }
 }
@@ -637,8 +639,15 @@ where F: Fn(f64, f64) -> f64 {
   }
 }
 
+fn is_str(s: EvalResult) -> bool {
+  match s {
+    EvalResult::SVal(_) => true,
+    _ => false,
+  }
+}
+
 fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
-  println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
+  //println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
   
   if step > 1000 {
     return Err((EvalError::StepLimitExceeded, expr.clone()));
@@ -712,6 +721,23 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     Expr::Op2(op, e1, e2) => {
       let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
       let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
+
+      match op {
+        ExprOp2::Add => {
+          if is_str(val1.clone()) || is_str(val2.clone()) {
+            let str1 = match val1 {
+              EvalResult::SVal(s) => s,
+              _ => format!("{}", val1),
+            };
+            let str2 = match val2 {
+              EvalResult::SVal(s) => s,
+              _ => format!("{}", val2),
+            };
+            return Ok((EvalResult::SVal(format!("{}{}", str1, str2)), next_step + 1));
+          }
+        }
+        _ => (),
+      };
       
       let fval1 = match val_as_float(&val1) {
         Some(f) => f,
@@ -1096,6 +1122,26 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
       // this should be handled in eval_expr
       panic!("Fix should not be called directly");
     },
+    EvalStdLibFun::While => {
+      if args.len() != 3 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+      }
+      let condgen = &args[0];
+      let accgen  = &args[1];
+      let mut acc  = *args[2].clone();
+      let mut step = step + 1;
+      loop {
+        let (cond, next_step) = eval_apply(expr, step, context, *condgen.clone(), vec![Box::new(acc.clone())])?;
+        step = next_step;
+        if val_as_bool(&cond) != Some(true) {
+          break;
+        }
+        let (nextacc, next_step) = eval_apply(expr, step, context, *accgen.clone(), vec![Box::new(acc)])?;
+        acc = nextacc;
+        step = next_step;
+      }
+      Ok((acc, step + 1))
+    },
   }
 }
 
@@ -1134,6 +1180,7 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
     "head"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Head)),
     "tail"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
     "fix"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
+    "while"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::While)),
 
 
     _ => None,
