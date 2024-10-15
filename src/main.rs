@@ -117,9 +117,16 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             Some(i) => msg.content[i..]
                 .chars()
                 .skip(4)
-                .take(msg.content.chars().count() - (4))
+                .take(msg.content.chars().count() - 4)
                 .collect(),
-            None => return,
+            None => match msg.content.find("まなみちゃん、") {
+                Some(i) => msg.content[i..]
+                    .chars()
+                    .skip(7)
+                    .take(msg.content.chars().count() - 7)
+                    .collect(),
+                None => return,
+            },
         },
     };
 
@@ -132,7 +139,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     update_user(ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
-    match parser::parse_dice(&msg.content[1..]).finish() {
+    match parser::parse_dice(&input_string).finish() {
         Ok((_, parsed)) => {
             dice(&msg.channel_id, ctx, parsed).await;
             return;
