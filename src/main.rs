@@ -14,7 +14,6 @@ use serenity::{
     utils::MessageBuilder,
 };
 use shuttle_runtime::SecretStore;
-use tokio::time::interval_at;
 use tracing::{error, info};
 
 mod parser;
@@ -92,7 +91,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
         "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
-        "help" => help(dm, ctx, &msg.author.id).await,
+        "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id).await,
         "ping" => ping(dm, ctx).await,
 
         // Unknown command
@@ -103,10 +102,13 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    // if message is not command, ignore
+    // if message does not contains any command, ignore
     let start_index = match &msg.content.find("!") {
         Some(i) => *i,
-        None => return,
+        None => match &msg.content.find("！") {
+            Some(i) => *i,
+            None => return,
+        },
     };
     let input_string = msg.content[start_index + 1..].to_owned();
 
@@ -126,12 +128,12 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // handle other command
     let split_message = input_string.split_whitespace().collect::<Vec<&str>>();
-    let command_name = split_message[0];
+    let command_name = split_message[0].trim();
     let command_args = &split_message[1..];
     let reply_channel = &msg.channel_id;
 
     match command_name {
-        "help" => help(reply_channel, ctx, &msg.author.id).await,
+        "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id).await,
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
