@@ -3,25 +3,20 @@ use std::str::FromStr;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, tag_no_case},
-    character::complete::{space0, u128, u32, u64},
-    combinator::{opt, value},
-    error::{Error, ErrorKind},
-    sequence::{separated_pair, tuple},
-    Finish, IResult,
+use serenity::{
+    async_trait,
+    model::{
+        channel::Message,
+        gateway::Ready,
+        id::{ChannelId, GuildId, UserId},
+    },
+    prelude::*,
+    utils::MessageBuilder,
 };
-use serenity::all::GuildId;
-use serenity::async_trait;
-use serenity::model::channel::Message;
-use serenity::model::gateway::Ready;
-use serenity::model::id::{ChannelId, UserId};
-use serenity::model::user;
-use serenity::prelude::*;
-use serenity::utils::MessageBuilder;
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
+
+mod parser;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
@@ -34,64 +29,6 @@ struct Bot {
 struct UserData {
     room_pointer: ChannelId,
     is_erogaki: bool,
-}
-
-#[derive(Clone)]
-enum CmpOperator {
-    Equal,
-    GreaterEqual,
-    GreaterThan,
-    LessEqual,
-    LessThan,
-    NotEqual,
-}
-
-impl Into<&str> for CmpOperator {
-    fn into(self) -> &'static str {
-        match self {
-            CmpOperator::Equal => "==",
-            CmpOperator::GreaterEqual => ">=",
-            CmpOperator::GreaterThan => ">",
-            CmpOperator::LessEqual => "<=",
-            CmpOperator::LessThan => "<",
-            CmpOperator::NotEqual => "!=",
-        }
-    }
-}
-
-fn cmp_with_operator(operator: &CmpOperator, left: u128, right: u128) -> bool {
-    match operator {
-        CmpOperator::Equal => left == right,
-        CmpOperator::GreaterEqual => left >= right,
-        CmpOperator::GreaterThan => left > right,
-        CmpOperator::LessEqual => left <= right,
-        CmpOperator::LessThan => left < right,
-        CmpOperator::NotEqual => left != right,
-    }
-}
-
-fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
-    alt((
-        value(CmpOperator::Equal, alt((tag("=="), tag("=")))),
-        value(CmpOperator::GreaterEqual, tag(">=")),
-        value(CmpOperator::GreaterThan, tag(">")),
-        value(CmpOperator::LessEqual, tag("<=")),
-        value(CmpOperator::LessThan, tag("<")),
-        value(CmpOperator::NotEqual, tag("!=")),
-    ))(input)
-}
-
-fn parse_dice(input: &str) -> IResult<&str, (u32, u64, Option<(CmpOperator, u128)>)> {
-    let (remaining_input, output) = tuple((
-        separated_pair(u32, tag_no_case("d"), u64),
-        opt(tuple((space0, parse_cmp_operator, space0, u128))),
-    ))(input)?;
-    let ((num, dice), cmp) = output;
-    if let Some((_, operator, _, operand)) = cmp {
-        Ok((remaining_input, (num, dice, Some((operator, operand)))))
-    } else {
-        Ok((remaining_input, (num, dice, None)))
-    }
 }
 
 #[async_trait]
@@ -179,7 +116,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
-    if let Ok((_, parsed)) = parse_dice(&msg.content[1..]) {
+    if let Ok((_, parsed)) = parser::parse_dice(&msg.content[1..]) {
         dice(&msg.channel_id, ctx, parsed).await;
         return;
     }
@@ -320,9 +257,15 @@ async fn channel(
 }
 
 // dice command
-async fn dice(reply: &ChannelId, ctx: &Context, parsed: (u32, u64, Option<(CmpOperator, u128)>)) {
+async fn dice(
+    reply: &ChannelId,
+    ctx: &Context,
+    parsed: (u32, u64, Option<(parser::CmpOperator, u128)>),
+) {
+    // パース
     let (num, dice, cmp) = parsed;
 
+    // 入力のチェック
     if num > 1000000 {
         reply
             .say(&ctx.http, "そんないっぱい振れないよ")
@@ -334,38 +277,44 @@ async fn dice(reply: &ChannelId, ctx: &Context, parsed: (u32, u64, Option<(CmpOp
         return;
     }
 
+    // ダイスロール
     let mut sum = 0;
-    let mut res = MessageBuilder::new();
     let mut vec = vec![];
-
     for _ in 0..num {
         let r = rand::random::<u64>() % dice + 1;
         vec.push(r.to_string());
         sum += r as u128;
     }
-    res.push(format!("{}D{} -> {}", num, dice, sum));
+    // 結果
+    let roll_result = format!("{}D{} -> {}", num, dice, sum);
+    // 内訳
+    let roll_items = format!(" ({})", vec.join(", "));
 
-    let items = format!("({})", vec.join(", "));
+    // 比較オプション
+    let operation_result = if cmp.is_some() {
+        let (operator, operand) = cmp.unwrap();
 
-    if 1 < dice && items.len() <= 100 {
-        res.push(items);
+        let is_ok = parser::cmp_with_operator(&operator, sum, operand);
+        let is_ok = if is_ok { "OK" } else { "NG" };
+        Some(format!(
+            " {} {} -> {}",
+            Into::<&str>::into(operator),
+            operand,
+            is_ok
+        ))
+    } else {
+        None
+    };
+
+    // メッセージの生成と送信
+    let mut res = MessageBuilder::new();
+    res.push(roll_result);
+    if 1 < dice && roll_items.len() <= 100 {
+        res.push(roll_items);
     }
-
-    if cmp.is_none() {
-        reply.say(&ctx.http, &res.build()).await.unwrap();
-        return;
+    if let Some(operation_result) = operation_result {
+        res.push(operation_result);
     }
-    let (operator, operand) = cmp.unwrap();
-
-    let is_ok = cmp_with_operator(&operator, sum, operand);
-    let is_ok = if is_ok { "OK" } else { "NG" };
-    res.push(format!(
-        " {} {} -> {}",
-        Into::<&str>::into(operator),
-        operand,
-        is_ok
-    ));
-
     reply.say(&ctx.http, &res.build()).await.unwrap();
 }
 
