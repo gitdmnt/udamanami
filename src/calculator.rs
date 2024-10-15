@@ -7,8 +7,10 @@ use nom::{
   branch::alt,
   IResult,
 };
-use std::{collections::HashMap, f64::consts::E};
-use rand::Rng;
+use core::panic;
+use std::collections::HashMap;
+use rand::{prelude::Distribution, Rng};
+use rand_distr::StandardNormal;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprOp2 {
@@ -447,6 +449,63 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum EvalStdLibFun {
+  //Print,
+  //Println,
+  Sin,
+  Cos,
+  Tan,
+  LogE,
+  Log10,
+  Log2,
+  Abs,
+  Floor,
+  Ceil,
+  Round,
+  URand,  // 0.0 <= x < 1.0 uniform random
+  GRand,  // standerd gaussian random
+  If,     // if(cond, then, else)
+  Map,    // map(f, list)
+  Filter, // filter(f, list)
+  Foldl,  // foldl(f, init, list)
+  Foldr,  // foldr(f, init, list)
+  Range,  // range(end) or range(start, end) or range(start, end, step)
+  Len,    // len(list)
+  Head,   // head(list)
+  Tail,   // tail(list)
+  Fix,    // Fix(f) = f(Fix(f))
+}
+
+impl std::fmt::Display for EvalStdLibFun {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      EvalStdLibFun::Sin     => write!(f, "sin"),
+      EvalStdLibFun::Cos     => write!(f, "cos"),
+      EvalStdLibFun::Tan     => write!(f, "tan"),
+      EvalStdLibFun::LogE    => write!(f, "ln"),
+      EvalStdLibFun::Log10   => write!(f, "log10"),
+      EvalStdLibFun::Log2    => write!(f, "log2"),
+      EvalStdLibFun::Abs     => write!(f, "abs"),
+      EvalStdLibFun::Floor   => write!(f, "floor"),
+      EvalStdLibFun::Ceil    => write!(f, "ceil"),
+      EvalStdLibFun::Round   => write!(f, "round"),
+      EvalStdLibFun::URand   => write!(f, "urand"),
+      EvalStdLibFun::GRand   => write!(f, "grand"),
+      EvalStdLibFun::If      => write!(f, "if"),
+      EvalStdLibFun::Map     => write!(f, "map"),
+      EvalStdLibFun::Filter  => write!(f, "filter"),
+      EvalStdLibFun::Foldl   => write!(f, "foldl"),
+      EvalStdLibFun::Foldr   => write!(f, "foldr"),
+      EvalStdLibFun::Range   => write!(f, "range"),
+      EvalStdLibFun::Len     => write!(f, "len"),
+      EvalStdLibFun::Head    => write!(f, "head"),
+      EvalStdLibFun::Tail    => write!(f, "tail"),
+      EvalStdLibFun::Fix     => write!(f, "fix"),
+    }
+  }
+}
+
 
 
 #[derive(Debug, Clone, PartialEq)]
@@ -456,7 +515,10 @@ pub enum EvalResult {
   BVal(bool),
   SVal(String),
   List(Vec<Box<EvalResult>>),
-  Lambda(Vec<String>, Box<Expr>),
+  Closure(Vec<String>, Box<Expr>, Box<HashMap<String, EvalResult>>),
+  FuncStdLib(EvalStdLibFun),
+  FixPoint(Box<Expr>), //関数の固定点
+  Lazy(Box<Expr>) //適用を受けるまで遅延
 }
 
 impl std::fmt::Display for EvalResult {
@@ -467,7 +529,10 @@ impl std::fmt::Display for EvalResult {
       EvalResult::BVal(b) => write!(f, "{}", b),
       EvalResult::SVal(s) => write!(f, "\"{}\"", s),
       EvalResult::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
-      EvalResult::Lambda(params, body) => write!(f, "({} => {})", params.join(", "), body),
+      EvalResult::Closure(params, body, context) => write!(f, "({} => {})@{:?}", params.join(", "), body, context),
+      EvalResult::FuncStdLib(fun) => write!(f, "{}", fun),
+      EvalResult::FixPoint(body) => write!(f, "Fix({})", body),
+      EvalResult::Lazy(body) => write!(f, "Lazy({})", body),
     }
   }
 }
@@ -547,6 +612,14 @@ fn val_as_bool(val: &EvalResult) -> Option<bool> {
   }
 }
 
+fn val_as_list(val: &EvalResult) -> Option<Vec<Box<EvalResult>>> {
+  match val {
+    EvalResult::List(l) => Some(l.clone()),
+    EvalResult::SVal(s) => Some(s.chars().map(|c| Box::new(EvalResult::SVal(c.to_string()))).collect()),
+    _ => None,
+  }
+}
+
 fn val_numop2_if<F, G>(expr: &Expr, step: usize, val1: &EvalResult, val2: &EvalResult, intver: F, floatver: G) -> Result<(EvalResult, usize), (EvalError, Expr)>
 where F: Fn(i64, i64) -> i64, G: Fn(f64, f64) -> f64 {
   match (val_as_precise_int(val1), val_as_precise_int(val2)) {
@@ -567,6 +640,8 @@ where F: Fn(f64, f64) -> f64 {
 }
 
 fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+  println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
+  
   if step > 1000 {
     return Err((EvalError::StepLimitExceeded, expr.clone()));
   }
@@ -589,31 +664,17 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     Expr::At(e1, e2) => {
       let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
       let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
-      match val1 {
-        (EvalResult::List(l)) => {
+      match val_as_list(&val1) {
+        Some(v) => {
           let index = match val2 {
             EvalResult::IVal(i) => Ok(i as isize),
             EvalResult::FVal(f) => Ok(f as isize),
             _ => return Err((EvalError::NotAnIndex, expr.clone())),
           }?;
-          if index < 0 || index >= l.len() as isize{
+          if index < 0 || index >= v.len() as isize{
             return Err((EvalError::OutOfRange, expr.clone()));
           }
-          Ok((*l[index as usize].clone(), next_step + 1))
-        },
-        (EvalResult::SVal(str)) => {
-          let index = match val2 {
-            EvalResult::IVal(i) => Ok(i as isize),
-            EvalResult::FVal(f) => Ok(f as isize),
-            _ => return Err((EvalError::NotAnIndex, expr.clone())),
-          }?;
-          if index < 0 || index >= str.chars().count() as isize{
-            return Err((EvalError::OutOfRange, expr.clone()));
-          }
-          match str.chars().nth(index as usize) {
-            Some(c) => Ok((EvalResult::SVal(c.to_string()), next_step + 1)),
-            None => Err((EvalError::OutOfRange, expr.clone())),
-          }
+          Ok((*v[index as usize].clone(), next_step + 1))
         },
         _ => Err((EvalError::NotAList, expr.clone())),
       }
@@ -623,12 +684,10 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     Expr::Const(s) => {
       match context.get(s) {
         Some(result) => Ok((result.clone(), step)),
-        None => 
-          match s.as_str() {
-            "pi" => Ok((EvalResult::FVal(std::f64::consts::PI), step)),
-            "e"  => Ok((EvalResult::FVal(std::f64::consts::E) , step)),
-            _ => Err((EvalError::UndefinedVar(s.clone()), expr.clone())),
-          }
+        None => match match_const(s) {
+          Some(result) => Ok((result, step)),
+          None => Err((EvalError::UndefinedVar(s.clone()), expr.clone())),
+        },
       }
     },
     Expr::Op1(op, e) => {
@@ -707,25 +766,392 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       }
     },
     Expr::Apply(fun, args) => {
+      println!("Apply: {}, {:?}, {:?}", fun, args, context);
+
       let (vfun, next_step) = eval_expr_ctx(fun, step + 1, context)?;
+
       match vfun {
-        EvalResult::Lambda(params, body) => {
-          if args.len() != params.len() {
-            return Err((EvalError::ArgCountMismatch(args.len(), params.len()), expr.clone()));
+        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
+          if args.len() != 1 {
+            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
           }
-          let mut new_context = context.clone();
-          let mut steps = next_step + 1;
-          for (param, arg) in params.iter().zip(args.iter()) {
-            let (val, next_step) = eval_expr_ctx(arg, steps, context)?;
-            new_context.insert(param.clone(), val);
+          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
+          return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
+          //let (fixed, next_step) = eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))])?;
+        },
+        EvalResult::FuncStdLib(EvalStdLibFun::If) => {
+          if args.len() != 3 {
+            return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+          }
+          let (cond, next_step) = eval_expr_ctx(&args[0], next_step, context)?;
+          let bval = match val_as_bool(&cond) {
+            Some(b) => b,
+            None => return Err((EvalError::NotANumber, expr.clone())),
+          };
+          let (val, next_step) = if bval {
+            eval_expr_ctx(&args[1], next_step, context)?
+          } else {
+            eval_expr_ctx(&args[2], next_step, context)?
+          };
+          return Ok((val, next_step));
+        },
+        EvalResult::FixPoint(body) => {
+          let (bodyval, next_step) = eval_expr_ctx(&body, next_step, context)?;
+          let (fixed, next_step) = eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))])?;
+          
+          let mut vargs = Vec::new();
+          let mut steps = next_step;
+          for e in args {
+            let (val, next_step) = eval_expr_ctx(e, steps, context)?;
+            vargs.push(Box::new(val));
             steps = next_step;
           }
-          eval_expr_ctx(&body, steps, &new_context)
+          
+          return eval_apply(expr, next_step, context, fixed, vargs);
         },
-        _ => Err((EvalError::NotAFunction, expr.clone())),
+        EvalResult::Lazy(body) => {
+          let newexpr = &Expr::Apply(body.clone(), args.clone());
+          return eval_expr_ctx(newexpr, next_step, context);
+        },
+        _ => ()
+      };
+
+
+      let mut vargs = Vec::new();
+      let mut steps = next_step;
+      for e in args {
+        let (val, next_step) = eval_expr_ctx(e, steps, context)?;
+        vargs.push(Box::new(val));
+        steps = next_step;
+      }
+      eval_apply(expr, steps, context, vfun, vargs)
+    },
+    Expr::Lambda(name, body) => Ok((EvalResult::Closure(name.clone(), body.clone(), Box::new(context.clone())), step)),
+  }
+}
+
+pub fn eval_apply(expr: &Expr, steps: usize, context: &HashMap<String, EvalResult>, func: EvalResult, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+  
+  match func {
+    EvalResult::Closure(params, body, ctx) => {
+      if args.len() != params.len() {
+        return Err((EvalError::ArgCountMismatch(args.len(), params.len()), expr.clone()));
+      }
+
+      //contextをcloneしたのち、ctxにもあるものはctxのものを優先
+      let mut new_context = context.clone();
+      ctx.iter().for_each(|(k, v)| {
+        new_context.insert(k.clone(), v.clone());
+      });
+      for (param, argval) in params.iter().zip(args.iter()) {
+        new_context.insert(param.clone(), *argval.clone());
+      }
+      let steps = steps + 1;
+      eval_expr_ctx(&body, steps, &new_context)
+    },
+    EvalResult::FuncStdLib(libfun) => {
+      let steps = steps + 1;
+      eval_stdlib(expr, steps, context, libfun, args)
+    },
+    _ => Err((EvalError::NotAFunction, expr.clone())),
+  }
+}
+
+pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>, func: EvalStdLibFun, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+  match func {
+    EvalStdLibFun::Sin => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.sin()), step + 1)),
+            _ => Err((EvalError::NotANumber, expr.clone())),
+          }
+    },
+    EvalStdLibFun::Cos => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.cos()), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
       }
     },
-    Expr::Lambda(name, body) => Ok((EvalResult::Lambda(name.clone(), body.clone()), step)),
+    EvalStdLibFun::Tan => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.tan()), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::LogE => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.ln()), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Log10 => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.log10()), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Log2 => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::FVal(f.log2()), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Abs => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+
+      match val_as_precise_int(&args[0]) {
+        Some(i) => Ok((EvalResult::IVal(i.abs()), step + 1)),
+        _ => 
+        match val_as_float(&args[0]) {
+          Some(f) => Ok((EvalResult::FVal(f.abs()), step + 1)),
+          _ => Err((EvalError::NotANumber, expr.clone())),
+        }
+      }
+    },
+    EvalStdLibFun::Floor => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::IVal(f.floor() as i64), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Ceil => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::IVal(f.ceil() as i64), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Round => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_float(&args[0]) {
+        Some(f) => Ok((EvalResult::IVal(f.round() as i64), step + 1)),
+        _ => Err((EvalError::NotANumber, expr.clone())),
+      }
+    },
+    EvalStdLibFun::URand => {
+      if args.len() != 0 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 0), expr.clone()));
+      }
+      Ok((EvalResult::FVal(rand::thread_rng().gen_range(0.0 .. 1.0)), step + 1))
+    },
+    EvalStdLibFun::GRand => {
+      if args.len() != 0 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 0), expr.clone()));
+      }
+      Ok((EvalResult::FVal(rand::distributions::Standard.sample(&mut rand::thread_rng())), step + 1))
+    },
+    EvalStdLibFun::If => {
+      //this should be handled in eval_expr_ctx
+      //引数を正格評価すると死ぬので
+      panic!("If should be handled in eval_expr_ctx");
+    },
+    EvalStdLibFun::Map => {
+      if args.len() != 2 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      match val_as_list(&args[1]) {
+        Some(l) => {
+          let mut new_list = Vec::new();
+          for e in l {
+            let (val, next_step) = eval_apply(expr, step + 1, context, *args[0].clone(), vec![e.clone()])?;
+            new_list.push(Box::new(val));
+          }
+          Ok((EvalResult::List(new_list), step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Filter => {
+      if args.len() != 2 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      match val_as_list(&args[1]) {
+        Some(l) => {
+          let mut new_list = Vec::new();
+          for e in l {
+            let (val, next_step) = eval_apply(expr, step + 1, context, *args[0].clone(), vec![e.clone()])?;
+            if val_as_bool(&val) == Some(true) {
+              new_list.push(e.clone());
+            }
+          }
+          Ok((EvalResult::List(new_list), step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Foldl => {
+      if args.len() != 3 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+      }
+      match val_as_list(&args[2]) {
+        Some(l) => {
+          let mut acc = *args[0].clone();
+          let mut step = step + 1;
+          for e in l {
+            let (val, next_step) = eval_apply(expr, step, context, *args[1].clone(), vec![Box::new(acc), e.clone()])?;
+            acc = val;
+            step = next_step;
+          }
+          Ok((acc, step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Foldr => {
+      if args.len() != 3 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+      }
+      match val_as_list(&args[2]) {
+        Some(l) => {
+          let mut acc = *args[0].clone();
+          let mut step = step + 1;
+          for e in l.iter().rev() {
+            let (val, next_step) = eval_apply(expr, step, context, *args[1].clone(), vec![e.clone(), Box::new(acc)])?;
+            acc = val;
+            step = next_step;
+          }
+          Ok((acc, step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Range => {
+      let (start, stop, stepsize): (i64, i64, i64) =
+        match args.len() {
+          1 => 
+            match val_as_int(&args[0]) {
+              Some(e) => (0, e, 1),
+              _ => return Err((EvalError::NotANumber, expr.clone())),
+            },
+          2 =>
+            match (val_as_int(&args[0]), val_as_int(&args[1])) {
+              (Some(s), Some(e)) => (s, e, 1),
+              _ => return Err((EvalError::NotANumber, expr.clone())),
+            },
+          3 =>
+            match (val_as_int(&args[0]), val_as_int(&args[1]), val_as_int(&args[2])) {
+              (Some(s), Some(e), Some(p)) => (s, e, p),
+              _ => return Err((EvalError::NotANumber, expr.clone())),
+            },
+          _ => return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone())),
+        };
+      
+      let mut new_list = Vec::new();
+      if step > 0 {
+        for i in (start..stop).step_by(stepsize as usize) {
+          new_list.push(Box::new(EvalResult::IVal(i)));
+        }
+      } else {
+        for i in (start..stop).rev().step_by(stepsize.abs() as usize) {
+          new_list.push(Box::new(EvalResult::IVal(i)));
+        }
+      }
+      Ok((EvalResult::List(new_list), step + 1))
+    },
+    EvalStdLibFun::Len => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => Ok((EvalResult::IVal(l.len() as i64), step + 1)),
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Head => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => Ok((*l.first().unwrap().clone(), step + 1)),
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Tail => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => {
+          let mut new_list = Vec::new();
+          for e in l.iter().skip(1) {
+            new_list.push(e.clone());
+          }
+          Ok((EvalResult::List(new_list), step + 1))
+        },
+        _ => Err((EvalError::NotAList, expr.clone())),
+      }
+    },
+    EvalStdLibFun::Fix => {
+      // this should be handled in eval_expr
+      panic!("Fix should not be called directly");
+    },
+  }
+}
+
+pub fn match_const(s: &str) -> Option<EvalResult> {
+  match s {
+    "pi" => Some(EvalResult::FVal(std::f64::consts::PI)),
+    "e"  => Some(EvalResult::FVal(std::f64::consts::E)),
+    "true" => Some(EvalResult::BVal(true)),
+    "false" => Some(EvalResult::BVal(false)),
+
+    // stdlib functions
+    "sin"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sin)),
+    "cos"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Cos)),
+    "tan"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tan)),
+    "loge"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "logE"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "ln"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "log10"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
+    "log"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
+    "log2"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "lg"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "lb"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "abs"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Abs)),
+    "floor"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Floor)),
+    "ceil"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Ceil)),
+    "round"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Round)),
+    "urand"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::URand)),
+    "grand"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::GRand)),
+    "if"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::If)),
+    "map"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Map)),
+    "filter" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Filter)),
+    "foldl"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldl)),
+    "foldr"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldr)),
+    "range"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Range)),
+    "len"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Len)),
+    "head"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Head)),
+    "tail"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
+    "fix"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
+
+
+    _ => None,
   }
 }
 
