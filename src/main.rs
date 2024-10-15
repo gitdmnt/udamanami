@@ -1,4 +1,5 @@
-use core::str::FromStr as _;
+use std::{convert::Into, fmt::format};
+use std::str::FromStr;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -20,8 +21,10 @@ use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
 mod parser;
+mod calculator;
+use calculator::{eval_str};
 
-const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
+const KOCHIKITE_GUILD_ID: u64 = 1245370208722489384; //TODO: commit前になおしておく
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 
 struct Bot {
@@ -97,6 +100,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
         "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id).await,
         "ping" => ping(dm, ctx).await,
+        "calc" => calc(dm, ctx, command_args.join(" ")).await,
 
         // Unknown command
         _ => {
@@ -157,6 +161,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id).await,
         "isprime" => isprime(reply_channel, ctx, command_args).await,
+        "calc" => calc(reply_channel, ctx, command_args.join(" ")).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
@@ -400,6 +405,18 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
         }
     );
     reply.say(&ctx.http, is_prime).await.unwrap();
+}
+
+async fn calc(reply: &ChannelId, ctx: &Context, expression: String) {
+    let result = calculator::eval_str(&expression);
+    match result {
+        Ok(result) => {
+            reply.say(&ctx.http, result).await.unwrap();
+        }
+        Err(e) => {
+            reply.say(&ctx.http, format!("{} ……だってさ。", e)).await.unwrap();
+        }
+    }
 }
 
 // ping command
