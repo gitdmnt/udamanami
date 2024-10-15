@@ -103,19 +103,21 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
-    let start_index = match &msg.content.find("!") {
-        Some(i) => *i + 1,
+    let input_string: String = match &msg.content.find("!") {
+        Some(i) => msg.content[*i + 1..]
+            .chars()
+            .take(msg.content.chars().count())
+            .collect(),
         None => match &msg.content.find("まなみ、") {
-            Some(i) => *i + 4,
+            Some(i) => msg
+                .content
+                .chars()
+                .skip(*i + 4)
+                .take(msg.content.chars().count() - (*i + 4))
+                .collect(),
             None => return,
         },
     };
-    let input_string: String = msg
-        .content
-        .chars()
-        .skip(start_index)
-        .take(msg.content.chars().count() - start_index)
-        .collect();
 
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
@@ -142,7 +144,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
-            if start_index == 0 {
+            if msg.content.starts_with("!") {
                 reply_channel
                     .say(&ctx.http, "しらないコマンドだよ")
                     .await
