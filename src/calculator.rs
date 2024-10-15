@@ -282,6 +282,17 @@ enum EvalResult {
   Error(String),
 }
 
+impl std::fmt::Display for EvalResult {
+  fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+    match self {
+      EvalResult::IVal(i) => write!(f, "{}", i),
+      EvalResult::FVal(v) => write!(f, "{}", v),
+      EvalResult::Lambda(params, body) => write!(f, "({} => {})", params.join(", "), body),
+      EvalResult::Error(s) => write!(f, "Error: {}", s),
+    }
+  }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 enum ResultType {
   TypeI,
@@ -394,20 +405,20 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
         ExprOp2::Pow => Ok((EvalResult::FVal(fval1.powf(fval2)) , next_step + 1)),
         ExprOp2::Div => Ok((EvalResult::FVal(fval1 / fval2), next_step + 1)),
         ExprOp2::Dice => {
-          let i = fval1 as i64;
-          let j = fval2 as i64;
-          if i < 0 {
+          let num = fval1 as i64;
+          let size = fval2 as i64;
+          if num < 0 {
             return Err((EvalError::NegativeDice, expr.clone()));
           }
-          if j < 1 {
+          if size < 1 {
             return Err((EvalError::InvalidDice, expr.clone()));
           }
-          if i > 10000 {
+          if num > 10000 {
             return Err((EvalError::TooManyDice, expr.clone()));
           }
           let mut sum = 0;
-          for _ in 0..i {
-            sum += rand::thread_rng().gen_range(1 ..= i);
+          for _ in 0..num {
+            sum += rand::thread_rng().gen_range(1 ..= size);
           }
           Ok((EvalResult::IVal(sum), next_step + 1))
         },
@@ -443,6 +454,16 @@ pub fn eval_expr(expr: &Expr) -> Result<EvalResult, (EvalError, Expr)> {
   }
 }
 
+pub fn eval_str(input: &str) -> Result<String, String> {
+  match parse_expr(input) {
+    Ok((_, expr)) => match eval_expr(&expr) {
+      Ok(result) => Ok(result.to_string()),
+      Err((e, expr)) => Err(error_str((e, expr))),
+    },
+    Err(e) => Err(format!("Parse error: {:?}", e)),
+  }
+}
+
 #[cfg(test)]
 mod tests_parse {
   use super::*;
@@ -475,6 +496,26 @@ mod tests_parse {
       )),
     );
   }
+
+  #[test]
+  fn test_parse_dice() {
+    assert_eq!(
+      parse_expr("3d6*10"),
+      Ok((
+        "",
+        Expr::Op2(
+          ExprOp2::Mul,
+          Box::new(Expr::Op2(
+            ExprOp2::Dice,
+            Box::new(Expr::IVal(3)),
+            Box::new(Expr::IVal(6)),
+          )),
+          Box::new(Expr::IVal(10)),
+        ),
+      )),
+    );
+  }
+
 
   #[test]
   fn test_parse_longexpr() {
@@ -520,12 +561,43 @@ mod tests_parse {
 
 #[cfg(test)]
 mod tests_eval {
-  use super::*;
+  use std::result;
+
+use super::*;
 
   #[test]
   fn test_eval_longexpr() {
     let expr = parse_expr("((f,x)=>f(f(x)))((x)=>x*6,100)").unwrap().1;
     let context = HashMap::new();
     assert_eq!(EvalResult::IVal(100*6*6), eval_expr_ctx(&expr, 0, &context).unwrap().0);
+  }
+
+  #[test]
+  fn test_eval_dice() {
+    let expr = parse_expr("10000d20").unwrap().1;
+    let context = HashMap::new();
+    match eval_expr_ctx(&expr, 0, &context) {
+      Ok((EvalResult::IVal(i), _)) => {
+        println!("{}", i);
+        assert!(i >= 50000 && i <= 150000);
+      },
+      _ => assert!(false),
+    }
+  }
+
+  #[test]
+  fn test_eval_dice2() {
+    let expr = parse_expr("1d2").unwrap().1;
+    let context = HashMap::new();
+    let result = eval_expr_ctx(&expr, 0, &context);
+    match result {
+      Ok((EvalResult::IVal(i), _)) => {
+        println!("{}", i);
+      },
+      _ => {
+        println!("{:?}", result);
+        assert!(false);
+      },
+    }
   }
 }
