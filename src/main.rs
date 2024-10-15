@@ -3,6 +3,10 @@ use std::str::FromStr;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
+use nom::{
+    error::{Error, ErrorKind},
+    Finish,
+};
 use serenity::{
     async_trait,
     model::{
@@ -119,10 +123,21 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
-    if let Ok((_, parsed)) = parser::parse_dice(&input_string) {
-        dice(&msg.channel_id, ctx, parsed).await;
-        return;
-    }
+    match parser::parse_dice(&msg.content[1..]).finish() {
+        Ok((_, parsed)) => {
+            dice(&msg.channel_id, ctx, parsed).await;
+            return;
+        }
+        Err(Error { code, .. }) => {
+            if code == ErrorKind::MapRes {
+                msg.channel_id
+                    .say(&ctx.http, "数字がおかしいよ")
+                    .await
+                    .unwrap();
+                return;
+            }
+        }
+    };
 
     // handle other command
     let split_message = input_string.split_whitespace().collect::<Vec<&str>>();

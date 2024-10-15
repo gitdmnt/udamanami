@@ -1,11 +1,10 @@
 use nom::{
     branch::alt,
     bytes::complete::{tag, tag_no_case},
-    character::complete::{space0, u128, u32, u64},
-    combinator::{opt, value},
-    error::{Error, ErrorKind},
+    character::complete::{digit1, space0},
+    combinator::{map_res, opt, value},
     sequence::{separated_pair, tuple},
-    Finish, IResult,
+    IResult, Parser,
 };
 
 #[derive(Clone)]
@@ -54,14 +53,19 @@ fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
 }
 
 pub fn parse_dice(input: &str) -> IResult<&str, (u32, u64, Option<(CmpOperator, u128)>)> {
-    let (remaining_input, output) = tuple((
-        separated_pair(u32, tag_no_case("d"), u64),
-        opt(tuple((space0, parse_cmp_operator, space0, u128))),
-    ))(input)?;
-    let ((num, dice), cmp) = output;
-    if let Some((_, operator, _, operand)) = cmp {
-        Ok((remaining_input, (num, dice, Some((operator, operand)))))
-    } else {
-        Ok((remaining_input, (num, dice, None)))
-    }
+    tuple((
+        separated_pair(
+            map_res(digit1, str::parse),
+            tag_no_case("d"),
+            map_res(digit1, str::parse),
+        ),
+        opt(tuple((
+            space0,
+            parse_cmp_operator,
+            space0,
+            map_res(digit1, str::parse),
+        ))),
+    ))
+    .map(|((num, dice), cmp)| (num, dice, cmp.map(|(_, op, _, operand)| (op, operand))))
+    .parse(input)
 }
