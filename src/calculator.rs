@@ -2,7 +2,7 @@ use nom::{
   character::complete::{char, digit1, multispace0, alpha1, alphanumeric1, one_of, none_of, anychar},
   bytes::complete::tag,
   combinator::{map, recognize, value},
-  sequence::{delimited, separated_pair, pair, preceded},
+  sequence::{delimited, separated_pair, pair, preceded, tuple},
   multi::{separated_list0, fold_many0, many0_count, many1_count, many0},
   branch::alt,
   IResult,
@@ -19,6 +19,15 @@ pub enum ExprOp2 {
   Mod,
   Pow,
   Dice,
+  Gt,
+  Ge,
+  Lt,
+  Le,
+  Eq,
+  Ne,
+  AndL,
+  OrL,
+  XorL,
 }
 
 impl std::fmt::Display for ExprOp2 {
@@ -31,6 +40,15 @@ impl std::fmt::Display for ExprOp2 {
       ExprOp2::Mod => write!(f, "%"),
       ExprOp2::Pow => write!(f, "^"),
       ExprOp2::Dice => write!(f, "d"),
+      ExprOp2::Gt => write!(f, ">"),
+      ExprOp2::Ge => write!(f, ">="),
+      ExprOp2::Lt => write!(f, "<"),
+      ExprOp2::Le => write!(f, "<="),
+      ExprOp2::Eq => write!(f, "=="),
+      ExprOp2::Ne => write!(f, "!="),
+      ExprOp2::AndL => write!(f, "&&"),
+      ExprOp2::OrL => write!(f, "||"),
+      ExprOp2::XorL => write!(f, "^^"),
     }
   }
 }
@@ -39,6 +57,7 @@ impl std::fmt::Display for ExprOp2 {
 pub enum ExprOp1 {
   Neg,
   OneDice,
+  NotL,
 }
 
 impl std::fmt::Display for ExprOp1 {
@@ -46,6 +65,7 @@ impl std::fmt::Display for ExprOp1 {
     match self {
       ExprOp1::Neg => write!(f, "-"),
       ExprOp1::OneDice => write!(f, "d"),
+      ExprOp1::NotL => write!(f, "!"),
     }
   }
 }
@@ -54,6 +74,7 @@ impl std::fmt::Display for ExprOp1 {
 pub enum Expr {
   IVal(i64),
   FVal(f64),
+  BVal(bool),
   SVal(String),
   List(Vec<Box<Expr>>),
   At(Box<Expr>, Box<Expr>),
@@ -69,6 +90,7 @@ impl std::fmt::Display for Expr {
     match self {
       Expr::IVal(i) => write!(f, "{}", i),
       Expr::FVal(v) => write!(f, "{}", v),
+      Expr::BVal(b) => write!(f, "{}", b),
       Expr::SVal(s) => write!(f, "{:?}", s.escape_debug()),
       Expr::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       Expr::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
@@ -126,6 +148,16 @@ fn parse_binop_right(op_parser: fn(&str) -> IResult<&str, ExprOp2>, next_parser:
     }
 }
 
+//無結合 同順位の演算子の連続は受理しない
+fn parse_binop_none(op_parser: fn(&str) -> IResult<&str, ExprOp2>, next_parser: fn(&str) -> IResult<&str, Expr>) -> impl Fn(&str) -> IResult<&str, Expr> {
+    move |input: &str| {
+      map(
+        tuple((next_parser, preceded(multispace0, op_parser), next_parser)),
+        |(e1, op, e2)| Expr::Op2(op, Box::new(e1), Box::new(e2)),
+      )(input)
+    }
+}
+
 fn parse_term_l(op_parser: fn(&str) -> IResult<&str, ExprOp2>, next_parser: fn(&str) -> IResult<&str, Expr>) -> impl Fn(&str) -> IResult<&str, Expr> {
     move |input: &str| {
       preceded(multispace0, alt((parse_binop_left(op_parser, next_parser), next_parser)))(input)
@@ -137,6 +169,13 @@ fn parse_term_r(op_parser: fn(&str) -> IResult<&str, ExprOp2>, next_parser: fn(&
       preceded(multispace0, alt((parse_binop_right(op_parser, next_parser), next_parser)))(input)
     }
 }
+
+fn parse_term_n(op_parser: fn(&str) -> IResult<&str, ExprOp2>, next_parser: fn(&str) -> IResult<&str, Expr>) -> impl Fn(&str) -> IResult<&str, Expr> {
+    move |input: &str| {
+      preceded(multispace0, alt((parse_binop_none(op_parser, next_parser), next_parser)))(input)
+    }
+}
+
 
 // 1文字目は数字以外。アルファベット・アンダースコア・数字を許容
 fn parse_identifier(input: &str) -> IResult<&str, &str> {
@@ -355,7 +394,7 @@ fn parse_term3(input: &str) -> IResult<&str, Expr> {
 
 // 4: * / % 左結合
 fn parse_term4(input: &str) -> IResult<&str, Expr> {
-  parse_binop_left(
+  parse_term_l(
     |op| alt((
       map(char('*'), |_| ExprOp2::Mul),
       map(char('/'), |_| ExprOp2::Div),
@@ -367,7 +406,7 @@ fn parse_term4(input: &str) -> IResult<&str, Expr> {
 
 // 5: + - 左結合
 fn parse_term5(input: &str) -> IResult<&str, Expr> {
-  parse_binop_left(
+  parse_term_l(
     |op| alt((
       map(char('+'), |_| ExprOp2::Add),
       map(char('-'), |_| ExprOp2::Sub),
@@ -376,8 +415,35 @@ fn parse_term5(input: &str) -> IResult<&str, Expr> {
   )(input)
 }
 
+// 6: > >= < <= == != 無結合
+fn parse_term6(input: &str) -> IResult<&str, Expr> {
+  parse_term_n(
+    |op| alt((
+      map(tag(">="), |_| ExprOp2::Ge),
+      map(tag("<="), |_| ExprOp2::Le),
+      map(tag("=="), |_| ExprOp2::Eq),
+      map(tag("!="), |_| ExprOp2::Ne),
+      map(char('>'), |_| ExprOp2::Gt),
+      map(char('<'), |_| ExprOp2::Lt),
+    ))(op),
+    parse_term5
+  )(input)
+}
+
+// 7: && || ^^ 左結合
+fn parse_term7(input: &str) -> IResult<&str, Expr> {
+  parse_term_l(
+    |op| alt((
+      map(tag("&&"), |_| ExprOp2::AndL),
+      map(tag("||"), |_| ExprOp2::OrL),
+      map(tag("^^"), |_| ExprOp2::XorL),
+    ))(op),
+    parse_term6
+  )(input)
+}
+
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-  parse_term5(input)
+  parse_term7(input)
 }
 
 
@@ -387,10 +453,10 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 pub enum EvalResult {
   IVal(i64),
   FVal(f64),
+  BVal(bool),
   SVal(String),
   List(Vec<Box<EvalResult>>),
   Lambda(Vec<String>, Box<Expr>),
-  Error(String),
 }
 
 impl std::fmt::Display for EvalResult {
@@ -398,10 +464,10 @@ impl std::fmt::Display for EvalResult {
     match self {
       EvalResult::IVal(i) => write!(f, "{}", i),
       EvalResult::FVal(v) => write!(f, "{}", v),
+      EvalResult::BVal(b) => write!(f, "{}", b),
       EvalResult::SVal(s) => write!(f, "\"{}\"", s),
       EvalResult::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       EvalResult::Lambda(params, body) => write!(f, "({} => {})", params.join(", "), body),
-      EvalResult::Error(s) => write!(f, "Error: {}", s),
     }
   }
 }
@@ -446,6 +512,59 @@ pub fn error_str((e, expr) : (EvalError, Expr)) -> String {
   format!("Error: {} at {}", e, expr)
 }
 
+fn val_as_float(val: &EvalResult) -> Option<f64> {
+  match val {
+    EvalResult::IVal(i) => Some(*i as f64),
+    EvalResult::BVal(b) => Some(if *b {1.0} else {0.0}),
+    EvalResult::FVal(f) => Some(*f),
+    _ => None,
+  }
+}
+
+fn val_as_int(val: &EvalResult) -> Option<i64> {
+  match val {
+    EvalResult::IVal(i)  => Some(*i),
+    EvalResult::BVal(b) => Some(if *b {1} else {0}),
+    EvalResult::FVal(f)  => Some(*f as i64),
+    _ => None,
+  }
+}
+
+fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
+  match val {
+    EvalResult::IVal(i) => Some(*i),
+    EvalResult::BVal(b) => Some(if *b {1} else {0}),
+    _ => None,
+  }
+}
+
+fn val_as_bool(val: &EvalResult) -> Option<bool> {
+  match val {
+    EvalResult::IVal(i) => Some(*i != 0),
+    EvalResult::BVal(b) => Some(*b),
+    EvalResult::FVal(f) => Some(*f != 0.0),
+    _ => None,
+  }
+}
+
+fn val_numop2_if<F, G>(expr: &Expr, step: usize, val1: &EvalResult, val2: &EvalResult, intver: F, floatver: G) -> Result<(EvalResult, usize), (EvalError, Expr)>
+where F: Fn(i64, i64) -> i64, G: Fn(f64, f64) -> f64 {
+  match (val_as_precise_int(val1), val_as_precise_int(val2)) {
+    (Some(i1), Some(i2))   => Ok((EvalResult::IVal(intver(i1, i2)), step + 1)),
+    _ => match (val_as_float(val1), val_as_float(val2)) {
+      (Some(f1), Some(f2)) => Ok((EvalResult::FVal(floatver(f1, f2)), step + 1)),
+      _ => Err((EvalError::NotANumber, expr.clone())),
+    },
+  }
+}
+
+fn val_numop2_f<F>(expr: &Expr, step: usize, val1: &EvalResult, val2: &EvalResult, floatver: F) -> Result<(EvalResult, usize), (EvalError, Expr)>
+where F: Fn(f64, f64) -> f64 {
+  match (val_as_float(val1), val_as_float(val2)) {
+    (Some(f1), Some(f2)) => Ok((EvalResult::FVal(floatver(f1, f2)), step + 1)),
+    _ => Err((EvalError::NotANumber, expr.clone())),
+  }
+}
 
 fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   if step > 1000 {
@@ -454,6 +573,7 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
   match expr {
     Expr::IVal(i) => Ok((EvalResult::IVal(*i as i64), step)),
     Expr::FVal(f) => Ok((EvalResult::FVal(*f), step)),
+    Expr::BVal(b) => Ok((EvalResult::BVal(*b), step)),
     Expr::SVal(s) => Ok((EvalResult::SVal(s.clone()), step)),
     Expr::List(l) => {
       let mut new_list = Vec::new();
@@ -529,39 +649,33 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
           let r = rand::thread_rng().gen_range(1 ..= i);
           Ok((EvalResult::IVal(r), next_step + 1))
         },
+        ExprOp1::NotL => Ok((EvalResult::BVal(fval == 0.0), next_step + 1)),
       }
     },
     Expr::Op2(op, e1, e2) => {
       let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
       let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
       
-      let fval1 = match val1 {
-        EvalResult::IVal(i) => i as f64,
-        EvalResult::FVal(f) => f,
-        _ => return Err((EvalError::NotANumber, expr.clone())),
-      };
-      let fval2 = match val2 {
-        EvalResult::IVal(i) => i as f64,
-        EvalResult::FVal(f) => f,
-        _ => return Err((EvalError::NotANumber, expr.clone())),
+      let fval1 = match val_as_float(&val1) {
+        Some(f) => f,
+        None => return Err((EvalError::NotANumber, expr.clone())),
       };
 
-      let ival1: Option<i64> = match val1 {
-        EvalResult::IVal(i) => Some(i),
-        _ => None,
+      let fval2 = match val_as_float(&val2) {
+        Some(f) => f,
+        None => return Err((EvalError::NotANumber, expr.clone())),
       };
-      let ival2: Option<i64> = match val2 {
-        EvalResult::IVal(i) => Some(i),
-        _ => None,
-      };
+
+      let bval1 = if fval1 != 0.0 {true} else {false};
+      let bval2 = if fval2 != 0.0 {true} else {false};
       
       match op {
-        ExprOp2::Add => match (val1, val2){(EvalResult::IVal(i1), EvalResult::IVal(i2)) => Ok((EvalResult::IVal(i1 + i2)  , next_step + 1)) , _ => Ok((EvalResult::FVal(fval1 + fval2)              , next_step + 1))},
-        ExprOp2::Sub => match (val1, val2){(EvalResult::IVal(i1), EvalResult::IVal(i2)) => Ok((EvalResult::IVal(i1 - i2)  , next_step + 1)) , _ => Ok((EvalResult::FVal(fval1 - fval2)              , next_step + 1))},
-        ExprOp2::Mul => match (val1, val2){(EvalResult::IVal(i1), EvalResult::IVal(i2)) => Ok((EvalResult::IVal(i1 * i2)  , next_step + 1)) , _ => Ok((EvalResult::FVal(fval1 * fval2)              , next_step + 1))},
-        ExprOp2::Mod => match (val1, val2){(EvalResult::IVal(i1), EvalResult::IVal(i2)) => Ok((EvalResult::IVal(i1 % i2)  , next_step + 1)) , _ => Ok((EvalResult::IVal(fval1 as i64 % fval2 as i64), next_step + 1))},
-        ExprOp2::Pow => Ok((EvalResult::FVal(fval1.powf(fval2)) , next_step + 1)),
-        ExprOp2::Div => Ok((EvalResult::FVal(fval1 / fval2), next_step + 1)),
+        ExprOp2::Add => val_numop2_if(expr, step, &val1, &val2, |i1, i2| i1 + i2, |f1, f2| f1 + f2),
+        ExprOp2::Sub => val_numop2_if(expr, step, &val1, &val2, |i1, i2| i1 - i2, |f1, f2| f1 - f2),
+        ExprOp2::Mul => val_numop2_if(expr, step, &val1, &val2, |i1, i2| i1 * i2, |f1, f2| f1 * f2),
+        ExprOp2::Mod => val_numop2_f (expr, step, &val1, &val2, |f1, f2| f1 % f2),
+        ExprOp2::Pow => val_numop2_f (expr, step, &val1, &val2, |f1, f2| f1.powf(f2)),
+        ExprOp2::Div => val_numop2_f (expr, step, &val1, &val2, |f1, f2| f1 / f2),
         ExprOp2::Dice => {
           let num = fval1 as i64;
           let size = fval2 as i64;
@@ -580,6 +694,16 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
           }
           Ok((EvalResult::IVal(sum), next_step + 1))
         },
+        ExprOp2::Gt => Ok((EvalResult::BVal(fval1 >  fval2), next_step + 1)),
+        ExprOp2::Ge => Ok((EvalResult::BVal(fval1 >= fval2), next_step + 1)),
+        ExprOp2::Lt => Ok((EvalResult::BVal(fval1 <  fval2), next_step + 1)),
+        ExprOp2::Le => Ok((EvalResult::BVal(fval1 <= fval2), next_step + 1)),
+        ExprOp2::Eq => Ok((EvalResult::BVal(fval1 == fval2), next_step + 1)),
+        ExprOp2::Ne => Ok((EvalResult::BVal(fval1 != fval2), next_step + 1)),
+        
+        ExprOp2::AndL => Ok((EvalResult::BVal(bval1 && bval2), next_step + 1)),
+        ExprOp2::OrL  => Ok((EvalResult::BVal(bval1 || bval2), next_step + 1)),
+        ExprOp2::XorL => Ok((EvalResult::BVal(bval1 ^  bval2), next_step + 1)),
       }
     },
     Expr::Apply(fun, args) => {
