@@ -262,8 +262,10 @@ async fn dice(
     ctx: &Context,
     parsed: (u32, u64, Option<(parser::CmpOperator, u128)>),
 ) {
+    // パース
     let (num, dice, cmp) = parsed;
 
+    // 入力のチェック
     if num > 1000000 {
         reply
             .say(&ctx.http, "そんないっぱい振れないよ")
@@ -275,38 +277,44 @@ async fn dice(
         return;
     }
 
+    // ダイスロール
     let mut sum = 0;
-    let mut res = MessageBuilder::new();
     let mut vec = vec![];
-
     for _ in 0..num {
         let r = rand::random::<u64>() % dice + 1;
         vec.push(r.to_string());
         sum += r as u128;
     }
-    res.push(format!("{}D{} -> {}", num, dice, sum));
+    // 結果
+    let roll_result = format!("{}D{} -> {}", num, dice, sum);
+    // 内訳
+    let roll_items = format!(" ({})", vec.join(", "));
 
-    let items = format!("({})", vec.join(", "));
+    // 比較オプション
+    let operation_result = if cmp.is_some() {
+        let (operator, operand) = cmp.unwrap();
 
-    if 1 < dice && items.len() <= 100 {
-        res.push(items);
+        let is_ok = parser::cmp_with_operator(&operator, sum, operand);
+        let is_ok = if is_ok { "OK" } else { "NG" };
+        Some(format!(
+            " {} {} -> {}",
+            Into::<&str>::into(operator),
+            operand,
+            is_ok
+        ))
+    } else {
+        None
+    };
+
+    // メッセージの生成と送信
+    let mut res = MessageBuilder::new();
+    res.push(roll_result);
+    if 1 < dice && roll_items.len() <= 100 {
+        res.push(roll_items);
     }
-
-    if cmp.is_none() {
-        reply.say(&ctx.http, &res.build()).await.unwrap();
-        return;
+    if let Some(operation_result) = operation_result {
+        res.push(operation_result);
     }
-    let (operator, operand) = cmp.unwrap();
-
-    let is_ok = parser::cmp_with_operator(&operator, sum, operand);
-    let is_ok = if is_ok { "OK" } else { "NG" };
-    res.push(format!(
-        " {} {} -> {}",
-        Into::<&str>::into(operator),
-        operand,
-        is_ok
-    ));
-
     reply.say(&ctx.http, &res.build()).await.unwrap();
 }
 
