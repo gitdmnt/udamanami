@@ -11,6 +11,8 @@ use core::panic;
 use std::{collections::HashMap, f64::consts::E};
 use rand::{prelude::Distribution, Rng};
 use rand_distr::StandardNormal;
+use dashmap::DashMap;
+
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprOp2 {
@@ -474,6 +476,14 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
+/*
+-----------------------------
+評価
+-----------------------------
+*/
+
+type Context = DashMap<String, EvalResult>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalStdLibFun {
   //Print,
@@ -545,7 +555,7 @@ impl std::fmt::Display for EvalStdLibFun {
 
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum EvalResult {
   IVal(i64),
   FVal(f64),
@@ -553,16 +563,24 @@ pub enum EvalResult {
   SVal(String),
   List(Vec<Box<EvalResult>>),
   Object(HashMap<String, Box<EvalResult>>),
-  Closure(Vec<String>, Box<Expr>, Box<HashMap<String, EvalResult>>),
+  Closure(Vec<String>, Box<Expr>, Box<Context>),
   FuncStdLib(EvalStdLibFun),
   Lazy(Box<Expr>) //適用を受けるまで遅延
 }
 
-impl PartialOrd for EvalResult {
-  fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-    match (val_as_float(self), val_as_float(other)) {
-      (Some(f1), Some(f2)) => f1.partial_cmp(&f2),
-      _ => None,
+impl PartialEq for EvalResult {
+  fn eq(&self, other: &Self) -> bool {
+    match (self, other) {
+      (EvalResult::IVal(i1), EvalResult::IVal(i2)) => i1 == i2,
+      (EvalResult::FVal(f1), EvalResult::FVal(f2)) => f1 == f2,
+      (EvalResult::BVal(b1), EvalResult::BVal(b2)) => b1 == b2,
+      (EvalResult::SVal(s1), EvalResult::SVal(s2)) => s1 == s2,
+      (EvalResult::List(l1), EvalResult::List(l2)) => l1 == l2,
+      (EvalResult::Object(o1), EvalResult::Object(o2)) => o1 == o2,
+      (EvalResult::Closure(a, b, _), EvalResult::Closure(c, d, _)) => a == c && b == d,
+      (EvalResult::FuncStdLib(f1), EvalResult::FuncStdLib(f2)) => f1 == f2,
+      (EvalResult::Lazy(e1), EvalResult::Lazy(e2)) => e1 == e2,
+      _ => false,
     }
   }
 }
@@ -584,7 +602,7 @@ impl std::fmt::Display for EvalResult {
 }
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum EvalError {
   NegativeDice,
   InvalidDice,
@@ -696,7 +714,7 @@ fn is_str(s: EvalResult) -> bool {
   }
 }
 
-fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_context: &Context) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   //println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
   
   if step > 1000 {
@@ -711,7 +729,7 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       let mut new_list = Vec::new();
       let mut steps = step + 1;
       for e in l {
-        let (val, next_step) = eval_expr_ctx(e, steps, context)?;
+        let (val, next_step) = eval_expr_ctx(e, steps, global_context, local_context)?;
         new_list.push(Box::new(val));
         steps = next_step;
       }
@@ -721,14 +739,14 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       let mut new_obj = HashMap::new();
       let mut steps = step + 1;
       for (k, v) in o {
-        let (val, next_step) = eval_expr_ctx(v, steps, context)?;
+        let (val, next_step) = eval_expr_ctx(v, steps, global_context, local_context)?;
         new_obj.insert(k.clone(), Box::new(val));
         steps = next_step;
       }
       Ok((EvalResult::Object(new_obj), steps))
     },
     Expr::Get(e, k) => {
-      let ( val, next_step) = eval_expr_ctx(e, step + 1, context)?;
+      let ( val, next_step) = eval_expr_ctx(e, step + 1, global_context, local_context)?;
       match val {
         EvalResult::Object(o) => match o.get(k) {
           Some(result) => Ok((*result.clone(), next_step + 1)),
@@ -739,8 +757,8 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     },
 
     Expr::At(e1, e2) => {
-      let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
-      let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
+      let (val1, next_step) = eval_expr_ctx(e1, step + 1, global_context, local_context)?;
+      let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, global_context, local_context)?;
       match val_as_list(&val1) {
         Some(v) => {
           let index = match val2 {
@@ -759,16 +777,20 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     
     
     Expr::Const(s) => {
-      match context.get(s) {
+      match local_context.get(s) {
         Some(result) => Ok((result.clone(), step)),
-        None => match match_const(s) {
-          Some(result) => Ok((result, step)),
-          None => Err((EvalError::UndefinedVar(s.clone()), expr.clone())),
-        },
+        None => 
+          match global_context.get(s) {
+            Some(result) => Ok((result.clone(), step)),
+            None => match match_const(s) {
+              Some(result) => Ok((result, step)),
+              None => Err((EvalError::UndefinedVar(s.clone()), expr.clone())),
+            },
+          }
       }
     },
     Expr::Op1(op, e) => {
-      let (val, next_step) = eval_expr_ctx(e, step + 1, context)?;
+      let (val, next_step) = eval_expr_ctx(e, step + 1, global_context, local_context)?;
       let fval = match val {
         EvalResult::IVal(i) => i as f64,
         EvalResult::FVal(f) => f,
@@ -789,8 +811,8 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       }
     },
     Expr::Op2(op, e1, e2) => {
-      let (val1, next_step) = eval_expr_ctx(e1, step + 1, context)?;
-      let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, context)?;
+      let (val1, next_step) = eval_expr_ctx(e1, step + 1, global_context, local_context)?;
+      let (val2, next_step) = eval_expr_ctx(e2, next_step + 1, global_context, local_context)?;
 
       match op {
         ExprOp2::Add => {
@@ -875,22 +897,22 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
     },
     Expr::Apply(fun, args) => {
 
-      let (vfun, next_step) = eval_expr_ctx(fun, step + 1, context)?;
+      let (vfun, next_step) = eval_expr_ctx(fun, step + 1, global_context, local_context)?;
 
       match vfun {
         EvalResult::FuncStdLib(EvalStdLibFun::If) => {
           if args.len() != 3 {
             return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
           }
-          let (cond, next_step) = eval_expr_ctx(&args[0], next_step, context)?;
+          let (cond, next_step) = eval_expr_ctx(&args[0], next_step, global_context, local_context)?;
           let bval = match val_as_bool(&cond) {
             Some(b) => b,
             None => return Err((EvalError::NotANumber(cond), expr.clone())),
           };
           let (val, next_step) = if bval {
-            eval_expr_ctx(&args[1], next_step, context)?
+            eval_expr_ctx(&args[1], next_step, global_context, local_context)?
           } else {
-            eval_expr_ctx(&args[2], next_step, context)?
+            eval_expr_ctx(&args[2], next_step, global_context, local_context)?
           };
           return Ok((val, next_step));
         },
@@ -901,12 +923,12 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
           //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
           //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
           let body = &args[0];
-          let (bodyval, next_step) = eval_expr_ctx(&args[0], next_step, context)?;
-          return eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))]);
+          let (bodyval, next_step) = eval_expr_ctx(&args[0], next_step, global_context, local_context)?;
+          return eval_apply(&body, next_step, global_context, local_context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))]);
         },
         EvalResult::Lazy(body) => {
           let newexpr = &Expr::Apply(body.clone(), args.clone());
-          return eval_expr_ctx(newexpr, next_step, context);
+          return eval_expr_ctx(newexpr, next_step, global_context, local_context);
         },
         _ => ()
       };
@@ -915,17 +937,17 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       let mut vargs = Vec::new();
       let mut steps = next_step;
       for e in args {
-        let (val, next_step) = eval_expr_ctx(e, steps, context)?;
+        let (val, next_step) = eval_expr_ctx(e, steps, global_context, local_context)?;
         vargs.push(Box::new(val));
         steps = next_step;
       }
-      eval_apply(expr, steps, context, vfun, vargs)
+      eval_apply(expr, steps, global_context, local_context, vfun, vargs)
     },
-    Expr::Lambda(name, body) => Ok((EvalResult::Closure(name.clone(), body.clone(), Box::new(context.clone())), step)),
+    Expr::Lambda(name, body) => Ok((EvalResult::Closure(name.clone(), body.clone(), Box::new(local_context.clone())), step)),
   }
 }
 
-pub fn eval_apply(expr: &Expr, steps: usize, context: &HashMap<String, EvalResult>, func: EvalResult, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+pub fn eval_apply(expr: &Expr, steps: usize, global_context: &Context, local_context: &Context, func: EvalResult, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   
   match func {
     EvalResult::Closure(params, body, ctx) => {
@@ -934,25 +956,25 @@ pub fn eval_apply(expr: &Expr, steps: usize, context: &HashMap<String, EvalResul
       }
 
       //contextをcloneしたのち、ctxにもあるものはctxのものを優先
-      let mut new_context = context.clone();
-      ctx.iter().for_each(|(k, v)| {
-        new_context.insert(k.clone(), v.clone());
+      let new_context = local_context.clone();
+      ctx.iter().for_each(|e| {
+        new_context.insert(e.key().clone(), e.value().clone());
       });
       for (param, argval) in params.iter().zip(args.iter()) {
         new_context.insert(param.clone(), *argval.clone());
       }
       let steps = steps + 1;
-      eval_expr_ctx(&body, steps, &new_context)
+      eval_expr_ctx(&body, steps, &global_context, &new_context)
     },
     EvalResult::FuncStdLib(libfun) => {
       let steps = steps + 1;
-      eval_stdlib(expr, steps, context, libfun, args)
+      eval_stdlib(expr, steps, global_context, local_context, libfun, args)
     },
     _ => Err((EvalError::NotAFunction(func), expr.clone())),
   }
 }
 
-pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>, func: EvalStdLibFun, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_context: &Context, func: EvalStdLibFun, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   match func {
     EvalStdLibFun::Sin => {
       if args.len() != 1 {
@@ -1074,7 +1096,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
         Some(l) => {
           let mut new_list = Vec::new();
           for e in l {
-            let (val, next_step) = eval_apply(expr, step + 1, context, *args[0].clone(), vec![e.clone()])?;
+            let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![e.clone()])?;
             new_list.push(Box::new(val));
           }
           Ok((EvalResult::List(new_list), step + 1))
@@ -1090,7 +1112,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
         Some(l) => {
           let mut new_list = Vec::new();
           for e in l {
-            let (val, next_step) = eval_apply(expr, step + 1, context, *args[0].clone(), vec![e.clone()])?;
+            let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![e.clone()])?;
             if val_as_bool(&val) == Some(true) {
               new_list.push(e.clone());
             }
@@ -1109,7 +1131,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
           let mut acc = *args[1].clone();
           let mut step = step + 1;
           for e in l {
-            let (val, next_step) = eval_apply(expr, step, context, *args[0].clone(), vec![Box::new(acc), e.clone()])?;
+            let (val, next_step) = eval_apply(expr, step, global_context, local_context, *args[0].clone(), vec![Box::new(acc), e.clone()])?;
             acc = val;
             step = next_step;
           }
@@ -1127,7 +1149,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
           let mut acc = *args[1].clone();
           let mut step = step + 1;
           for e in l.iter().rev() {
-            let (val, next_step) = eval_apply(expr, step, context, *args[0].clone(), vec![e.clone(), Box::new(acc)])?;
+            let (val, next_step) = eval_apply(expr, step, global_context, local_context, *args[0].clone(), vec![e.clone(), Box::new(acc)])?;
             acc = val;
             step = next_step;
           }
@@ -1258,12 +1280,12 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
       let mut acc  = *args[2].clone();
       let mut step = step + 1;
       loop {
-        let (cond, next_step) = eval_apply(expr, step, context, *condgen.clone(), vec![Box::new(acc.clone())])?;
+        let (cond, next_step) = eval_apply(expr, step, global_context, local_context, *condgen.clone(), vec![Box::new(acc.clone())])?;
         step = next_step;
         if val_as_bool(&cond) != Some(true) {
           break;
         }
-        let (nextacc, next_step) = eval_apply(expr, step, context, *accgen.clone(), vec![Box::new(acc)])?;
+        let (nextacc, next_step) = eval_apply(expr, step, global_context, local_context, *accgen.clone(), vec![Box::new(acc)])?;
         acc = nextacc;
         step = next_step;
       }
@@ -1381,16 +1403,16 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
   }
 }
 
-pub fn eval_expr(expr: &Expr) -> Result<EvalResult, (EvalError, Expr)> {
-  match eval_expr_ctx(expr, 0, &HashMap::new()) {
+pub fn eval_expr(expr: &Expr, global_context: &Context) -> Result<EvalResult, (EvalError, Expr)> {
+  match eval_expr_ctx(expr, 0, global_context, &DashMap::new()) {
     Ok((result, _)) => Ok(result),
     Err((e, expr)) => Err((e, expr)),
   }
 }
 
-pub fn eval_str(input: &str) -> Result<String, String> {
+pub fn eval_str(input: &str, global_context: &Context) -> Result<String, String> {
   match parse_expr(input) {
-    Ok((_, expr)) => match eval_expr(&expr) {
+    Ok((_, expr)) => match eval_expr(&expr, global_context) {
       Ok(result) => Ok(result.to_string()),
       Err((e, expr)) => Err(error_str((e, expr))),
     },
@@ -1577,16 +1599,16 @@ use super::*;
   #[test]
   fn test_eval_longexpr() {
     let expr = parse_expr("((f,x)=>f(f(x)))((x)=>x*6,100)").unwrap().1;
-    let context = HashMap::new();
-    assert_eq!(EvalResult::IVal(100*6*6), eval_expr_ctx(&expr, 0, &context).unwrap().0);
+    let context = DashMap::new();
+    assert_eq!(EvalResult::IVal(100*6*6), eval_expr(&expr, &context).unwrap());
   }
 
   #[test]
   fn test_eval_dice() {
     let expr = parse_expr("10000d20").unwrap().1;
-    let context = HashMap::new();
-    match eval_expr_ctx(&expr, 0, &context) {
-      Ok((EvalResult::IVal(i), _)) => {
+    let context = DashMap::new();
+    match eval_expr(&expr, &context) {
+      Ok(EvalResult::IVal(i)) => {
         println!("{}", i);
         assert!(i >= 50000 && i <= 150000);
       },
@@ -1597,10 +1619,10 @@ use super::*;
   #[test]
   fn test_eval_dice2() {
     let expr = parse_expr("1d2").unwrap().1;
-    let context = HashMap::new();
-    let result = eval_expr_ctx(&expr, 0, &context);
+    let context = DashMap::new();
+    let result = eval_expr(&expr, &context);
     match result {
-      Ok((EvalResult::IVal(i), _)) => {
+      Ok(EvalResult::IVal(i)) => {
         println!("{}", i);
       },
       _ => {
@@ -1613,9 +1635,9 @@ use super::*;
   #[test]
   fn test_string() {
     let expr = parse_expr("\"Hello, \\nworld!\\u{1f305}\"").unwrap().1;
-    let context = HashMap::new();
-    match eval_expr_ctx(&expr, 0, &context) {
-      Ok((EvalResult::SVal(s), _)) => {
+    let context = DashMap::new();
+    match eval_expr(&expr, &context) {
+      Ok(EvalResult::SVal(s)) => {
         println!("{}", s);
       },
       _ => {
@@ -1627,9 +1649,9 @@ use super::*;
   #[test]
   fn test_eval_object() {
     let expr = parse_expr("{a: 1, b: {c: 100, d: 200}}.b").unwrap().1;
-    let context = HashMap::new();
-    match eval_expr_ctx(&expr, 0, &context) {
-      Ok((EvalResult::Object(o), _)) => {
+    let context = DashMap::new();
+    match eval_expr(&expr,  &context) {
+      Ok(EvalResult::Object(o)) => {
         println!("{:?}", o);
       },
       _ => {
