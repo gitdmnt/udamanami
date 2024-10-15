@@ -517,7 +517,6 @@ pub enum EvalResult {
   List(Vec<Box<EvalResult>>),
   Closure(Vec<String>, Box<Expr>, Box<HashMap<String, EvalResult>>),
   FuncStdLib(EvalStdLibFun),
-  FixPoint(Box<Expr>), //関数の固定点
   Lazy(Box<Expr>) //適用を受けるまで遅延
 }
 
@@ -531,7 +530,6 @@ impl std::fmt::Display for EvalResult {
       EvalResult::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       EvalResult::Closure(params, body, context) => write!(f, "({} => {})@{:?}", params.join(", "), body, context),
       EvalResult::FuncStdLib(fun) => write!(f, "{}", fun),
-      EvalResult::FixPoint(body) => write!(f, "Fix({})", body),
       EvalResult::Lazy(body) => write!(f, "Lazy({})", body),
     }
   }
@@ -766,19 +764,10 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
       }
     },
     Expr::Apply(fun, args) => {
-      println!("Apply: {}, {:?}, {:?}", fun, args, context);
 
       let (vfun, next_step) = eval_expr_ctx(fun, step + 1, context)?;
 
       match vfun {
-        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
-          if args.len() != 1 {
-            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
-          }
-          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
-          return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
-          //let (fixed, next_step) = eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))])?;
-        },
         EvalResult::FuncStdLib(EvalStdLibFun::If) => {
           if args.len() != 3 {
             return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
@@ -795,19 +784,15 @@ fn eval_expr_ctx(expr: &Expr, step: usize, context: &HashMap<String, EvalResult>
           };
           return Ok((val, next_step));
         },
-        EvalResult::FixPoint(body) => {
-          let (bodyval, next_step) = eval_expr_ctx(&body, next_step, context)?;
-          let (fixed, next_step) = eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))])?;
-          
-          let mut vargs = Vec::new();
-          let mut steps = next_step;
-          for e in args {
-            let (val, next_step) = eval_expr_ctx(e, steps, context)?;
-            vargs.push(Box::new(val));
-            steps = next_step;
+        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
+          if args.len() != 1 {
+            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
           }
-          
-          return eval_apply(expr, next_step, context, fixed, vargs);
+          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
+          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
+          let body = &args[0];
+          let (bodyval, next_step) = eval_expr_ctx(&args[0], next_step, context)?;
+          return eval_apply(&body, next_step, context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))]);
         },
         EvalResult::Lazy(body) => {
           let newexpr = &Expr::Apply(body.clone(), args.clone());
