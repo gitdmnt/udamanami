@@ -1,5 +1,5 @@
-use std::{convert::Into, fmt::format};
 use std::str::FromStr;
+use std::{convert::Into, fmt::format};
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -20,11 +20,11 @@ use serenity::{
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
-mod parser;
 mod calculator;
-use calculator::{eval_str};
+mod parser;
+use calculator::eval_str;
 
-const KOCHIKITE_GUILD_ID: u64 = 1245370208722489384; //TODO: commit前になおしておく
+const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 
 struct Bot {
@@ -414,7 +414,10 @@ async fn calc(reply: &ChannelId, ctx: &Context, expression: String) {
             reply.say(&ctx.http, result).await.unwrap();
         }
         Err(e) => {
-            reply.say(&ctx.http, format!("{} ……だってさ。", e)).await.unwrap();
+            reply
+                .say(&ctx.http, format!("{} ……だってさ。", e))
+                .await
+                .unwrap();
         }
     }
 }
