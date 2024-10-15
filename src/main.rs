@@ -112,16 +112,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
     let input_string: String = match msg.content.find('!') {
-        Some(i) => msg.content[i + 1..]
-            .chars()
-            .take(msg.content.chars().count())
-            .collect(),
+        Some(i) => msg.content[i + 1..].chars().collect(),
         None => match msg.content.find("まなみ、") {
-            Some(i) => msg
-                .content
+            Some(i) => msg.content[i..]
                 .chars()
-                .skip(i + 4)
-                .take(msg.content.chars().count() - (i + 4))
+                .skip(4)
+                .take(msg.content.chars().count() - (4))
                 .collect(),
             None => return,
         },
