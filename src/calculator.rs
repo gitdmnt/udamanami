@@ -504,6 +504,8 @@ pub enum EvalStdLibFun {
   Fix,    // Fix(f) = f(Fix(f))
   While,  // while(acc => cond, acc => nextacc, init)
   Sort,   // sort(list)
+  Sum,    // sum(list)
+  Average,// average(list)
 }
 
 impl std::fmt::Display for EvalStdLibFun {
@@ -535,6 +537,8 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::Fix     => write!(f, "fix"),
       EvalStdLibFun::While   => write!(f, "while"),
       EvalStdLibFun::Sort    => write!(f, "sort"),
+      EvalStdLibFun::Sum     => write!(f, "sum"),
+      EvalStdLibFun::Average => write!(f, "average"),
     }
   }
 }
@@ -1284,6 +1288,49 @@ pub fn eval_stdlib(expr: &Expr, step: usize, context: &HashMap<String, EvalResul
           
       }
     },
+    EvalStdLibFun::Sum => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => {
+          let mut sum = 0.0;
+          for e in l {
+            match val_as_float(&e) {
+              Some(f) => sum += f,
+              _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+            }
+          }
+          Ok((EvalResult::FVal(sum), step + 1))
+        },
+        _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+      }
+    },
+    EvalStdLibFun::Average => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => {
+          let mut sum = 0.0;
+          let mut count = 0;
+          for e in l {
+            match val_as_float(&e) {
+              Some(f) => {
+                sum += f;
+                count += 1;
+              },
+              _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+            }
+          }
+          if count == 0 {
+            return Err((EvalError::OutOfRange, expr.clone()));
+          }
+          Ok((EvalResult::FVal(sum / count as f64), step + 1))
+        },
+        _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+      }
+    },
   }
 }
 
@@ -1326,6 +1373,8 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
     "fix"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
     "while"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::While)),
     "sort"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sort)),
+    "sum"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sum)),
+    "average" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Average)),
 
 
     _ => None,
