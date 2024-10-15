@@ -135,10 +135,12 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
-            reply_channel
-                .say(&ctx.http, "しらないコマンドだよ")
-                .await
-                .unwrap();
+            if start_index == 0 {
+                reply_channel
+                    .say(&ctx.http, "しらないコマンドだよ")
+                    .await
+                    .unwrap();
+            }
         }
     }
 }
