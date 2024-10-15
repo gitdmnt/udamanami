@@ -104,9 +104,9 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
     let start_index = match &msg.content.find("!") {
-        Some(i) => *i,
+        Some(i) => *i + 1,
         None => match &msg.content.find("まなみ、") {
-            Some(i) => *i + 3,
+            Some(i) => *i + 4,
             None => return,
         },
     };
