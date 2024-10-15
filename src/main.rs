@@ -105,12 +105,17 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
     let start_index = match &msg.content.find("!") {
         Some(i) => *i,
-        None => match &msg.content.find("！") {
-            Some(i) => *i,
+        None => match &msg.content.find("まなみ、") {
+            Some(i) => *i + 3,
             None => return,
         },
     };
-    let input_string = msg.content[start_index + 1..].to_owned();
+    let input_string: String = msg
+        .content
+        .chars()
+        .skip(start_index)
+        .take(msg.content.chars().count() - start_index)
+        .collect();
 
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
