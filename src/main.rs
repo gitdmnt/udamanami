@@ -1,11 +1,10 @@
-use std::convert::Into;
-use std::str::FromStr;
+use core::str::FromStr as _;
 
 use anyhow::Context as _;
 use dashmap::DashMap;
 use nom::{
     error::{Error, ErrorKind},
-    Finish,
+    Finish as _,
 };
 use serenity::{
     async_trait,
@@ -62,9 +61,10 @@ impl EventHandler for Bot {
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // ユーザーがこっちにきてはいけないに存在しない場合は無視
-    if let Err(_) = GuildId::from(KOCHIKITE_GUILD_ID)
+    if GuildId::from(KOCHIKITE_GUILD_ID)
         .member(&ctx.http, &msg.author.id)
         .await
+        .is_err()
     {
         return;
     }
@@ -75,10 +75,10 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
+    let user = update_user(ctx, &mut user, &msg.author.id).await.unwrap();
 
     // if message is not command, forward to the room
-    if !&msg.content.starts_with("!") {
+    if !msg.content.starts_with('!') {
         if let Err(why) = user.room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
@@ -107,17 +107,17 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
-    let input_string: String = match &msg.content.find("!") {
-        Some(i) => msg.content[*i + 1..]
+    let input_string: String = match msg.content.find('!') {
+        Some(i) => msg.content[i + 1..]
             .chars()
             .take(msg.content.chars().count())
             .collect(),
-        None => match &msg.content.find("まなみ、") {
+        None => match msg.content.find("まなみ、") {
             Some(i) => msg
                 .content
                 .chars()
-                .skip(*i + 4)
-                .take(msg.content.chars().count() - (*i + 4))
+                .skip(i + 4)
+                .take(msg.content.chars().count() - (i + 4))
                 .collect(),
             None => return,
         },
@@ -129,7 +129,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    let user = update_user(&ctx, &mut user, &msg.author.id).await.unwrap();
+    update_user(ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
     match parser::parse_dice(&msg.content[1..]).finish() {
@@ -159,7 +159,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         // Unknown command
         _ => {
-            if msg.content.starts_with("!") {
+            if msg.content.starts_with('!') {
                 reply_channel
                     .say(&ctx.http, "しらないコマンドだよ")
                     .await
@@ -191,7 +191,7 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
     let about_me = "# まなみの自己紹介だよ！\n";
     let about_ghostwrite = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
 
-    let about_dm = r"## まなみはDMでコマンドを受け付けるよ！
+    let about_dm = "## まなみはDMでコマンドを受け付けるよ！
 ```
 !channel        代筆先のチャンネルについてだよ
 !erocheck       あなたがエロガキかどうかを判定するよ
@@ -200,7 +200,7 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
 ```
 ";
 
-    let about_guild = r"## まなみはグループチャットでコマンドを受け付けるよ！
+    let about_guild = "## まなみはグループチャットでコマンドを受け付けるよ！
 ```
 ![n]d<m>        m面ダイスをn回振るよ
 !help           このヘルプを表示するよ
@@ -212,9 +212,10 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
     content.push(about_me).push(about_ghostwrite);
 
     // ユーザーがこっちにきてはいけないに存在する場合はDMの話もする
-    if let Ok(_) = GuildId::from(KOCHIKITE_GUILD_ID)
+    if GuildId::from(KOCHIKITE_GUILD_ID)
         .member(&ctx.http, user_id)
         .await
+        .is_ok()
     {
         content.push(about_dm);
     }
@@ -230,11 +231,11 @@ async fn channel(
     reply: &ChannelId,
     ctx: &Context,
     args: &[&str],
-    channels: &Vec<ChannelId>,
+    channels: &[ChannelId],
     user: &mut UserData,
 ) {
     // 引数なしの場合はチャンネル一覧を表示
-    if args.len() == 0 {
+    if args.is_empty() {
         let mut res = MessageBuilder::new();
         res.push("今は")
             .channel(user.room_pointer)
@@ -252,23 +253,17 @@ async fn channel(
     }
 
     // それ以外の場合は指定されたチャンネルに切り替え
-    let selector = match args[0].parse::<usize>() {
-        Ok(i) => {
-            if i >= channels.len() {
-                reply
-                    .say(&ctx.http, "しらないチャンネルだよ")
-                    .await
-                    .unwrap();
-                return;
-            } else {
-                i
-            }
-        }
-        Err(_) => {
-            reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
-            return;
-        }
+    let Ok(selector) = args[0].parse::<usize>() else {
+        reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
+        return;
     };
+    if selector >= channels.len() {
+        reply
+            .say(&ctx.http, "しらないチャンネルだよ")
+            .await
+            .unwrap();
+        return;
+    }
 
     let next_pointer = channels[selector];
     user.room_pointer = next_pointer;
@@ -286,13 +281,9 @@ async fn channel(
 }
 
 // dice command
-async fn dice(
-    reply: &ChannelId,
-    ctx: &Context,
-    parsed: (u32, u64, Option<(parser::CmpOperator, u128)>),
-) {
+async fn dice(reply: &ChannelId, ctx: &Context, parsed: parser::Dice) {
     // パース
-    let (num, dice, cmp) = parsed;
+    let parser::Dice { num, dice, cmp } = parsed;
 
     // 入力のチェック
     if num > 1000000 {
@@ -312,7 +303,7 @@ async fn dice(
     for _ in 0..num {
         let r = rand::random::<u64>() % dice + 1;
         vec.push(r.to_string());
-        sum += r as u128;
+        sum += u128::from(r);
     }
     // 結果
     let roll_result = format!("{}D{} -> {}", num, dice, sum);
@@ -320,20 +311,11 @@ async fn dice(
     let roll_items = format!(" ({})", vec.join(", "));
 
     // 比較オプション
-    let operation_result = if cmp.is_some() {
-        let (operator, operand) = cmp.unwrap();
-
+    let operation_result = cmp.map(|(operator, operand)| {
         let is_ok = parser::cmp_with_operator(&operator, sum, operand);
         let is_ok = if is_ok { "OK" } else { "NG" };
-        Some(format!(
-            " {} {} -> {}",
-            Into::<&str>::into(operator),
-            operand,
-            is_ok
-        ))
-    } else {
-        None
-    };
+        format!(" {} {} -> {}", Into::<&str>::into(operator), operand, is_ok)
+    });
 
     // メッセージの生成と送信
     let mut res = MessageBuilder::new();
@@ -349,14 +331,12 @@ async fn dice(
 
 // erogaki status check
 async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
-    match is_erogaki {
-        true => {
-            reply.say(&ctx.http, "エロガキ！！！！").await.unwrap();
-        }
-        false => {
-            reply.say(&ctx.http, "エロガキじゃないよ").await.unwrap();
-        }
-    }
+    let content = if is_erogaki {
+        "エロガキ！！！！"
+    } else {
+        "エロガキじゃないよ"
+    };
+    reply.say(&ctx.http, content).await.unwrap();
 }
 
 async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
@@ -368,20 +348,16 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
         return;
     }
 
-    let num = if let Ok(num) = command_args[0].parse::<u64>() {
-        num
-    } else {
+    let Ok(num) = command_args[0].parse::<u64>() else {
         reply.say(&ctx.http, "わかんないよ").await.unwrap();
         return;
     };
 
     let (is_prime, factor) = match num {
-        0 => (false, vec![]),
-        1 => (false, vec![]),
+        0 | 1 => (false, vec![]),
         2 => (true, vec![2]),
         _ => {
             let mut num = num;
-            let mut i = 2;
             let mut factor = vec![];
 
             while num % 2 == 0 {
@@ -389,7 +365,7 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
                 factor.push(2);
             }
 
-            i = 3;
+            let mut i = 3;
 
             while i * i <= num {
                 if num % i == 0 {
@@ -417,12 +393,10 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
         num,
         if is_prime {
             "素数だよ".to_owned()
+        } else if factor.is_empty() {
+            "素数じゃないよ。あたりまえでしょ？".to_owned()
         } else {
-            if factor.len() == 0 {
-                format!("素数じゃないよ。あたりまえでしょ？")
-            } else {
-                format!("素数じゃないよ。素因数は{:?}だよ", factor)
-            }
+            format!("素数じゃないよ。素因数は{:?}だよ", factor)
         }
     );
     reply.say(&ctx.http, is_prime).await.unwrap();
