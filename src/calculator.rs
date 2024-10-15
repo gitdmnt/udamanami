@@ -1410,10 +1410,11 @@ pub fn eval_expr(expr: &Expr, global_context: &Context) -> Result<EvalResult, (E
   }
 }
 
-pub fn eval_str(input: &str, global_context: &Context) -> Result<String, String> {
+
+pub fn eval_from_str(input: &str, global_context: &Context) -> Result<EvalResult, String> {
   match parse_expr(input) {
     Ok((_, expr)) => match eval_expr(&expr, global_context) {
-      Ok(result) => Ok(result.to_string()),
+      Ok(result) => Ok(result),
       Err((e, expr)) => Err(error_str((e, expr))),
     },
     Err(e) => Err(format!("Parse error: {:?}", e)),
