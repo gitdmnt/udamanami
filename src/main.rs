@@ -23,7 +23,7 @@ use regex::Regex;
 
 mod calculator;
 mod parser;
-use calculator::eval_str;
+use calculator::EvalResult;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
@@ -33,6 +33,8 @@ struct Bot {
     channel_ids: Vec<ChannelId>,
     guild_id: GuildId,
     erogaki_role_id: RoleId,
+
+    variables: DashMap<String, EvalResult>,
 }
 
 struct UserData {
@@ -103,7 +105,8 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
         "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id, &bot.guild_id).await,
         "ping" => ping(dm, ctx).await,
-        "calc" => calc(dm, ctx, command_args.join(" ")).await,
+        "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
+        "var"  => var(dm, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
         _ => {
@@ -155,7 +158,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await,
         "isprime" => isprime(reply_channel, ctx, command_args).await,
-        "calc" => calc(reply_channel, ctx, command_args.join(" ")).await,
+        "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
+        "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
@@ -202,10 +206,11 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildI
 
     let about_guild = "## まなみはグループチャットでコマンドを受け付けるよ！
 ```
-![n]d<m>        m面ダイスをn回振るよ
-!help           このヘルプを表示するよ
-!isprime <n>    nが素数かどうかを判定するよ
-!calc <expr>    数式を計算するよ！さまざまな関数に対応してるよ！
+![n]d<m>           m面ダイスをn回振るよ
+!help              このヘルプを表示するよ
+!isprime <n>       nが素数かどうかを判定するよ
+!calc <expr>       数式を計算するよ
+!var <name>=<expr> calcで使える変数を定義するよ
 ```
 ";
 
@@ -403,11 +408,30 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
     reply.say(&ctx.http, is_prime).await.unwrap();
 }
 
-async fn calc(reply: &ChannelId, ctx: &Context, expression: String) {
-    let result = calculator::eval_str(&expression);
+async fn calc(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
+    let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
-            reply.say(&ctx.http, result).await.unwrap();
+            reply.say(&ctx.http, result.to_string()).await.unwrap();
+        }
+        Err(e) => {
+            reply
+                .say(&ctx.http, format!("{} ……だってさ。", e))
+                .await
+                .unwrap();
+        }
+    }
+}
+
+async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
+    let mut split: Vec<&str> = input.split("=").collect();
+    let (var, expression) = (split.remove(0).trim(), split.join("="));
+    println!("var: {}, expression: {}", var, expression);
+    let result = calculator::eval_from_str(&expression, &bot.variables);
+    match result {
+        Ok(result) => {
+            bot.variables.insert(var.to_string(), result.clone());
+            reply.say(&ctx.http, result.to_string()).await.unwrap();
         }
         Err(e) => {
             reply
@@ -462,12 +486,15 @@ async fn serenity(
             _ => RoleId::from(EROGAKI_ROLE_ID),
         };
 
+    let variables = DashMap::new();
+
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
             userdata,
             channel_ids,
             guild_id,
             erogaki_role_id,
+            variables,
         })
         .await
         .expect("Err creating client");
