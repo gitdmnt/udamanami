@@ -61,8 +61,11 @@ impl EventHandler for Bot {
         }
     }
 
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        if let Err(why) = self.channel_ids[4].say(&ctx.http, "おはようっ！").await {
+            error!("Error sending message: {:?}", why);
+        };
     }
 }
 
