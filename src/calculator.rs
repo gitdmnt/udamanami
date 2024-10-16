@@ -1081,7 +1081,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
       if args.len() != 0 {
         return Err((EvalError::ArgCountMismatch(args.len(), 0), expr.clone()));
       }
-      Ok((EvalResult::FVal(rand::distributions::Standard.sample(&mut rand::thread_rng())), step + 1))
+      Ok((EvalResult::FVal(rand_distr::StandardNormal.sample(&mut rand::thread_rng())), step + 1))
     },
     EvalStdLibFun::If => {
       //this should be handled in eval_expr_ctx
