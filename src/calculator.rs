@@ -502,7 +502,10 @@ pub enum EvalStdLibFun {
   GRand,  // standerd gaussian random
   If,     // if(cond, then, else)
   Map,    // map(f, list)
+  Geni,   // geni(f, n) = [f(0), f(1), ..., f(n-1)]
+  Repeat, // repeat(f, n) = [f(), f(), ..., f()]
   Filter, // filter(f, list)
+  ZipWith,// zipWith(f, list1, list2)
   Foldl,  // foldl(f, init, list)
   Foldr,  // foldr(f, init, list)
   Range,  // range(end) or range(start, end) or range(start, end, step)
@@ -516,6 +519,7 @@ pub enum EvalStdLibFun {
   Sort,   // sort(list)
   Sum,    // sum(list)
   Average,// average(list)
+  Help   ,// help() = "sin, cos, ..."
 }
 
 impl std::fmt::Display for EvalStdLibFun {
@@ -535,7 +539,10 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::GRand   => write!(f, "grand"),
       EvalStdLibFun::If      => write!(f, "if"),
       EvalStdLibFun::Map     => write!(f, "map"),
+      EvalStdLibFun::Geni    => write!(f, "generate_i"),
+      EvalStdLibFun::Repeat  => write!(f, "repeat"),
       EvalStdLibFun::Filter  => write!(f, "filter"),
+      EvalStdLibFun::ZipWith => write!(f, "zipWith"),
       EvalStdLibFun::Foldl   => write!(f, "foldl"),
       EvalStdLibFun::Foldr   => write!(f, "foldr"),
       EvalStdLibFun::Range   => write!(f, "range"),
@@ -549,6 +556,7 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::Sort    => write!(f, "sort"),
       EvalStdLibFun::Sum     => write!(f, "sum"),
       EvalStdLibFun::Average => write!(f, "average"),
+      EvalStdLibFun::Help    => write!(f, "help"),
     }
   }
 }
@@ -714,10 +722,12 @@ fn is_str(s: EvalResult) -> bool {
   }
 }
 
+const STEP_LIMIT: usize = 10000;
+
 fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_context: &Context) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   //println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
   
-  if step > 1000 {
+  if step > STEP_LIMIT {
     return Err((EvalError::StepLimitExceeded, expr.clone()));
   }
   match expr {
@@ -949,6 +959,10 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
 
 pub fn eval_apply(expr: &Expr, steps: usize, global_context: &Context, local_context: &Context, func: EvalResult, args: Vec<Box<EvalResult>>) -> Result<(EvalResult, usize), (EvalError, Expr)> {
   
+  if steps > STEP_LIMIT {
+    return Err((EvalError::StepLimitExceeded, expr.clone()));
+  }
+
   match func {
     EvalResult::Closure(params, body, ctx) => {
       if args.len() != params.len() {
@@ -1095,13 +1109,51 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
       match val_as_list(&args[1]) {
         Some(l) => {
           let mut new_list = Vec::new();
+          let mut step = step + 1;
           for e in l {
             let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![e.clone()])?;
+            step = next_step;
             new_list.push(Box::new(val));
           }
-          Ok((EvalResult::List(new_list), step + 1))
+          Ok((EvalResult::List(new_list), step))
         },
         _ => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
+      }
+    },
+    EvalStdLibFun::Geni => {
+      if args.len() != 2 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      match val_as_int(&args[1]) {
+        Some(n) => {
+          let mut new_list = Vec::new();
+          let mut step = step + 1;
+          for i in 0..n {
+            let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![Box::new(EvalResult::IVal(i))])?;
+            step = next_step;
+            new_list.push(Box::new(val));
+          }
+          Ok((EvalResult::List(new_list), step))
+        },
+        _ => Err((EvalError::NotANumber(*args[1].clone()), expr.clone())),
+      }
+    },
+    EvalStdLibFun::Repeat => {
+      if args.len() != 2 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      match val_as_int(&args[1]) {
+        Some(n) => {
+          let mut new_list = Vec::new();
+          let mut step = step + 1;
+          for i in 0..n {
+            let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![])?;
+            step = next_step;
+            new_list.push(Box::new(val));
+          }
+          Ok((EvalResult::List(new_list), step))
+        },
+        _ => Err((EvalError::NotANumber(*args[1].clone()), expr.clone())),
       }
     },
     EvalStdLibFun::Filter => {
@@ -1122,6 +1174,25 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
         _ => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
       }
     },
+    EvalStdLibFun::ZipWith => {
+      if args.len() != 3 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+      }
+      match (val_as_list(&args[1]), val_as_list(&args[2])) {
+        (Some(l1), Some(l2)) => {
+          let mut new_list = Vec::new();
+          let mut step = step + 1;
+          for (e1, e2) in l1.iter().zip(l2.iter()) {
+            let (val, next_step) = eval_apply(expr, step + 1, global_context, local_context, *args[0].clone(), vec![e1.clone(), e2.clone()])?;
+            step = next_step;
+            new_list.push(Box::new(val));
+          }
+          Ok((EvalResult::List(new_list), step))
+        },
+        (Some(_), _) => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
+        _            => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+      }
+    }
     EvalStdLibFun::Foldl => {
       if args.len() != 3 {
         return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
@@ -1353,6 +1424,12 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
         _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
       }
     },
+    EvalStdLibFun::Help => {
+      let mut help = String::new();
+      help.push_str("Available functions:\n");
+
+      Ok((EvalResult::SVal(help), step + 1))
+    }
   }
 }
 
@@ -1364,39 +1441,44 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
     "false" => Some(EvalResult::BVal(false)),
 
     // stdlib functions
-    "sin"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sin)),
-    "cos"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Cos)),
-    "tan"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tan)),
-    "loge"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
-    "logE"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
-    "ln"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
-    "log10"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
-    "log"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
-    "log2"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
-    "lg"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
-    "lb"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
-    "abs"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Abs)),
-    "floor"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Floor)),
-    "ceil"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Ceil)),
-    "round"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Round)),
-    "urand"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::URand)),
-    "grand"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::GRand)),
-    "if"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::If)),
-    "map"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Map)),
-    "filter" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Filter)),
-    "foldl"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldl)),
-    "foldr"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldr)),
-    "range"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::Range)),
-    "len"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Len)),
-    "head"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Head)),
-    "tail"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
-    "last"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Last)),
-    "init"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Init)),
-    "fix"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
-    "while"  => Some(EvalResult::FuncStdLib(EvalStdLibFun::While)),
-    "sort"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sort)),
-    "sum"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sum)),
-    "average" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Average)),
+    "sin"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sin)),
+    "cos"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Cos)),
+    "tan"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tan)),
+    "loge"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "logE"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "ln"        => Some(EvalResult::FuncStdLib(EvalStdLibFun::LogE)),
+    "log10"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
+    "log"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log10)),
+    "log2"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "lg"        => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "lb"        => Some(EvalResult::FuncStdLib(EvalStdLibFun::Log2)),
+    "abs"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Abs)),
+    "floor"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Floor)),
+    "ceil"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Ceil)),
+    "round"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Round)),
+    "urand"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::URand)),
+    "grand"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::GRand)),
+    "if"        => Some(EvalResult::FuncStdLib(EvalStdLibFun::If)),
+    "map"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Map)),
+    "geni"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Geni)),
+    "generatei" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Geni)),
+    "repeat"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Repeat)),
+    "filter"    => Some(EvalResult::FuncStdLib(EvalStdLibFun::Filter)),
+    "zipwith"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::ZipWith)),
+    "foldl"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldl)),
+    "foldr"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldr)),
+    "range"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::Range)),
+    "len"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Len)),
+    "head"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Head)),
+    "tail"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
+    "last"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Last)),
+    "init"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Init)),
+    "fix"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
+    "while"     => Some(EvalResult::FuncStdLib(EvalStdLibFun::While)),
+    "sort"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sort)),
+    "sum"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sum)),
+    "average"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Average)),
+    "help"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Help)),
 
 
     _ => None,
