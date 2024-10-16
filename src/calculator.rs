@@ -324,8 +324,8 @@ fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
     parse_lambda,
     parse_lambda_one,
     parse_paren,
-    parse_int,
     parse_float,
+    parse_int,
     parse_named_const,
     parse_string_literal,
     parse_list_literal,
@@ -333,6 +333,7 @@ fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
   )))(input)
 }
 
+#[derive(Debug, Clone)]
 enum PostfixExprPart {
   PEPApply(Vec<Box<Expr>>),
   PEPListAt(Box<Expr>),
@@ -738,7 +739,6 @@ fn is_str(s: EvalResult) -> bool {
 const STEP_LIMIT: usize = 10000;
 
 fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_context: &Context) -> Result<(EvalResult, usize), (EvalError, Expr)> {
-  //println!("eval_expr_ctx: {:?} \u{1f31f} {:?}", expr, context);
   
   if step > STEP_LIMIT {
     return Err((EvalError::StepLimitExceeded, expr.clone()));
@@ -1755,6 +1755,15 @@ mod tests_parse {
     );
   }
 
+  #[test]
+  fn test_parse_long2(){
+    println!("{:?}", parse_expr("sum(grand()<0.5)"));
+  }
+
+  #[test]
+  fn test_parse_apply_parts(){
+    println!("{:?}", parse_apply("(grand()<0.5)"));
+  }
 }
 
 #[cfg(test)]
