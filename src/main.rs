@@ -12,7 +12,7 @@ use serenity::{
     model::{
         channel::Message,
         gateway::Ready,
-        id::{ChannelId, GuildId, UserId},
+        id::{ChannelId, GuildId, UserId, RoleId},
     },
     prelude::*,
     utils::MessageBuilder,
@@ -31,6 +31,8 @@ const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 struct Bot {
     userdata: DashMap<UserId, UserData>,
     channel_ids: Vec<ChannelId>,
+    guild_id: GuildId,
+    erogaki_role_id: RoleId,
 }
 
 struct UserData {
@@ -65,7 +67,7 @@ impl EventHandler for Bot {
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // ユーザーがこっちにきてはいけないに存在しない場合は無視
-    if GuildId::from(KOCHIKITE_GUILD_ID)
+    if bot.guild_id
         .member(&ctx.http, &msg.author.id)
         .await
         .is_err()
@@ -79,7 +81,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    let user = update_user(ctx, &mut user, &msg.author.id).await.unwrap();
+    let user = update_user(&bot, ctx, &mut user, &msg.author.id).await.unwrap();
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
@@ -99,7 +101,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
         "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
-        "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id).await,
+        "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id, &bot.guild_id).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" ")).await,
 
@@ -125,7 +127,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    update_user(ctx, &mut user, &msg.author.id).await.unwrap();
+    update_user(&bot, ctx, &mut user, &msg.author.id).await.unwrap();
 
     // dice command
     match parser::parse_dice(&input_string).finish() {
@@ -151,7 +153,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let reply_channel = &msg.channel_id;
 
     match command_name {
-        "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id).await,
+        "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await,
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" ")).await,
         // Unknown command
@@ -167,6 +169,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn update_user<'a>(
+    bot: &Bot,
     ctx: &Context,
     user: &'a mut UserData,
     author: &UserId,
@@ -175,7 +178,7 @@ async fn update_user<'a>(
     user.is_erogaki = author
         .to_user(&ctx.http)
         .await?
-        .has_role(&ctx.http, KOCHIKITE_GUILD_ID, EROGAKI_ROLE_ID)
+        .has_role(&ctx.http, bot.guild_id, bot.erogaki_role_id)
         .await?;
     Ok(user)
 }
@@ -183,7 +186,7 @@ async fn update_user<'a>(
 // commands
 
 // help command
-async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
+async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildId) {
     // 文章
     let about_me = "# まなみの自己紹介だよ！\n";
     let about_ghostwrite = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
@@ -210,7 +213,7 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId) {
     content.push(about_me).push(about_ghostwrite);
 
     // ユーザーがこっちにきてはいけないに存在する場合はDMの話もする
-    if GuildId::from(KOCHIKITE_GUILD_ID)
+    if GuildId::from(guild)
         .member(&ctx.http, user_id)
         .await
         .is_ok()
@@ -446,10 +449,25 @@ async fn serenity(
     .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
     .collect();
 
+    // 取得できなければ KOCHIKITE_GUILD_ID を使う
+    let guild_id = 
+        match secrets.get("GUILD_ID") {
+            Some(id) => GuildId::from_str(&id).unwrap(),
+            _ => GuildId::from(KOCHIKITE_GUILD_ID),
+        };
+        
+    let erogaki_role_id = 
+        match secrets.get("EROGAKI_ROLE_ID") {
+            Some(id) => RoleId::from_str(&id).unwrap(),
+            _ => RoleId::from(EROGAKI_ROLE_ID),
+        };
+
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
             userdata,
             channel_ids,
+            guild_id,
+            erogaki_role_id,
         })
         .await
         .expect("Err creating client");
