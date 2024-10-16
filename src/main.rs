@@ -110,6 +110,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
         "var"  => var(dm, ctx, command_args.join(" "), bot).await,
+        "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
         _ => {
@@ -120,7 +121,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
-    let command_pattern = Regex::new(r"(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
+    let command_pattern = Regex::new(r"(?ms)(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
     let input_string: String =
         match command_pattern.captures(&msg.content) {
             Some(caps) => caps.get(1).unwrap().as_str().to_string(),
@@ -163,6 +164,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
         "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
+        "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
@@ -209,11 +211,12 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildI
 
     let about_guild = "## まなみはグループチャットでコマンドを受け付けるよ！
 ```
-![n]d<m>           m面ダイスをn回振るよ
-!help              このヘルプを表示するよ
-!isprime <n>       nが素数かどうかを判定するよ
-!calc <expr>       数式を計算するよ
-!var <name>=<expr> calcで使える変数を定義するよ
+![n]d<m>             m面ダイスをn回振るよ
+!help                このヘルプを表示するよ
+!isprime <n>         nが素数かどうかを判定するよ
+!calc <expr>         数式を計算するよ
+!var <name>=<expr>   calcで使える変数を定義するよ
+!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
 ```
 ";
 
@@ -426,6 +429,24 @@ async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
             (split[0].trim().to_string(), split[1..].join("="))
         };
     var_main(reply, ctx, var, expression, bot).await;
+}
+
+async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
+    let code_pattern = Regex::new(r"```[a-zA-Z0-9]*(.*)```").unwrap();
+
+    //get input in code block
+    let input = match code_pattern.captures(&input) {
+        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        None => return,
+    };
+    println!("{}", input);
+    let split: Vec<&str> = input.split(";").collect();
+    for s in split {
+        if s.trim().is_empty() {
+            continue;
+        }
+        var(reply, ctx, s.to_string(), bot).await;
+    }
 }
 
 async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: String, bot: &Bot){
