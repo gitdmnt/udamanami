@@ -593,6 +593,11 @@ impl PartialEq for EvalResult {
   }
 }
 
+fn show_context(ctx: &Context) -> String {
+  let inner = ctx.iter().map(|e| format!("{}: {}", e.key(), e.value())).collect::<Vec<String>>().join(", ");
+  format!("{{{}}}", inner)
+}
+
 impl std::fmt::Display for EvalResult {
   fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
     match self {
@@ -602,7 +607,7 @@ impl std::fmt::Display for EvalResult {
       EvalResult::SVal(s) => write!(f, "\"{}\"", s),
       EvalResult::List(l) => write!(f, "[{}]", l.iter().map(|e| e.to_string()).collect::<Vec<String>>().join(", ")),
       EvalResult::Object(o) => write!(f, "{{{}}}", o.iter().map(|(k, v)| format!("{}: {}", k, v.to_string())).collect::<Vec<String>>().join(", ")),
-      EvalResult::Closure(params, body, context) => write!(f, "({} => {})@{:?}", params.join(", "), body, context),
+      EvalResult::Closure(params, body, context) => write!(f, "({} => {})@{}", params.join(", "), body, show_context(context)),
       EvalResult::FuncStdLib(fun) => write!(f, "{}", fun),
       EvalResult::Lazy(body) => write!(f, "Lazy({})", body),
     }
