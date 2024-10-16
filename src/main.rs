@@ -121,7 +121,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
-    let command_pattern = Regex::new(r"(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
+    let command_pattern = Regex::new(r"(?ms)(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
     let input_string: String =
         match command_pattern.captures(&msg.content) {
             Some(caps) => caps.get(1).unwrap().as_str().to_string(),
@@ -442,7 +442,6 @@ async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     println!("{}", input);
     let split: Vec<&str> = input.split(";").collect();
     for s in split {
-        println!("{}", s);
         if s.trim().is_empty() {
             continue;
         }
