@@ -423,7 +423,7 @@ async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
         if split.len() < 2 {
             (VAR_DEFAULT.to_string(), input)
         } else {
-            (split[0].trim().to_string(), split[1].trim().to_string())
+            (split[0].trim().to_string(), split[1..].join("="))
         };
     var_main(reply, ctx, var, expression, bot).await;
 }
