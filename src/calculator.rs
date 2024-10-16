@@ -512,13 +512,17 @@ pub enum EvalStdLibFun {
   Len,    // len(list)
   Head,   // head(list)
   Tail,   // tail(list)
-  Init,   // init(list)
   Last,   // last(list)
+  Init,   // init(list)
   Fix,    // Fix(f) = f(Fix(f))
   While,  // while(acc => cond, acc => nextacc, init)
   Sort,   // sort(list)
   Sum,    // sum(list)
   Average,// average(list)
+  Max    ,// max(x, y, ...)
+  Min    ,// min(x, y, ...)
+  Maximum,// maximum(list)
+  Minimum,// minimum(list)
   Help   ,// help() = "sin, cos, ..."
 }
 
@@ -556,6 +560,10 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::Sort    => write!(f, "sort"),
       EvalStdLibFun::Sum     => write!(f, "sum"),
       EvalStdLibFun::Average => write!(f, "average"),
+      EvalStdLibFun::Max     => write!(f, "max"),
+      EvalStdLibFun::Min     => write!(f, "min"),
+      EvalStdLibFun::Maximum => write!(f, "maximum"),
+      EvalStdLibFun::Minimum => write!(f, "minimum"),
       EvalStdLibFun::Help    => write!(f, "help"),
     }
   }
@@ -1429,6 +1437,68 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
         _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
       }
     },
+    EvalStdLibFun::Max => {
+      if args.len() == 0 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      let mut max = std::f64::NEG_INFINITY;
+      for e in args {
+        match val_as_float(&e) {
+          Some(f) => max = max.max(f),
+          _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+        }
+      }
+      Ok((EvalResult::FVal(max), step + 1))
+    },
+    EvalStdLibFun::Min => {
+      if args.len() == 0 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+      }
+      let mut min = std::f64::INFINITY;
+      for e in args {
+        match val_as_float(&e) {
+          Some(f) => min = min.min(f),
+          _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+        }
+      }
+      Ok((EvalResult::FVal(min), step + 1))
+    },
+    EvalStdLibFun::Maximum => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => {
+          let mut max = std::f64::NEG_INFINITY;
+          for e in l {
+            match val_as_float(&e) {
+              Some(f) => max = max.max(f),
+              _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+            }
+          }
+          Ok((EvalResult::FVal(max), step + 1))
+        },
+        _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+      }
+    },
+    EvalStdLibFun::Minimum => {
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+      match val_as_list(&args[0]) {
+        Some(l) => {
+          let mut min = std::f64::INFINITY;
+          for e in l {
+            match val_as_float(&e) {
+              Some(f) => min = min.min(f),
+              _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+            }
+          }
+          Ok((EvalResult::FVal(min), step + 1))
+        },
+        _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+      }
+    },
     EvalStdLibFun::Help => {
       let mut help = String::new();
       help.push_str("Available functions: ");
@@ -1487,6 +1557,11 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
     "sort"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sort)),
     "sum"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sum)),
     "average"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Average)),
+    "avg"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Average)),
+    "max"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Max)),
+    "maximum"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Maximum)),
+    "min"       => Some(EvalResult::FuncStdLib(EvalStdLibFun::Min)),
+    "minimum"   => Some(EvalResult::FuncStdLib(EvalStdLibFun::Minimum)),
     "help"      => Some(EvalResult::FuncStdLib(EvalStdLibFun::Help)),
 
 
