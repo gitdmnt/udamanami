@@ -408,25 +408,24 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
     reply.say(&ctx.http, is_prime).await.unwrap();
 }
 
+const VAR_DEFAULT: &str = "_";
+
 async fn calc(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
-    let result = calculator::eval_from_str(&expression, &bot.variables);
-    match result {
-        Ok(result) => {
-            reply.say(&ctx.http, result.to_string()).await.unwrap();
-        }
-        Err(e) => {
-            reply
-                .say(&ctx.http, format!("{} ……だってさ。", e))
-                .await
-                .unwrap();
-        }
-    }
+    var_main(reply, ctx, VAR_DEFAULT.to_string(), expression, bot).await;
 }
 
 async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
-    let mut split: Vec<&str> = input.split("=").collect();
-    let (var, expression) = (split.remove(0).trim(), split.join("="));
-    println!("var: {}, expression: {}", var, expression);
+    let split: Vec<&str> = input.split("=").collect();
+    let (var, expression) =
+        if split.len() < 2 {
+            (VAR_DEFAULT.to_string(), input)
+        } else {
+            (split[0].trim().to_string(), split[1].trim().to_string())
+        };
+    var_main(reply, ctx, var, expression, bot).await;
+}
+
+async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: String, bot: &Bot){
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
