@@ -2340,6 +2340,7 @@ dependencies = [
  "serenity",
  "shuttle-runtime",
  "shuttle-serenity",
+ "strum 0.26.3",
  "tokio",
  "tracing",
 ]

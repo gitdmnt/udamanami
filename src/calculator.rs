@@ -12,7 +12,7 @@ use std::{collections::HashMap, f64::consts::E};
 use rand::{prelude::Distribution, Rng};
 use rand_distr::StandardNormal;
 use dashmap::DashMap;
-
+use strum::{IntoEnumIterator, EnumIter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprOp2 {
@@ -484,7 +484,7 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
 type Context = DashMap<String, EvalResult>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, EnumIter)]
 pub enum EvalStdLibFun {
   //Print,
   //Println,
@@ -539,7 +539,7 @@ impl std::fmt::Display for EvalStdLibFun {
       EvalStdLibFun::GRand   => write!(f, "grand"),
       EvalStdLibFun::If      => write!(f, "if"),
       EvalStdLibFun::Map     => write!(f, "map"),
-      EvalStdLibFun::Geni    => write!(f, "generate_i"),
+      EvalStdLibFun::Geni    => write!(f, "geni"),
       EvalStdLibFun::Repeat  => write!(f, "repeat"),
       EvalStdLibFun::Filter  => write!(f, "filter"),
       EvalStdLibFun::ZipWith => write!(f, "zipWith"),
@@ -1431,7 +1431,11 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
     },
     EvalStdLibFun::Help => {
       let mut help = String::new();
-      help.push_str("Available functions:\n");
+      help.push_str("Available functions: ");
+
+      for stdlibfun in EvalStdLibFun::iter(){
+        help.push_str(&format!("{}, ", stdlibfun));
+      }
 
       Ok((EvalResult::SVal(help), step + 1))
     }
