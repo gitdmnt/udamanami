@@ -8,7 +8,7 @@ use nom::{
   IResult,
 };
 use core::panic;
-use std::{collections::HashMap, f64::consts::E};
+use std::{collections::HashMap, collections::HashSet};
 use rand::{prelude::Distribution, Rng};
 use rand_distr::StandardNormal;
 use dashmap::DashMap;
@@ -740,6 +740,31 @@ fn is_str(s: EvalResult) -> bool {
   }
 }
 
+fn list_free_var(expr: &Expr) -> HashSet<String> {
+  let result = match expr {
+    Expr::IVal(_) => HashSet::new(),
+    Expr::FVal(_) => HashSet::new(),
+    Expr::BVal(_) => HashSet::new(),
+    Expr::SVal(_) => HashSet::new(),
+    Expr::List(l) => l.iter().map(|e| list_free_var(e)).fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+    Expr::Object(o) => o.iter().map(|(k, v)| list_free_var(v)).fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
+    Expr::Get(e, _) => list_free_var(e),
+    Expr::At(e1, e2) => list_free_var(e1).union(&list_free_var(e2)).cloned().collect(),
+    Expr::Const(s) => {
+      let mut set = HashSet::new();
+      set.insert(s.clone());
+      set
+    },
+    Expr::Op1(_, e) => list_free_var(e),
+    Expr::Op2(_, e1, e2) => list_free_var(e1).union(&list_free_var(e2)).cloned().collect(),
+    Expr::Apply(f, args) => list_free_var(f).union(&args.iter().map(|e| list_free_var(e)).fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect())).cloned().collect(),
+    Expr::Lambda(params, body) => list_free_var(body).difference(&params.iter().cloned().collect()).cloned().collect(),
+    Expr::Fix(body) => list_free_var(body),
+  };
+  //println!("list_free_var: {}, result: {:?}", expr, result);
+  result
+}
+
 const STEP_LIMIT: usize = 10000;
 
 fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_context: &Context) -> Result<(EvalResult, usize), (EvalError, Expr)> {
@@ -930,12 +955,14 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
       let (vfun, next_step) = eval_expr_ctx(fun, step + 1, global_context, local_context)?;
 
       match vfun {
+        /*
         EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
           if args.len() != 1 {
             return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
           }
           return eval_expr_ctx(&Expr::Fix(args[0].clone()), step, global_context, local_context);
         },
+        */
         EvalResult::FuncStdLib(EvalStdLibFun::If) => {
           if args.len() != 3 {
             return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
@@ -969,7 +996,17 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
       }
       eval_apply(expr, steps, global_context, local_context, vfun, vargs)
     },
-    Expr::Lambda(name, body) => Ok((EvalResult::Closure(name.clone(), body.clone(), Box::new(local_context.clone())), step)),
+    Expr::Lambda(name, body) => {
+      let free_vars = list_free_var(body);
+      let captured = DashMap::new();
+      for varname in free_vars {
+        if let Some(val) = local_context.get(&varname) {
+          captured.insert(varname, val.clone());
+        }
+      }
+    
+      Ok((EvalResult::Closure(name.clone(), body.clone(), Box::new(captured)), step))
+    },
   }
 }
 
@@ -1111,7 +1148,7 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
       if args.len() != 0 {
         return Err((EvalError::ArgCountMismatch(args.len(), 0), expr.clone()));
       }
-      Ok((EvalResult::FVal(rand_distr::StandardNormal.sample(&mut rand::thread_rng())), step + 1))
+      Ok((EvalResult::FVal(StandardNormal.sample(&mut rand::thread_rng())), step + 1))
     },
     EvalStdLibFun::If => {
       //this should be handled in eval_expr_ctx
@@ -1355,8 +1392,38 @@ pub fn eval_stdlib(expr: &Expr, step: usize, global_context: &Context, local_con
       }
     },
     EvalStdLibFun::Fix => {
-      // this should be handled in eval_expr
-      panic!("Fix should not be called directly");
+      // Z := f => (x=>f(y=>x(x)(y)))(x=>f(y=>x(x)(y)))
+
+      if args.len() != 1 {
+        return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+      }
+
+      let func = args[0].clone();
+      let xfyxxy = 
+        Expr::Lambda(vec!["_x".to_string()], 
+          Box::new(Expr::Apply(
+            Box::new(Expr::Const("_f".to_string())),
+            vec![
+              Box::new(Expr::Lambda(vec!["_y".to_string()],
+                Box::new(Expr::Apply(
+                  Box::new(Expr::Apply(
+                    Box::new(Expr::Const("_x".to_string())),
+                    vec![
+                      Box::new(Expr::Const("_x".to_string())),
+                      Box::new(Expr::Const("_y".to_string())),
+                    ]
+                  )),
+                  vec![
+                    Box::new(Expr::Const("_y".to_string())),
+                  ]
+                )
+              )))
+            ]
+          ))
+        );
+      let z = Expr::Lambda(vec!["_f".to_string()], Box::new(Expr::Apply(Box::new(xfyxxy.clone()), vec![Box::new(xfyxxy)])));
+      let (zval, _) = eval_expr_ctx(&z, step + 1, global_context, local_context)?;
+      eval_apply(expr, step + 1, global_context, local_context, zval, vec![func])      
     },
     EvalStdLibFun::While => {
       if args.len() != 3 {
