@@ -1006,11 +1006,7 @@ pub fn eval_apply(expr: &Expr, steps: usize, global_context: &Context, local_con
         return Err((EvalError::ArgCountMismatch(args.len(), params.len()), expr.clone()));
       }
 
-      //contextをcloneしたのち、ctxにもあるものはctxのものを優先
-      let new_context = local_context.clone();
-      ctx.iter().for_each(|e| {
-        new_context.insert(e.key().clone(), e.value().clone());
-      });
+      let new_context = ctx.clone();
       for (param, argval) in params.iter().zip(args.iter()) {
         new_context.insert(param.clone(), *argval.clone());
       }
