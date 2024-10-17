@@ -89,6 +89,7 @@ pub enum Expr {
   Op2(ExprOp2, Box<Expr>, Box<Expr>),
   Apply(Box<Expr>, Vec<Box<Expr>>),
   Lambda(Vec<String>, Box<Expr>),
+  Fix(Box<Expr>),
 }
 
 impl std::fmt::Display for Expr {
@@ -110,6 +111,9 @@ impl std::fmt::Display for Expr {
       },
       Expr::Lambda(params, body) => {
         write!(f, "({} => {})", params.join(", "), body)
+      },
+      Expr::Fix(body) => {
+        write!(f, "Fix({})", body)
       },
     }
   }
@@ -918,11 +922,20 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
         ExprOp2::XorL => Ok((EvalResult::BVal(bval1 ^  bval2), next_step + 1)),
       }
     },
+    Expr::Fix(expr) => {
+      Ok((EvalResult::Lazy(Box::new(Expr::Apply(expr.clone(), vec![Box::new(Expr::Fix(expr.clone()))]))), step))
+    },
     Expr::Apply(fun, args) => {
 
       let (vfun, next_step) = eval_expr_ctx(fun, step + 1, global_context, local_context)?;
 
       match vfun {
+        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
+          if args.len() != 1 {
+            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+          }
+          return eval_expr_ctx(&Expr::Fix(args[0].clone()), step, global_context, local_context);
+        },
         EvalResult::FuncStdLib(EvalStdLibFun::If) => {
           if args.len() != 3 {
             return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
@@ -938,16 +951,6 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
             eval_expr_ctx(&args[2], next_step, global_context, local_context)?
           };
           return Ok((val, next_step));
-        },
-        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
-          if args.len() != 1 {
-            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
-          }
-          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
-          //return Ok((EvalResult::FixPoint(args[0].clone()), next_step));
-          let body = &args[0];
-          let (bodyval, next_step) = eval_expr_ctx(&args[0], next_step, global_context, local_context)?;
-          return eval_apply(&body, next_step, global_context, local_context, bodyval, vec![Box::new(EvalResult::Lazy(body.clone()))]);
         },
         EvalResult::Lazy(body) => {
           let newexpr = &Expr::Apply(body.clone(), args.clone());
