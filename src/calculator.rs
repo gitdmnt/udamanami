@@ -89,7 +89,6 @@ pub enum Expr {
   Op2(ExprOp2, Box<Expr>, Box<Expr>),
   Apply(Box<Expr>, Vec<Box<Expr>>),
   Lambda(Vec<String>, Box<Expr>),
-  Fix(Box<Expr>),
 }
 
 impl std::fmt::Display for Expr {
@@ -111,9 +110,6 @@ impl std::fmt::Display for Expr {
       },
       Expr::Lambda(params, body) => {
         write!(f, "({} => {})", params.join(", "), body)
-      },
-      Expr::Fix(body) => {
-        write!(f, "Fix({})", body)
       },
     }
   }
@@ -759,7 +755,6 @@ fn list_free_var(expr: &Expr) -> HashSet<String> {
     Expr::Op2(_, e1, e2) => list_free_var(e1).union(&list_free_var(e2)).cloned().collect(),
     Expr::Apply(f, args) => list_free_var(f).union(&args.iter().map(|e| list_free_var(e)).fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect())).cloned().collect(),
     Expr::Lambda(params, body) => list_free_var(body).difference(&params.iter().cloned().collect()).cloned().collect(),
-    Expr::Fix(body) => list_free_var(body),
   };
   //println!("list_free_var: {}, result: {:?}", expr, result);
   result
@@ -947,22 +942,11 @@ fn eval_expr_ctx(expr: &Expr, step: usize, global_context: &Context, local_conte
         ExprOp2::XorL => Ok((EvalResult::BVal(bval1 ^  bval2), next_step + 1)),
       }
     },
-    Expr::Fix(expr) => {
-      Ok((EvalResult::Lazy(Box::new(Expr::Apply(expr.clone(), vec![Box::new(Expr::Fix(expr.clone()))]))), step))
-    },
     Expr::Apply(fun, args) => {
 
       let (vfun, next_step) = eval_expr_ctx(fun, step + 1, global_context, local_context)?;
 
       match vfun {
-        /*
-        EvalResult::FuncStdLib(EvalStdLibFun::Fix) => {
-          if args.len() != 1 {
-            return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
-          }
-          return eval_expr_ctx(&Expr::Fix(args[0].clone()), step, global_context, local_context);
-        },
-        */
         EvalResult::FuncStdLib(EvalStdLibFun::If) => {
           if args.len() != 3 {
             return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
