@@ -83,14 +83,14 @@ pub enum Expr {
     FVal(f64),
     BVal(bool),
     SVal(String),
-    List(Vec<Box<Expr>>),
+    List(Vec<Expr>),
     At(Box<Expr>, Box<Expr>),
     Object(HashMap<String, Box<Expr>>),
     Get(Box<Expr>, String),
     Const(String),
     Op1(ExprOp1, Box<Expr>),
     Op2(ExprOp2, Box<Expr>, Box<Expr>),
-    Apply(Box<Expr>, Vec<Box<Expr>>),
+    Apply(Box<Expr>, Vec<Expr>),
     Lambda(Vec<String>, Box<Expr>),
 }
 
@@ -348,7 +348,7 @@ fn parse_string_literal(input: &str) -> IResult<&str, Expr> {
 fn parse_list_literal(input: &str) -> IResult<&str, Expr> {
     map(
         delimited(char('['), separated_list0(char(','), parse_expr), char(']')),
-        |exprs| Expr::List(exprs.into_iter().map(Box::new).collect()),
+        |exprs| Expr::List(exprs.into_iter().collect()),
     )(input)
 }
 
@@ -396,7 +396,7 @@ fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
 
 #[derive(Debug, Clone)]
 enum PostfixExprPart {
-    Apply(Vec<Box<Expr>>),
+    Apply(Vec<Expr>),
     ListAt(Box<Expr>),
     Get(String),
 }
@@ -408,7 +408,7 @@ fn parse_apply(input: &str) -> IResult<&str, PostfixExprPart> {
             separated_list0(char(','), preceded(multispace0, parse_expr)),
             preceded(multispace0, char(')')),
         ),
-        |args| PostfixExprPart::Apply(args.into_iter().map(Box::new).collect()),
+        |args| PostfixExprPart::Apply(args.into_iter().collect()),
     )(input)
 }
 
@@ -642,7 +642,7 @@ pub enum EvalResult {
     FVal(f64),
     BVal(bool),
     SVal(String),
-    List(Vec<Box<EvalResult>>),
+    List(Vec<EvalResult>),
     Object(HashMap<String, Box<EvalResult>>),
     Closure(Vec<String>, Box<Expr>, Box<Context>),
     FuncStdLib(EvalStdLibFun),
@@ -789,14 +789,10 @@ fn val_as_bool(val: &EvalResult) -> Option<bool> {
     }
 }
 
-fn val_as_list(val: &EvalResult) -> Option<Vec<Box<EvalResult>>> {
+fn val_as_list(val: &EvalResult) -> Option<Vec<EvalResult>> {
     match val {
         EvalResult::List(l) => Some(l.clone()),
-        EvalResult::SVal(s) => Some(
-            s.chars()
-                .map(|c| Box::new(EvalResult::SVal(c.to_string())))
-                .collect(),
-        ),
+        EvalResult::SVal(s) => Some(s.chars().map(|c| EvalResult::SVal(c.to_string())).collect()),
         _ => None,
     }
 }
@@ -852,7 +848,7 @@ fn list_free_var(expr: &Expr) -> HashSet<String> {
         Expr::SVal(_) => HashSet::new(),
         Expr::List(l) => l
             .iter()
-            .map(|e| list_free_var(e))
+            .map(list_free_var)
             .fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
         Expr::Object(o) => o
             .iter()
@@ -877,7 +873,7 @@ fn list_free_var(expr: &Expr) -> HashSet<String> {
             .union(
                 &args
                     .iter()
-                    .map(|e| list_free_var(e))
+                    .map(list_free_var)
                     .fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
             )
             .cloned()
@@ -914,7 +910,7 @@ fn eval_expr_ctx(
             for e in l {
                 let (val, next_step) =
                     eval_expr_ctx(e, steps, false, global_context, local_context)?;
-                new_list.push(Box::new(val));
+                new_list.push(val);
                 steps = next_step;
             }
             Ok((EvalResult::List(new_list), steps))
@@ -955,7 +951,7 @@ fn eval_expr_ctx(
                     if index < 0 || index >= v.len() as isize {
                         return Err((EvalError::OutOfRange, expr.clone()));
                     }
-                    Ok((*v[index as usize].clone(), next_step + 1))
+                    Ok((v[index as usize].clone(), next_step + 1))
                 }
                 _ => Err((EvalError::NotAList(val1), expr.clone())),
             }
@@ -1136,7 +1132,7 @@ fn eval_expr_ctx(
                     if args.len() != 1 {
                         return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
                     }
-                    Some(Ok((EvalResult::Lazy(args[0].clone()), next_step)))
+                    Some(Ok((EvalResult::Lazy(Box::new(args[0].clone())), next_step)))
                 }
                 EvalResult::Lazy(body) => {
                     let newexpr = &Expr::Apply(body.clone(), args.clone());
@@ -1160,7 +1156,7 @@ fn eval_expr_ctx(
                     for e in args {
                         let (val, next_step) =
                             eval_expr_ctx(e, steps, false, global_context, local_context)?;
-                        vargs.push(Box::new(val));
+                        vargs.push(val);
                         steps = next_step;
                     }
                     eval_apply(expr, steps, global_context, local_context, vfun, vargs)
@@ -1201,7 +1197,7 @@ pub fn eval_apply(
     global_context: &Context,
     local_context: &Context,
     func: EvalResult,
-    args: Vec<Box<EvalResult>>,
+    args: Vec<EvalResult>,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)> {
     if steps > STEP_LIMIT {
         return Err((EvalError::StepLimitExceeded, expr.clone()));
@@ -1218,7 +1214,7 @@ pub fn eval_apply(
 
             let new_context = ctx;
             for (param, argval) in params.iter().zip(args.iter()) {
-                new_context.insert(param.clone(), *argval.clone());
+                new_context.insert(param.clone(), argval.clone());
             }
             let steps = steps + 1;
             eval_expr_ctx(&body, steps, false, global_context, &new_context)
@@ -1237,7 +1233,7 @@ pub fn eval_stdlib(
     global_context: &Context,
     local_context: &Context,
     func: EvalStdLibFun,
-    args: Vec<Box<EvalResult>>,
+    args: Vec<EvalResult>,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)> {
     match func {
         EvalStdLibFun::Sin => {
@@ -1245,7 +1241,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.sin()), step + 1)),
             )
         }
@@ -1254,7 +1250,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.cos()), step + 1)),
             )
         }
@@ -1263,7 +1259,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.tan()), step + 1)),
             )
         }
@@ -1272,7 +1268,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.ln()), step + 1)),
             )
         }
@@ -1281,7 +1277,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.log10()), step + 1)),
             )
         }
@@ -1290,7 +1286,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::FVal(f.log2()), step + 1)),
             )
         }
@@ -1302,7 +1298,7 @@ pub fn eval_stdlib(
             val_as_precise_int(&args[0]).map_or_else(
                 || {
                     val_as_float(&args[0]).map_or_else(
-                        || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                        || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                         |f| Ok((EvalResult::FVal(f.abs()), step + 1)),
                     )
                 },
@@ -1314,7 +1310,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::IVal(f.floor() as i64), step + 1)),
             )
         }
@@ -1323,7 +1319,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::IVal(f.ceil() as i64), step + 1)),
             )
         }
@@ -1332,7 +1328,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_float(&args[0]).map_or_else(
-                || Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 |f| Ok((EvalResult::IVal(f.round() as i64), step + 1)),
             )
         }
@@ -1370,15 +1366,15 @@ pub fn eval_stdlib(
                             step + 1,
                             global_context,
                             local_context,
-                            *args[0].clone(),
+                            args[0].clone(),
                             vec![e.clone()],
                         )?;
                         step = next_step;
-                        new_list.push(Box::new(val));
+                        new_list.push(val);
                     }
                     Ok((EvalResult::List(new_list), step))
                 }
-                _ => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[1].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Geni => {
@@ -1395,15 +1391,15 @@ pub fn eval_stdlib(
                             step + 1,
                             global_context,
                             local_context,
-                            *args[0].clone(),
-                            vec![Box::new(EvalResult::IVal(i))],
+                            args[0].clone(),
+                            vec![EvalResult::IVal(i)],
                         )?;
                         step = next_step;
-                        new_list.push(Box::new(val));
+                        new_list.push(val);
                     }
                     Ok((EvalResult::List(new_list), step))
                 }
-                _ => Err((EvalError::NotANumber(*args[1].clone()), expr.clone())),
+                _ => Err((EvalError::NotANumber(args[1].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Repeat => {
@@ -1420,15 +1416,15 @@ pub fn eval_stdlib(
                             step + 1,
                             global_context,
                             local_context,
-                            *args[0].clone(),
+                            args[0].clone(),
                             vec![],
                         )?;
                         step = next_step;
-                        new_list.push(Box::new(val));
+                        new_list.push(val);
                     }
                     Ok((EvalResult::List(new_list), step))
                 }
-                _ => Err((EvalError::NotANumber(*args[1].clone()), expr.clone())),
+                _ => Err((EvalError::NotANumber(args[1].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Filter => {
@@ -1444,7 +1440,7 @@ pub fn eval_stdlib(
                             step + 1,
                             global_context,
                             local_context,
-                            *args[0].clone(),
+                            args[0].clone(),
                             vec![e.clone()],
                         )?;
                         if val_as_bool(&val) == Some(true) {
@@ -1453,7 +1449,7 @@ pub fn eval_stdlib(
                     }
                     Ok((EvalResult::List(new_list), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[1].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::ZipWith => {
@@ -1470,16 +1466,16 @@ pub fn eval_stdlib(
                             step + 1,
                             global_context,
                             local_context,
-                            *args[0].clone(),
+                            args[0].clone(),
                             vec![e1.clone(), e2.clone()],
                         )?;
                         step = next_step;
-                        new_list.push(Box::new(val));
+                        new_list.push(val);
                     }
                     Ok((EvalResult::List(new_list), step))
                 }
-                (Some(_), _) => Err((EvalError::NotAList(*args[1].clone()), expr.clone())),
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                (Some(_), _) => Err((EvalError::NotAList(args[1].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Foldl => {
@@ -1488,7 +1484,7 @@ pub fn eval_stdlib(
             }
             match val_as_list(&args[2]) {
                 Some(l) => {
-                    let mut acc = *args[1].clone();
+                    let mut acc = args[1].clone();
                     let mut step = step + 1;
                     for e in l {
                         let (val, next_step) = eval_apply(
@@ -1496,15 +1492,15 @@ pub fn eval_stdlib(
                             step,
                             global_context,
                             local_context,
-                            *args[0].clone(),
-                            vec![Box::new(acc), e.clone()],
+                            args[0].clone(),
+                            vec![acc, e.clone()],
                         )?;
                         acc = val;
                         step = next_step;
                     }
                     Ok((acc, step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[2].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[2].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Foldr => {
@@ -1513,7 +1509,7 @@ pub fn eval_stdlib(
             }
             match val_as_list(&args[2]) {
                 Some(l) => {
-                    let mut acc = *args[1].clone();
+                    let mut acc = args[1].clone();
                     let mut step = step + 1;
                     for e in l.iter().rev() {
                         let (val, next_step) = eval_apply(
@@ -1521,29 +1517,29 @@ pub fn eval_stdlib(
                             step,
                             global_context,
                             local_context,
-                            *args[0].clone(),
-                            vec![e.clone(), Box::new(acc)],
+                            args[0].clone(),
+                            vec![e.clone(), acc],
                         )?;
                         acc = val;
                         step = next_step;
                     }
                     Ok((acc, step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[2].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[2].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Range => {
             let (start, stop, stepsize): (i64, i64, i64) = match args.len() {
                 1 => match val_as_int(&args[0]) {
                     Some(e) => (0, e, 1),
-                    _ => return Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                    _ => return Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 },
                 2 => match (val_as_int(&args[0]), val_as_int(&args[1])) {
                     (Some(s), Some(e)) => (s, e, 1),
                     (Some(_), _) => {
-                        return Err((EvalError::NotANumber(*args[1].clone()), expr.clone()))
+                        return Err((EvalError::NotANumber(args[1].clone()), expr.clone()))
                     }
-                    _ => return Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                    _ => return Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 },
                 3 => match (
                     val_as_int(&args[0]),
@@ -1552,12 +1548,12 @@ pub fn eval_stdlib(
                 ) {
                     (Some(s), Some(e), Some(p)) => (s, e, p),
                     (Some(_), Some(_), _) => {
-                        return Err((EvalError::NotANumber(*args[2].clone()), expr.clone()))
+                        return Err((EvalError::NotANumber(args[2].clone()), expr.clone()))
                     }
                     (Some(_), _, _) => {
-                        return Err((EvalError::NotANumber(*args[1].clone()), expr.clone()))
+                        return Err((EvalError::NotANumber(args[1].clone()), expr.clone()))
                     }
-                    _ => return Err((EvalError::NotANumber(*args[0].clone()), expr.clone())),
+                    _ => return Err((EvalError::NotANumber(args[0].clone()), expr.clone())),
                 },
                 _ => return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone())),
             };
@@ -1565,14 +1561,14 @@ pub fn eval_stdlib(
             let mut new_list = Vec::new();
             if step > 0 {
                 for i in (start..stop).step_by(stepsize as usize) {
-                    new_list.push(Box::new(EvalResult::IVal(i)));
+                    new_list.push(EvalResult::IVal(i));
                 }
             } else {
                 for i in (start..stop)
                     .rev()
                     .step_by(stepsize.unsigned_abs() as usize)
                 {
-                    new_list.push(Box::new(EvalResult::IVal(i)));
+                    new_list.push(EvalResult::IVal(i));
                 }
             }
             Ok((EvalResult::List(new_list), step + 1))
@@ -1582,7 +1578,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_list(&args[0]).map_or_else(
-                || Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
                 |l| Ok((EvalResult::IVal(l.len() as i64), step + 1)),
             )
         }
@@ -1591,12 +1587,12 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_list(&args[0]).map_or_else(
-                || Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
                 |l| {
                     if l.is_empty() {
                         Err((EvalError::OutOfRange, expr.clone()))
                     } else {
-                        Ok((*l[0].clone(), step + 1))
+                        Ok((l[0].clone(), step + 1))
                     }
                 },
             )
@@ -1606,7 +1602,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_list(&args[0]).map_or_else(
-                || Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
                 |l| {
                     if l.is_empty() {
                         Err((EvalError::OutOfRange, expr.clone()))
@@ -1625,12 +1621,12 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_list(&args[0]).map_or_else(
-                || Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
                 |l| {
                     if l.is_empty() {
                         Err((EvalError::OutOfRange, expr.clone()))
                     } else {
-                        Ok((*l.last().unwrap().clone(), step + 1))
+                        Ok((l.last().unwrap().clone(), step + 1))
                     }
                 },
             )
@@ -1640,7 +1636,7 @@ pub fn eval_stdlib(
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
             val_as_list(&args[0]).map_or_else(
-                || Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
                 |l| {
                     if l.is_empty() {
                         Err((EvalError::OutOfRange, expr.clone()))
@@ -1660,7 +1656,7 @@ pub fn eval_stdlib(
             }
             let condgen = &args[0];
             let accgen = &args[1];
-            let mut acc = *args[2].clone();
+            let mut acc = args[2].clone();
             let mut step = step + 1;
             loop {
                 let (cond, next_step) = eval_apply(
@@ -1668,8 +1664,8 @@ pub fn eval_stdlib(
                     step,
                     global_context,
                     local_context,
-                    *condgen.clone(),
-                    vec![Box::new(acc.clone())],
+                    condgen.clone(),
+                    vec![acc.clone()],
                 )?;
                 step = next_step;
                 if val_as_bool(&cond) != Some(true) {
@@ -1680,8 +1676,8 @@ pub fn eval_stdlib(
                     step,
                     global_context,
                     local_context,
-                    *accgen.clone(),
-                    vec![Box::new(acc)],
+                    accgen.clone(),
+                    vec![acc],
                 )?;
                 acc = nextacc;
                 step = next_step;
@@ -1692,7 +1688,7 @@ pub fn eval_stdlib(
             if args.len() != 1 {
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
             }
-            match *args[0].clone() {
+            match args[0].clone() {
                 EvalResult::List(l) => {
                     let mut new_list = l;
                     new_list.sort_by(|a, b| match (val_as_float(a), val_as_float(b)) {
@@ -1701,7 +1697,7 @@ pub fn eval_stdlib(
                     });
                     Ok((EvalResult::List(new_list), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Sum => {
@@ -1714,12 +1710,12 @@ pub fn eval_stdlib(
                     for e in l {
                         match val_as_float(&e) {
                             Some(f) => sum += f,
-                            _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                            _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                         }
                     }
                     Ok((EvalResult::FVal(sum), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Average => {
@@ -1736,7 +1732,7 @@ pub fn eval_stdlib(
                                 sum += f;
                                 count += 1;
                             }
-                            _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                            _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                         }
                     }
                     if count == 0 {
@@ -1744,7 +1740,7 @@ pub fn eval_stdlib(
                     }
                     Ok((EvalResult::FVal(sum / f64::from(count)), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Max => {
@@ -1755,7 +1751,7 @@ pub fn eval_stdlib(
             for e in args {
                 match val_as_float(&e) {
                     Some(f) => max = max.max(f),
-                    _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                    _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                 }
             }
             Ok((EvalResult::FVal(max), step + 1))
@@ -1768,7 +1764,7 @@ pub fn eval_stdlib(
             for e in args {
                 match val_as_float(&e) {
                     Some(f) => min = min.min(f),
-                    _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                    _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                 }
             }
             Ok((EvalResult::FVal(min), step + 1))
@@ -1783,12 +1779,12 @@ pub fn eval_stdlib(
                     for e in l {
                         match val_as_float(&e) {
                             Some(f) => max = max.max(f),
-                            _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                            _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                         }
                     }
                     Ok((EvalResult::FVal(max), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Minimum => {
@@ -1801,12 +1797,12 @@ pub fn eval_stdlib(
                     for e in l {
                         match val_as_float(&e) {
                             Some(f) => min = min.min(f),
-                            _ => return Err((EvalError::NotANumber(*e.clone()), expr.clone())),
+                            _ => return Err((EvalError::NotANumber(e.clone()), expr.clone())),
                         }
                     }
                     Ok((EvalResult::FVal(min), step + 1))
                 }
-                _ => Err((EvalError::NotAList(*args[0].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
             }
         }
         EvalStdLibFun::Fix => {
@@ -1821,27 +1817,21 @@ pub fn eval_stdlib(
                 vec!["_x".to_owned()],
                 Box::new(Expr::Apply(
                     Box::new(Expr::Const("_f".to_owned())),
-                    vec![Box::new(Expr::Lambda(
+                    vec![Expr::Lambda(
                         vec!["_y".to_owned()],
                         Box::new(Expr::Apply(
                             Box::new(Expr::Apply(
                                 Box::new(Expr::Const("_x".to_owned())),
-                                vec![
-                                    Box::new(Expr::Const("_x".to_owned())),
-                                    Box::new(Expr::Const("_y".to_owned())),
-                                ],
+                                vec![Expr::Const("_x".to_owned()), Expr::Const("_y".to_owned())],
                             )),
-                            vec![Box::new(Expr::Const("_y".to_owned()))],
+                            vec![Expr::Const("_y".to_owned())],
                         )),
-                    ))],
+                    )],
                 )),
             );
             let z = Expr::Lambda(
                 vec!["_f".to_owned()],
-                Box::new(Expr::Apply(
-                    Box::new(xfyxxy.clone()),
-                    vec![Box::new(xfyxxy)],
-                )),
+                Box::new(Expr::Apply(Box::new(xfyxxy.clone()), vec![xfyxxy])),
             );
             let (zval, _) = eval_expr_ctx(&z, step + 1, false, global_context, local_context)?;
             eval_apply(
@@ -1988,11 +1978,7 @@ mod tests_parse {
             parse_expr("[1, 2, 3]"),
             Ok((
                 "",
-                Expr::List(vec![
-                    Box::new(Expr::IVal(1)),
-                    Box::new(Expr::IVal(2)),
-                    Box::new(Expr::IVal(3))
-                ]),
+                Expr::List(vec![Expr::IVal(1), Expr::IVal(2), Expr::IVal(3)]),
             )),
         );
     }
@@ -2026,9 +2012,9 @@ mod tests_parse {
                 "",
                 Expr::At(
                     Box::new(Expr::List(vec![
-                        Box::new(Expr::IVal(1)),
-                        Box::new(Expr::IVal(2)),
-                        Box::new(Expr::IVal(3))
+                        Expr::IVal(1),
+                        Expr::IVal(2),
+                        Expr::IVal(3)
                     ])),
                     Box::new(Expr::IVal(1)),
                 ),
@@ -2052,7 +2038,7 @@ mod tests_parse {
                 "",
                 Expr::Apply(
                     Box::new(Expr::Const("f".to_string())),
-                    vec![Box::new(Expr::IVal(1)), Box::new(Expr::IVal(2))],
+                    vec![Expr::IVal(1), Expr::IVal(2)],
                 ),
             )),
         );
