@@ -17,7 +17,7 @@ use strum::Display;
 #[derive(Debug)]
 struct Player {
     id: UserId,
-    cost: u8,
+    mana: u8,
     action: Option<Action>,
 }
 
@@ -45,12 +45,12 @@ impl Game {
         Self {
             player1: Player {
                 id: users.0,
-                cost: 0,
+                mana: 0,
                 action: None,
             },
             player2: Player {
                 id: users.1,
-                cost: 0,
+                mana: 0,
                 action: None,
             },
             turn: 1,
@@ -67,12 +67,12 @@ impl Game {
         };
         player.action = match action {
             Action::Charge => {
-                player.cost += 1;
+                player.mana += 1;
                 Some(action)
             }
             other => {
-                if player.cost >= other.cost() {
-                    player.cost -= other.cost();
+                if player.mana >= other.cost() {
+                    player.mana -= other.cost();
                     Some(other)
                 } else {
                     return Err(ActionError::NotEnoughCost);
@@ -100,19 +100,19 @@ impl Game {
             CreateEmbed::default()
                 .title(format!("ターン{}", self.turn))
                 .field("player 1", Mention::from(self.player1.id).to_string(), true)
-                .field("cost", format!("`{}`", self.player1.cost), true)
-                .field("action", player1_action.to_string(), true)
+                .field("マナ", format!("`{}`", self.player1.mana), true)
+                .field("技", player1_action.to_string(), true)
                 .field("player 2", Mention::from(self.player2.id).to_string(), true)
-                .field("cost", format!("`{}`", self.player2.cost), true)
-                .field("action", player2_action.to_string(), true)
+                .field("マナ", format!("`{}`", self.player2.mana), true)
+                .field("技", player2_action.to_string(), true)
         } else {
             CreateEmbed::default()
                 .title(format!("ターン{}", self.turn))
                 .field("player 1", Mention::from(self.player1.id).to_string(), true)
-                .field("cost", format!("`{}`", self.player1.cost), true)
+                .field("マナ", format!("`{}`", self.player1.mana), true)
                 .field("\u{200B}", "\u{200B}", true)
                 .field("player 2", Mention::from(self.player2.id).to_string(), true)
-                .field("cost", format!("`{}`", self.player2.cost), true)
+                .field("マナ", format!("`{}`", self.player2.mana), true)
         }
     }
 }
@@ -127,6 +127,8 @@ enum Action {
     Bomber,
     #[strum(serialize = "ソード")]
     Sword,
+    #[strum(serialize = "メテオ")]
+    Meteor,
 }
 
 impl FromStr for Action {
@@ -138,6 +140,7 @@ impl FromStr for Action {
             "barrier" => Ok(Self::Barrier),
             "bomber" => Ok(Self::Bomber),
             "sword" => Ok(Self::Sword),
+            "meteor" => Ok(Self::Meteor),
             _ => Err(()),
         }
     }
@@ -149,6 +152,7 @@ impl Action {
             Self::Charge | Self::Barrier => 0,
             Self::Bomber => 1,
             Self::Sword => 2,
+            Self::Meteor => 5,
         }
     }
 }
@@ -160,15 +164,20 @@ const fn fight(a: (UserId, &Action), b: (UserId, &Action)) -> Turn {
         (&Action::Bomber | &Action::Sword, &Action::Charge) => Turn::Settled(a.0),
         (&Action::Charge, &Action::Bomber | &Action::Sword) => Turn::Settled(b.0),
         // same kind of attacking action cancel each other out
-        (&Action::Bomber, &Action::Bomber) | (&Action::Sword, &Action::Sword) => Turn::Continue,
+        (&Action::Bomber, &Action::Bomber)
+        | (&Action::Sword, &Action::Sword)
+        | (&Action::Meteor, &Action::Meteor) => Turn::Continue,
         // "barrier" prevent from "bomber"
         (&Action::Bomber, &Action::Barrier) | (&Action::Barrier, &Action::Bomber) => Turn::Continue,
         // "sword" break "barrier"
-        (&Action::Barrier, &Action::Sword) => Turn::Settled(a.0),
-        (&Action::Sword, &Action::Barrier) => Turn::Settled(b.0),
+        (&Action::Sword, &Action::Barrier) => Turn::Settled(a.0),
+        (&Action::Barrier, &Action::Sword) => Turn::Settled(b.0),
         // "bomber" win against "sword"
         (&Action::Bomber, &Action::Sword) => Turn::Settled(a.0),
         (&Action::Sword, &Action::Bomber) => Turn::Settled(b.0),
+        // "meteor" win against any other actions
+        (&Action::Meteor, _) => Turn::Settled(a.0),
+        (_, &Action::Meteor) => Turn::Settled(b.0),
     }
 }
 
@@ -191,7 +200,8 @@ pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) 
                     .button(CreateButton::new("charge").label("チャージ"))
                     .button(CreateButton::new("barrier").label("バリア"))
                     .button(CreateButton::new("bomber").label("ボンバー"))
-                    .button(CreateButton::new("sword").label("ソード")),
+                    .button(CreateButton::new("sword").label("ソード"))
+                    .button(CreateButton::new("meteor").label("メテオ")),
             )
             .await
             .unwrap();
