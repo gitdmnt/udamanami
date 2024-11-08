@@ -1,5 +1,4 @@
 use std::str::FromStr;
-use std::{convert::Into, fmt::format};
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -87,7 +86,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    let user = update_user(&bot, ctx, &mut user, &msg.author.id)
+    let user = update_user(bot, ctx, &mut user, &msg.author.id)
         .await
         .unwrap();
 
@@ -126,7 +125,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
     let command_pattern = Regex::new(r"(?ms)(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
     let input_string: String = match command_pattern.captures(&msg.content) {
-        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        Some(caps) => caps.get(1).unwrap().as_str().to_owned(),
         None => return,
     };
 
@@ -136,7 +135,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    update_user(&bot, ctx, &mut user, &msg.author.id)
+    update_user(bot, ctx, &mut user, &msg.author.id)
         .await
         .unwrap();
 
@@ -165,7 +164,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "help" | "たすけて" | "助けて" => {
-            help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await
+            help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await;
         }
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
@@ -423,15 +422,15 @@ async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
 const VAR_DEFAULT: &str = "_";
 
 async fn calc(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
-    var_main(reply, ctx, VAR_DEFAULT.to_string(), expression, bot).await;
+    var_main(reply, ctx, VAR_DEFAULT.to_owned(), expression, bot).await;
 }
 
 async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
-    let split: Vec<&str> = input.split("=").collect();
+    let split: Vec<&str> = input.split('=').collect();
     let (var, expression) = if split.len() < 2 {
-        (VAR_DEFAULT.to_string(), input)
+        (VAR_DEFAULT.to_owned(), input)
     } else {
-        (split[0].trim().to_string(), split[1..].join("="))
+        (split[0].trim().to_owned(), split[1..].join("="))
     };
     var_main(reply, ctx, var, expression, bot).await;
 }
@@ -441,16 +440,16 @@ async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
 
     //get input in code block
     let input = match code_pattern.captures(&input) {
-        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        Some(caps) => caps.get(1).unwrap().as_str().to_owned(),
         None => return,
     };
     println!("{}", input);
-    let split: Vec<&str> = input.split(";").collect();
+    let split: Vec<&str> = input.split(';').collect();
     for s in split {
         if s.trim().is_empty() {
             continue;
         }
-        var(reply, ctx, s.to_string(), bot).await;
+        var(reply, ctx, s.to_owned(), bot).await;
     }
 }
 
@@ -502,15 +501,15 @@ async fn serenity(
     .collect();
 
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
-    let guild_id = match secrets.get("GUILD_ID") {
-        Some(id) => GuildId::from_str(&id).unwrap(),
-        _ => GuildId::from(KOCHIKITE_GUILD_ID),
-    };
+    let guild_id = secrets.get("GUILD_ID").map_or_else(
+        || GuildId::from(KOCHIKITE_GUILD_ID),
+        |id| GuildId::from_str(&id).unwrap(),
+    );
 
-    let erogaki_role_id = match secrets.get("EROGAKI_ROLE_ID") {
-        Some(id) => RoleId::from_str(&id).unwrap(),
-        _ => RoleId::from(EROGAKI_ROLE_ID),
-    };
+    let erogaki_role_id = secrets.get("EROGAKI_ROLE_ID").map_or_else(
+        || RoleId::from(EROGAKI_ROLE_ID),
+        |id| RoleId::from_str(&id).unwrap(),
+    );
 
     let variables = DashMap::new();
 
