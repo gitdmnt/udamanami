@@ -15,12 +15,13 @@ use serenity::{
         id::{ChannelId, GuildId, RoleId, UserId},
     },
     prelude::*,
-    utils::MessageBuilder,
+    utils::{parse_user_mention, MessageBuilder},
 };
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
 mod calculator;
+mod cclemon;
 mod parser;
 use calculator::EvalResult;
 
@@ -170,6 +171,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
         "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
+        "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
@@ -467,6 +469,21 @@ async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: Str
                 .unwrap();
         }
     }
+}
+
+async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_args: &[&str]) {
+    if command_args.len() != 1 {
+        reply
+            .say(&ctx.http, "使い方: `!cclemon <相手>`")
+            .await
+            .unwrap();
+        return;
+    }
+    let Some(opponent_id) = parse_user_mention(command_args[0]) else {
+        reply.say(&ctx.http, "相手をメンションで指定してね").await.unwrap();
+        return;
+    };
+    cclemon::cclemon(reply, ctx, (author_id, opponent_id)).await;
 }
 
 // ping command
