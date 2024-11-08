@@ -7,19 +7,19 @@ use nom::{
     error::{Error, ErrorKind},
     Finish as _,
 };
+use regex::Regex;
 use serenity::{
     async_trait,
     model::{
         channel::Message,
         gateway::Ready,
-        id::{ChannelId, GuildId, UserId, RoleId},
+        id::{ChannelId, GuildId, RoleId, UserId},
     },
     prelude::*,
     utils::MessageBuilder,
 };
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
-use regex::Regex;
 
 mod calculator;
 mod parser;
@@ -72,7 +72,8 @@ impl EventHandler for Bot {
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // ユーザーがこっちにきてはいけないに存在しない場合は無視
-    if bot.guild_id
+    if bot
+        .guild_id
         .member(&ctx.http, &msg.author.id)
         .await
         .is_err()
@@ -86,7 +87,9 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    let user = update_user(&bot, ctx, &mut user, &msg.author.id).await.unwrap();
+    let user = update_user(&bot, ctx, &mut user, &msg.author.id)
+        .await
+        .unwrap();
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
@@ -109,7 +112,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id, &bot.guild_id).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
-        "var"  => var(dm, ctx, command_args.join(" "), bot).await,
+        "var" => var(dm, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
@@ -122,11 +125,10 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message does not contains any command, ignore
     let command_pattern = Regex::new(r"(?ms)(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
-    let input_string: String =
-        match command_pattern.captures(&msg.content) {
-            Some(caps) => caps.get(1).unwrap().as_str().to_string(),
-            None => return,
-        };
+    let input_string: String = match command_pattern.captures(&msg.content) {
+        Some(caps) => caps.get(1).unwrap().as_str().to_string(),
+        None => return,
+    };
 
     // get user data
     let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
@@ -134,7 +136,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         is_erogaki: false,
     });
     // update user data
-    update_user(&bot, ctx, &mut user, &msg.author.id).await.unwrap();
+    update_user(&bot, ctx, &mut user, &msg.author.id)
+        .await
+        .unwrap();
 
     // dice command
     match parser::parse_dice(&input_string).finish() {
@@ -160,7 +164,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let reply_channel = &msg.channel_id;
 
     match command_name {
-        "help" | "たすけて" | "助けて" => help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await,
+        "help" | "たすけて" | "助けて" => {
+            help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await
+        }
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
         "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
@@ -422,12 +428,11 @@ async fn calc(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
 
 async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     let split: Vec<&str> = input.split("=").collect();
-    let (var, expression) =
-        if split.len() < 2 {
-            (VAR_DEFAULT.to_string(), input)
-        } else {
-            (split[0].trim().to_string(), split[1..].join("="))
-        };
+    let (var, expression) = if split.len() < 2 {
+        (VAR_DEFAULT.to_string(), input)
+    } else {
+        (split[0].trim().to_string(), split[1..].join("="))
+    };
     var_main(reply, ctx, var, expression, bot).await;
 }
 
@@ -449,7 +454,7 @@ async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     }
 }
 
-async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: String, bot: &Bot){
+async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: String, bot: &Bot) {
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
@@ -497,17 +502,15 @@ async fn serenity(
     .collect();
 
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
-    let guild_id = 
-        match secrets.get("GUILD_ID") {
-            Some(id) => GuildId::from_str(&id).unwrap(),
-            _ => GuildId::from(KOCHIKITE_GUILD_ID),
-        };
-        
-    let erogaki_role_id = 
-        match secrets.get("EROGAKI_ROLE_ID") {
-            Some(id) => RoleId::from_str(&id).unwrap(),
-            _ => RoleId::from(EROGAKI_ROLE_ID),
-        };
+    let guild_id = match secrets.get("GUILD_ID") {
+        Some(id) => GuildId::from_str(&id).unwrap(),
+        _ => GuildId::from(KOCHIKITE_GUILD_ID),
+    };
+
+    let erogaki_role_id = match secrets.get("EROGAKI_ROLE_ID") {
+        Some(id) => RoleId::from_str(&id).unwrap(),
+        _ => RoleId::from(EROGAKI_ROLE_ID),
+    };
 
     let variables = DashMap::new();
 
