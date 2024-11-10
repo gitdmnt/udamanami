@@ -191,9 +191,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
         "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
+        "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         "jail" => jail_main(reply_channel, ctx, command_args, bot).await,
         "unjail" => unjail_main(reply_channel, ctx, command_args, bot).await,
-        "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
