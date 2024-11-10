@@ -21,7 +21,6 @@ use serenity::{
 };
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
-use regex::Regex;
 
 use tokio::{time::sleep, spawn};
 use std::cmp::min;
