@@ -248,6 +248,7 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildI
 !varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
 !jail <user> [sec]   不届き者を収監して 見せます と 袋とじ 以外で喋れなくするよ
 !unjail <user>       収監を解除するよ
+!cclemon <opponent>  CCレモンをするよ
 ```
 ";
 
