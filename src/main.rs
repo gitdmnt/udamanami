@@ -510,8 +510,8 @@ async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_ar
     cclemon::cclemon(reply, ctx, (author_id, opponent_id)).await;
 }
 
-const JAIL_TERM_MAX: Duration = Duration::from_secs(120);
-const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(20);
+const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
+const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
 
 fn get_userid_from_mention(mention: &str) -> Option<UserId> {
     // "<@120123018923098123>" という形式の文字列を UserId に変換
@@ -535,7 +535,7 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
             };
             (user, JAIL_TERM_DEFAULT)
         },
-        [user, jailterm] => {
+        [user, args @ ..] => {
             let user = match get_userid_from_mention(user) {
                 Some(user) => user,
                 None => {
@@ -543,15 +543,36 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
                     return;
                 }
             };
-            let Ok(jailtermsec) = jailterm.parse::<u64>() else {
-                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                return;
+
+            let expression = args.join(" ");
+            
+            let jailtermsec = {
+                match calculator::eval_from_str(&expression, &bot.variables) {
+                    Ok(result) => {
+                        match calculator::val_as_int(&result) {
+                            Some(val) => val as u64,
+                            None => {
+                                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
+                                return;
+                            }
+                        }
+                    },
+                    _ => {
+                        reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
+                        return;
+                    }
+                }
             };
-            let jailterm = Duration::from_secs(jailtermsec);
-            if jailterm > JAIL_TERM_MAX {
-                reply.say(&ctx.http, format!("刑期が長すぎるよ（最長{}秒）", JAIL_TERM_MAX.as_secs())).await.unwrap();
-                return;
-            }
+
+            let jailterm = if jailtermsec > JAIL_TERM_MAX.as_secs() {
+                    reply.say(&ctx.http, format!("刑期が長すぎるから切り詰めたよ（最長{}秒）", JAIL_TERM_MAX.as_secs())).await.unwrap();
+                    JAIL_TERM_MAX
+                } else if jailtermsec < 0 {
+                    reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
+                    return;
+                } else {
+                    Duration::from_secs(jailtermsec)
+                };
             (user, jailterm)
         }
         _ => {
