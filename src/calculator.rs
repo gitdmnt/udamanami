@@ -754,7 +754,7 @@ pub fn error_str((e, expr): (EvalError, Expr)) -> String {
     format!("Error: {} at {}", e, expr)
 }
 
-fn val_as_float(val: &EvalResult) -> Option<f64> {
+pub fn val_as_float(val: &EvalResult) -> Option<f64> {
     match val {
         EvalResult::IVal(i) => Some(*i as f64),
         EvalResult::BVal(b) => Some(if *b { 1.0 } else { 0.0 }),
@@ -763,7 +763,7 @@ fn val_as_float(val: &EvalResult) -> Option<f64> {
     }
 }
 
-fn val_as_int(val: &EvalResult) -> Option<i64> {
+pub fn val_as_int(val: &EvalResult) -> Option<i64> {
     match val {
         EvalResult::IVal(i) => Some(*i),
         EvalResult::BVal(b) => Some(if *b { 1 } else { 0 }),
@@ -772,7 +772,7 @@ fn val_as_int(val: &EvalResult) -> Option<i64> {
     }
 }
 
-fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
+pub fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
     match val {
         EvalResult::IVal(i) => Some(*i),
         EvalResult::BVal(b) => Some(if *b { 1 } else { 0 }),
@@ -780,7 +780,7 @@ fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
     }
 }
 
-fn val_as_bool(val: &EvalResult) -> Option<bool> {
+pub fn val_as_bool(val: &EvalResult) -> Option<bool> {
     match val {
         EvalResult::IVal(i) => Some(*i != 0),
         EvalResult::BVal(b) => Some(*b),
@@ -789,7 +789,7 @@ fn val_as_bool(val: &EvalResult) -> Option<bool> {
     }
 }
 
-fn val_as_list(val: &EvalResult) -> Option<Vec<EvalResult>> {
+pub fn val_as_list(val: &EvalResult) -> Option<Vec<EvalResult>> {
     match val {
         EvalResult::List(l) => Some(l.clone()),
         EvalResult::SVal(s) => Some(s.chars().map(|c| EvalResult::SVal(c.to_string())).collect()),
