@@ -613,6 +613,7 @@ async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot)
             return;
         }
     };
+
     unjail(
         reply,
         ctx,
@@ -649,6 +650,11 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, 
 
 async fn unjail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, roles: &[RoleId]) {
     let member = guild.member(&ctx.http, user).await.unwrap();
+
+    if !member.roles.iter().any(|role| roles.contains(role)) {
+        return;
+    }
+
     match member.remove_roles(&ctx.http, roles).await {
         Ok(_) => {}
         Err(_) => {
