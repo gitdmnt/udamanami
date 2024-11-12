@@ -243,6 +243,12 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     Ok(response) => response,
                     Err(e) => e,
                 };
+                let content = if content.starts_with("うだまなみ: ") {
+                    content.replace("うだまなみ: ", "")
+                } else {
+                    content
+                };
+
                 reply_channel.say(&ctx.http, content).await.unwrap();
             }
         }
