@@ -22,8 +22,9 @@ use serenity::{
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
-use tokio::{time::sleep, spawn};
 use std::cmp::min;
+use tokio::{spawn, time::sleep};
+use udamanami::ai::{self, Query};
 
 mod calculator;
 mod cclemon;
@@ -31,9 +32,9 @@ mod parser;
 use calculator::EvalResult;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
-const EROGAKI_ROLE_ID: u64    = 1066667753706102824;
-const JAIL_MARK_ROLE_ID: u64  = 1305240882923962451;
-const JAIL_MAIN_ROLE_ID: u64  = 1305228980697305119;
+const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
+const JAIL_MARK_ROLE_ID: u64 = 1305240882923962451;
+const JAIL_MAIN_ROLE_ID: u64 = 1305228980697305119;
 
 struct Bot {
     userdata: DashMap<UserId, UserData>,
@@ -44,6 +45,7 @@ struct Bot {
     jail_main_role_id: RoleId,
 
     variables: DashMap<String, EvalResult>,
+    ai: ai::AI,
 }
 
 struct UserData {
@@ -200,6 +202,12 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .say(&ctx.http, "しらないコマンドだよ")
                     .await
                     .unwrap();
+            } else {
+                let message = msg.content.to_owned();
+                let user_name = msg.author.name.to_owned();
+                let query = vec![Query::new(user_name, message)];
+                let response = bot.ai.fetch_ai_response(query).await.unwrap();
+                reply_channel.say(&ctx.http, response).await.unwrap();
             }
         }
     }
@@ -504,7 +512,10 @@ async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_ar
         return;
     }
     let Some(opponent_id) = parse_user_mention(command_args[0]) else {
-        reply.say(&ctx.http, "相手をメンションで指定してね").await.unwrap();
+        reply
+            .say(&ctx.http, "相手をメンションで指定してね")
+            .await
+            .unwrap();
         return;
     };
     cclemon::cclemon(reply, ctx, (author_id, opponent_id)).await;
@@ -534,7 +545,7 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
                 }
             };
             (user, JAIL_TERM_DEFAULT)
-        },
+        }
         [user, args @ ..] => {
             let user = match get_userid_from_mention(user) {
                 Some(user) => user,
@@ -545,16 +556,14 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
             };
 
             let expression = args.join(" ");
-            
+
             let jailtermsec = {
                 match calculator::eval_from_str(&expression, &bot.variables) {
-                    Ok(result) => {
-                        match calculator::val_as_int(&result) {
-                            Some(val) => val as u64,
-                            None => {
-                                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                                return;
-                            }
+                    Ok(result) => match calculator::val_as_int(&result) {
+                        Some(val) => val as u64,
+                        None => {
+                            reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
+                            return;
                         }
                     },
                     _ => {
@@ -565,14 +574,23 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
             };
 
             let jailterm = if jailtermsec > JAIL_TERM_MAX.as_secs() {
-                    reply.say(&ctx.http, format!("刑期が長すぎるから切り詰めたよ（最長{}秒）", JAIL_TERM_MAX.as_secs())).await.unwrap();
-                    JAIL_TERM_MAX
-                } else if jailtermsec < 0 {
-                    reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
-                    return;
-                } else {
-                    Duration::from_secs(jailtermsec)
-                };
+                reply
+                    .say(
+                        &ctx.http,
+                        format!(
+                            "刑期が長すぎるから切り詰めたよ（最長{}秒）",
+                            JAIL_TERM_MAX.as_secs()
+                        ),
+                    )
+                    .await
+                    .unwrap();
+                JAIL_TERM_MAX
+            } else if jailtermsec < 0 {
+                reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
+                return;
+            } else {
+                Duration::from_secs(jailtermsec)
+            };
             (user, jailterm)
         }
         _ => {
@@ -590,7 +608,8 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
         &bot.guild_id,
         &[bot.jail_mark_role_id, bot.jail_main_role_id],
         jailterm,
-    ).await;
+    )
+    .await;
 }
 
 async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
@@ -620,10 +639,18 @@ async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot)
         &user,
         &bot.guild_id,
         &[bot.jail_mark_role_id, bot.jail_main_role_id],
-    ).await;
+    )
+    .await;
 }
 
-async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, roles: &[RoleId], jailterm: Duration) {
+async fn jail(
+    reply: &ChannelId,
+    ctx: &Context,
+    user: &UserId,
+    guild: &GuildId,
+    roles: &[RoleId],
+    jailterm: Duration,
+) {
     let member = guild.member(&ctx.http, user).await.unwrap();
     match member.add_roles(&ctx.http, roles).await {
         Ok(_) => {}
@@ -633,7 +660,11 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, 
         }
     }
 
-    let content = format!("{}を収監したよ（刑期：{}秒）", user.mention(), jailterm.as_secs());
+    let content = format!(
+        "{}を収監したよ（刑期：{}秒）",
+        user.mention(),
+        jailterm.as_secs()
+    );
     reply.say(&ctx.http, content).await.unwrap();
 
     let reply = reply.clone();
@@ -648,7 +679,13 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, 
     });
 }
 
-async fn unjail(reply: &ChannelId, ctx: &Context, user: &UserId, guild: &GuildId, roles: &[RoleId]) {
+async fn unjail(
+    reply: &ChannelId,
+    ctx: &Context,
+    user: &UserId,
+    guild: &GuildId,
+    roles: &[RoleId],
+) {
     let member = guild.member(&ctx.http, user).await.unwrap();
 
     if !member.roles.iter().any(|role| roles.contains(role)) {
@@ -708,20 +745,20 @@ async fn serenity(
         || RoleId::from(EROGAKI_ROLE_ID),
         |id| RoleId::from_str(&id).unwrap(),
     );
-        
-    let jail_mark_role_id = 
-        match secrets.get("JAIL_MARK_ROLE_ID") {
-            Some(id) => RoleId::from_str(&id).unwrap(),
-            _ => RoleId::from(JAIL_MARK_ROLE_ID),
-        };
-    
-    let jail_main_role_id =
-        match secrets.get("JAIL_MAIN_ROLE_ID") {
-            Some(id) => RoleId::from_str(&id).unwrap(),
-            _ => RoleId::from(JAIL_MAIN_ROLE_ID),
-        };
+
+    let jail_mark_role_id = match secrets.get("JAIL_MARK_ROLE_ID") {
+        Some(id) => RoleId::from_str(&id).unwrap(),
+        _ => RoleId::from(JAIL_MARK_ROLE_ID),
+    };
+
+    let jail_main_role_id = match secrets.get("JAIL_MAIN_ROLE_ID") {
+        Some(id) => RoleId::from_str(&id).unwrap(),
+        _ => RoleId::from(JAIL_MAIN_ROLE_ID),
+    };
 
     let variables = DashMap::new();
+
+    let ai = ai::AI::new(secrets.get("GEMINI_API_KEY").unwrap());
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
@@ -732,6 +769,7 @@ async fn serenity(
             jail_mark_role_id,
             jail_main_role_id,
             variables,
+            ai,
         })
         .await
         .expect("Err creating client");
