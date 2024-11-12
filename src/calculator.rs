@@ -61,6 +61,7 @@ impl std::fmt::Display for ExprOp2 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum ExprOp1 {
     Neg,
     OneDice,
@@ -78,6 +79,7 @@ impl std::fmt::Display for ExprOp1 {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum Expr {
     IVal(i64),
     FVal(f64),
@@ -2152,9 +2154,9 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::IVal(i)) => {
                 println!("{}", i);
-                assert!(i >= 50000 && i <= 150000);
+                assert!((50000..=150000).contains(&i));
             }
-            _ => assert!(false),
+            _ => std::panic!(),
         }
     }
 
@@ -2169,7 +2171,7 @@ mod tests_eval {
             }
             _ => {
                 println!("{:?}", result);
-                assert!(false);
+                std::panic!();
             }
         }
     }
@@ -2183,7 +2185,7 @@ mod tests_eval {
                 println!("{}", s);
             }
             _ => {
-                assert!(false);
+                std::panic!();
             }
         }
     }
@@ -2197,7 +2199,7 @@ mod tests_eval {
                 println!("{:?}", o);
             }
             _ => {
-                assert!(false);
+                std::panic!();
             }
         }
     }
