@@ -236,7 +236,12 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
-                    .map(|m| ai::Query::new(&m.author.name, &m.content))
+                    .map(|m| {
+                        ai::Query::new(
+                            m.author.global_name.as_ref().unwrap_or(&m.author.name),
+                            &m.content,
+                        )
+                    })
                     .collect();
                 let response = bot.ai.fetch_ai_response(query).await;
                 let content = match response {
