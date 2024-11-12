@@ -1,6 +1,6 @@
+use std::convert::Into;
 use std::str::FromStr;
 use std::time::Duration;
-use std::{convert::Into, fmt::format};
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -24,12 +24,13 @@ use tracing::{error, info};
 
 use std::cmp::min;
 use tokio::{spawn, time::sleep};
-use udamanami::ai::{self, Query};
 
 mod calculator;
 mod cclemon;
 mod parser;
+
 use calculator::EvalResult;
+use udamanami::ai;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
@@ -205,9 +206,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             } else {
                 let message = msg.content.to_owned();
                 let user_name = msg.author.name.to_owned();
-                let query = vec![Query::new(user_name, message)];
-                let response = bot.ai.fetch_ai_response(query).await.unwrap();
-                reply_channel.say(&ctx.http, response).await.unwrap();
+                let query = vec![ai::Query::new(user_name, message)];
+                let response = bot.ai.fetch_ai_response(query).await;
+                let content = match response {
+                    Ok(response) => response,
+                    Err(e) => e,
+                };
+                reply_channel.say(&ctx.http, content).await.unwrap();
             }
         }
     }
@@ -585,9 +590,6 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
                     .await
                     .unwrap();
                 JAIL_TERM_MAX
-            } else if jailtermsec < 0 {
-                reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
-                return;
             } else {
                 Duration::from_secs(jailtermsec)
             };
@@ -614,16 +616,13 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
 
 async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
     let user = match args {
-        [user] => {
-            let user = match get_userid_from_mention(user) {
-                Some(user) => user,
-                None => {
-                    reply.say(&ctx.http, "誰？").await.unwrap();
-                    return;
-                }
-            };
-            user
-        }
+        [user] => match get_userid_from_mention(user) {
+            Some(user) => user,
+            None => {
+                reply.say(&ctx.http, "誰？").await.unwrap();
+                return;
+            }
+        },
         _ => {
             reply
                 .say(&ctx.http, "使い方: `!unjail <user>`")
@@ -667,13 +666,13 @@ async fn jail(
     );
     reply.say(&ctx.http, content).await.unwrap();
 
-    let reply = reply.clone();
+    let reply = *reply;
     let ctx = ctx.clone();
-    let user = user.clone();
-    let guild = guild.clone();
+    let user = *user;
+    let guild = *guild;
     let roles = roles.to_vec();
 
-    let _ = spawn(async move {
+    spawn(async move {
         sleep(min(jailterm, JAIL_TERM_MAX)).await;
         unjail(&reply, &ctx, &user, &guild, &roles).await;
     });
@@ -758,7 +757,7 @@ async fn serenity(
 
     let variables = DashMap::new();
 
-    let ai = ai::AI::new(secrets.get("GEMINI_API_KEY").unwrap());
+    let ai = ai::AI::new(secrets.get("AI_API_KEY").unwrap());
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
