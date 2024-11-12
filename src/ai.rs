@@ -131,19 +131,8 @@ impl AI {
         let response = serde_json::from_str::<GeminiResponse>(&response);
         let response = match response {
             Ok(response) => response,
-            Err(e) => return Err(e.to_string()),
+            Err(e) => return Err("まなみちょっと今忙しいの".to_string()),
         };
-        if &response.candidates[0].finish_reason != "STOP" {
-            let reason = response.candidates[0]
-                .safety_ratings
-                .iter()
-                .filter(|r| r.probability != "NEGLIGIBLE")
-                .map(|r| format!("{}の可能性が{}くらい", r.category, r.probability))
-                .collect::<Vec<String>>()
-                .join("、");
-            let reason = format!("そのメッセージ、{}あるかも……", reason);
-            return Err(format!("```{:?}```", &reason));
-        }
         let response = response.candidates[0].content.as_ref().unwrap().parts[0]
             .text
             .clone();
