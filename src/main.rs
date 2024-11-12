@@ -696,10 +696,11 @@ async fn jail(
     let guild = *guild;
     let roles = roles.to_vec();
 
-    spawn(async move {
+    let _ = spawn(async move {
         sleep(min(jailterm, JAIL_TERM_MAX)).await;
         unjail(&reply, &ctx, &user, &guild, &roles).await;
-    });
+    })
+    .await;
 }
 
 async fn unjail(
