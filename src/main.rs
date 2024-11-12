@@ -220,6 +220,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         "jail" => jail_main(reply_channel, ctx, command_args, bot).await,
         "unjail" => unjail_main(reply_channel, ctx, command_args, bot).await,
+        "clear" | "全部忘れて" => forget_channel_log(reply_channel, ctx, bot).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
@@ -295,9 +296,10 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildI
 !calc <expr>         数式を計算するよ
 !var <name>=<expr>   calcで使える変数を定義するよ
 !varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
-!jail <user> [sec]   不届き者を収監して 見せます と 袋とじ 以外で喋れなくするよ
+!jail <user> [sec]   不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ
 !unjail <user>       収監を解除するよ
 !cclemon <opponent>  CCレモンをするよ
+!clear               コマンドを実行したチャンネルのログを忘れるよ
 ```
 ";
 
@@ -739,6 +741,16 @@ async fn unjail(
 
     let content = format!("{}を釈放したよ", user.mention());
     reply.say(&ctx.http, content).await.unwrap();
+}
+
+async fn forget_channel_log(reply: &ChannelId, ctx: &Context, bot: &Bot) {
+    reply.say(&ctx.http, "1……2の……ポカン！").await.unwrap();
+
+    if let Some(reflog) = bot.chat_log.get(reply) {
+        if let Ok(mut chat_log) = reflog.lock() {
+            chat_log.clear();
+        }
+    }
 }
 
 // ping command
