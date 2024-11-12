@@ -131,7 +131,7 @@ impl AI {
         let response = serde_json::from_str::<GeminiResponse>(&response);
         let response = match response {
             Ok(response) => response,
-            Err(e) => return Err("まなみちょっと今忙しいの".to_string()),
+            Err(_e) => return Err("まなみちょっと今忙しいの".to_string()),
         };
         let response = response.candidates[0].content.as_ref().unwrap().parts[0]
             .text

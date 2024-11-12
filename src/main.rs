@@ -170,9 +170,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     // if message does not contains any command, ignore
-    let command_pattern = Regex::new(r"(?ms)((まなみ(ちゃん)?(\s|、|は|って|の)?)|!)(.*)").unwrap();
-    let input_string: String = match command_pattern.captures(&msg.content) {
-        Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
+    let command_pattern =
+        Regex::new(r"(?ms)((?:まなみ(?:ちゃん)?(?:\s|、|は|って|の)?)|!)(.*)").unwrap();
+    let (_prefix, input_string): (String, String) = match command_pattern.captures(&msg.content) {
+        Some(caps) => (
+            caps.get(1).unwrap().as_str().to_owned(),
+            caps.get(2).unwrap().as_str().to_owned(),
+        ),
         None => return,
     };
 
