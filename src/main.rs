@@ -48,7 +48,7 @@ struct Bot {
 
     variables: DashMap<String, EvalResult>,
     ai: ai::AI,
-    chat_log: Mutex<VecDeque<Message>>,
+    chat_log: DashMap<ChannelId, Mutex<VecDeque<Message>>>,
 }
 
 struct UserData {
@@ -146,12 +146,17 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    let channel_id = msg.channel_id;
     // 発言をAIにチェックさせる
     let query = Query::new(&msg.author.name, &msg.content);
     let response = bot.ai.fetch_ai_response(vec![query]).await;
     // 大丈夫ならログに格納する
     if response.is_ok() {
-        if let Ok(mut chat_log) = bot.chat_log.lock() {
+        if bot.chat_log.get(&channel_id).is_none() {
+            bot.chat_log.insert(channel_id, Mutex::new(VecDeque::new()));
+        }
+
+        if let Ok(mut chat_log) = bot.chat_log.get(&channel_id).unwrap().lock() {
             if chat_log.len() > 100 {
                 chat_log.pop_front();
             }
@@ -226,6 +231,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 // まなみが自由に応答するコーナー
                 let query = bot
                     .chat_log
+                    .get(&channel_id)
+                    .unwrap()
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
@@ -783,7 +790,7 @@ async fn serenity(
     let variables = DashMap::new();
 
     let ai = ai::AI::new(secrets.get("AI_API_KEY").unwrap());
-    let chat_log = Mutex::new(VecDeque::new());
+    let chat_log = DashMap::new();
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
