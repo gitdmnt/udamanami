@@ -1,6 +1,7 @@
-use std::convert::Into;
 use std::str::FromStr;
+use std::sync::Mutex;
 use std::time::Duration;
+use std::{collections::VecDeque, convert::Into};
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -47,6 +48,7 @@ struct Bot {
 
     variables: DashMap<String, EvalResult>,
     ai: ai::AI,
+    chat_log: Mutex<VecDeque<Message>>,
 }
 
 struct UserData {
@@ -57,11 +59,6 @@ struct UserData {
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
-        // if message is from bot, ignore
-        if msg.author.bot {
-            return;
-        }
-
         // Check if the message is from direct message
         match msg.guild_id {
             Some(_) => {
@@ -93,6 +90,10 @@ impl EventHandler for Bot {
 
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    // if message is from bot, ignore
+    if msg.author.bot {
+        return;
+    }
     // ユーザーがこっちにきてはいけないに存在しない場合は無視
     if bot
         .guild_id
@@ -145,6 +146,18 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    if let Ok(mut chat_log) = bot.chat_log.lock() {
+        if chat_log.len() > 100 {
+            chat_log.pop_front();
+        }
+        chat_log.push_back(msg.clone())
+    };
+
+    // if message is from bot, ignore
+    if msg.author.bot {
+        return;
+    }
+
     // if message does not contains any command, ignore
     let command_pattern = Regex::new(r"(?ms)(?:まなみちゃん、|まなみ、|!)(.*)").unwrap();
     let input_string: String = match command_pattern.captures(&msg.content) {
@@ -204,9 +217,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .await
                     .unwrap();
             } else {
-                let message = msg.content.to_owned();
-                let user_name = msg.author.name.to_owned();
-                let query = vec![ai::Query::new(user_name, message)];
+                let query = bot
+                    .chat_log
+                    .lock()
+                    .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
+                    .iter()
+                    .map(|m| ai::Query::new(m.author.name.to_owned(), m.content.to_owned()))
+                    .collect();
                 let response = bot.ai.fetch_ai_response(query).await;
                 let content = match response {
                     Ok(response) => response,
@@ -758,6 +775,7 @@ async fn serenity(
     let variables = DashMap::new();
 
     let ai = ai::AI::new(secrets.get("AI_API_KEY").unwrap());
+    let chat_log = Mutex::new(VecDeque::new());
 
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
@@ -769,6 +787,7 @@ async fn serenity(
             jail_main_role_id,
             variables,
             ai,
+            chat_log,
         })
         .await
         .expect("Err creating client");
