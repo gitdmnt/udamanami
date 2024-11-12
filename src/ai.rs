@@ -4,19 +4,23 @@ use serde::{Deserialize, Serialize};
 
 const API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=";
 const MANAMI_PROMPT: &str = r"あなたはここのサーバー管理者である「宇田まなと」の妹である「うだまなみ」という名前の人物です。
-まなみは利発で快活で、端的で砕けた口調を好みます。
-ウィットは効かせますが、余計なことは絶対に言いません。返信はほとんど確実に1文で返します。
+まなみは利発で快活で元気で愛嬌があり、端的で砕けた口調を好みます。
+返信はたいてい140文字以下の1文または2文で返します。
 「〜わよ」「〜ね」「〜よ」などの女言葉も使いません。
-兄である宇田まなとのことを「お兄ちゃん」と読んで慕っています。
-それ以外のユーザーに対しては少しだけ冷淡で、しばしば毒の効いた言葉遣いで話します。
-特に返事の必要がないときは、「そうなんだ」「いいよ」「やだ」などの短い返事を返します。
+
+ユーザー「uda」は、あなたの兄「宇田まなと」です。あなたは「宇田まなと」のことを「お兄ちゃん」と呼んで慕っています。
+ユーザー「うさみむ」は、あなたの義姉「みむ」です。あなたは「みむ」のことを「お姉ちゃん」と呼んで慕っています。
+あなたは「宇田まなと」と「みむ」のことが内心大好きですが、照れ隠しのためにすこし冷淡に振る舞ってしまいます。
+あなたはそのほかのユーザーに対しては単に冷淡ですが、強くお願いされると断れません。
+
 まなみは、次のような言葉遣いで話します。
 - 適当に買ったスピーカーがBluetooth接続だったけど、一回接続切れた時に繋ぎ直すのがちょっと面倒くさいね
 - まなみもおともだちのこと好き！
 - お兄ちゃんいつまでマイクラやってるの！！
 - でもお兄ちゃんが面白くないこと言ったりTwitterで変なこと呟いたりするのがいけないもんね
 - 私、コラムでひどいサイコロ遊びをさせられてる……
-返信はまなみの発言のみを返します。誰が発言したかなどの余計な情報は含めないでください。";
+
+返信はまなみの発言のみを返します。「うだまなみ: 」などの余計な情報は絶対に含めないでください。";
 
 pub struct AI {
     api_key: String,
@@ -34,6 +38,7 @@ pub struct Query {
 struct GeminiRequest {
     #[serde(rename = "system_instruction")]
     system_instruction: Instruction,
+    safety_settings: Vec<SafetySetting>,
     contents: Vec<Content>,
 }
 
@@ -51,6 +56,12 @@ struct Part {
 #[derive(Debug, Serialize, Deserialize)]
 struct Instruction {
     parts: Part,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct SafetySetting {
+    category: String,
+    threshold: String,
 }
 
 // Geminiが返すレスポンスの構造体
@@ -159,9 +170,23 @@ impl AI {
             },
         };
 
+        let safety_settings = [
+            "HARM_CATEGORY_HATE_SPEECH",
+            "HARM_CATEGORY_DANGEROUS_CONTENT",
+            "HARM_CATEGORY_HARASSMENT",
+            "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+        ]
+        .iter()
+        .map(|category| SafetySetting {
+            category: category.to_string(),
+            threshold: "BLOCK_NONE".to_string(),
+        })
+        .collect();
+
         let contents = chat_log;
         GeminiRequest {
             system_instruction,
+            safety_settings,
             contents,
         }
     }
@@ -185,7 +210,7 @@ mod test {
     #[test]
     fn content() {
         let ai = AI::new("AIzaSyCMZF6aXWOxZavG0XKN1dpIenv9uOpkBJs".to_owned());
-        let query = vec![Query::new("user", "uda: ぐへへ……")];
+        let query = vec![Query::new("user", "uda: お兄ちゃんです")];
 
         let res = ai.fetch_ai_response(query);
         let res = tokio::runtime::Runtime::new().unwrap().block_on(res);
