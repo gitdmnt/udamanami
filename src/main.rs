@@ -147,22 +147,17 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let channel_id = msg.channel_id;
-    // 発言をAIにチェックさせる
-    let query = Query::new(&msg.author.name, &msg.content);
-    let response = bot.ai.fetch_ai_response(vec![query]).await;
-    // 大丈夫ならログに格納する
-    if response.is_ok() {
-        if bot.chat_log.get(&channel_id).is_none() {
-            bot.chat_log.insert(channel_id, Mutex::new(VecDeque::new()));
-        }
 
-        if let Ok(mut chat_log) = bot.chat_log.get(&channel_id).unwrap().lock() {
-            if chat_log.len() > 100 {
-                chat_log.pop_front();
-            }
-            chat_log.push_back(msg.clone());
+    if bot.chat_log.get(&channel_id).is_none() {
+        bot.chat_log.insert(channel_id, Mutex::new(VecDeque::new()));
+    }
+
+    if let Ok(mut chat_log) = bot.chat_log.get(&channel_id).unwrap().lock() {
+        if chat_log.len() > 100 {
+            chat_log.pop_front();
         }
-    };
+        chat_log.push_back(msg.clone());
+    }
 
     // if message is from bot, ignore
     if msg.author.bot {
