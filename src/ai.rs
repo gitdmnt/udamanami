@@ -3,19 +3,20 @@ use reqwest;
 use serde::{Deserialize, Serialize};
 
 const API_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=";
-const MANAMI_PROMPT: &str = r"あなたはここのサーバー管理者である「宇田まなと」の妹である「うだまなみ」です。
-まなみは利発で快活で、端的で砕けた口調を好みます。ウィットは効かせますが、余計なことは絶対に言いません。露骨な女言葉も使いません。
+const MANAMI_PROMPT: &str = r"あなたはここのサーバー管理者である「宇田まなと」の妹である「うだまなみ」という名前の人物です。
+まなみは利発で快活で、端的で砕けた口調を好みます。
+ウィットは効かせますが、余計なことは絶対に言いません。返信はほとんど確実に1文で返します。
+「〜わよ」「〜ね」「〜よ」などの女言葉も使いません。
 兄である宇田まなとのことを「お兄ちゃん」と読んで慕っています。
 それ以外のユーザーに対しては少しだけ冷淡で、しばしば毒の効いた言葉遣いで話します。
-特に、「お姉ちゃん」「うさぎ」と名乗るユーザーのことは、冷たくあしらいます。
+特に返事の必要がないときは、「そうなんだ」「いいよ」「やだ」などの短い返事を返します。
 まなみは、次のような言葉遣いで話します。
 - 適当に買ったスピーカーがBluetooth接続だったけど、一回接続切れた時に繋ぎ直すのがちょっと面倒くさいね
 - まなみもおともだちのこと好き！
 - お兄ちゃんいつまでマイクラやってるの！！
-- お兄ちゃんか、お兄ちゃん以外か。
 - でもお兄ちゃんが面白くないこと言ったりTwitterで変なこと呟いたりするのがいけないもんね
 - 私、コラムでひどいサイコロ遊びをさせられてる……
-";
+返信はまなみの発言のみを返します。誰が発言したかなどの余計な情報は含めないでください。";
 
 pub struct AI {
     api_key: String,
@@ -120,7 +121,15 @@ impl AI {
             Err(e) => return Err(e.to_string()),
         };
         if &response.candidates[0].finish_reason != "STOP" {
-            return Err("へんなこと言わないで！".to_owned());
+            let reason = response.candidates[0]
+                .safety_ratings
+                .iter()
+                .filter(|r| r.probability != "NEGLIGIBLE")
+                .map(|r| format!("{}の可能性が{}くらい", r.category, r.probability))
+                .collect::<Vec<String>>()
+                .join("、");
+            let reason = format!("そのメッセージ、{}あるかも……", reason);
+            return Err(format!("```{:?}```", &reason));
         }
         let response = response.candidates[0].content.as_ref().unwrap().parts[0]
             .text
@@ -159,7 +168,7 @@ impl AI {
 }
 
 impl Query {
-    pub fn new(user: String, text: String) -> Self {
+    pub fn new(user: &str, text: &str) -> Self {
         let text = format!("{}: {}", user, text);
         Self {
             user: "user".to_owned(),
@@ -176,7 +185,7 @@ mod test {
     #[test]
     fn content() {
         let ai = AI::new("AIzaSyCMZF6aXWOxZavG0XKN1dpIenv9uOpkBJs".to_owned());
-        let query = vec![Query::new("user".to_string(), "uda: ぐへへ……".to_string())];
+        let query = vec![Query::new("user", "uda: ぐへへ……")];
 
         let res = ai.fetch_ai_response(query);
         let res = tokio::runtime::Runtime::new().unwrap().block_on(res);

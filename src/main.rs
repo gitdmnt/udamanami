@@ -31,7 +31,7 @@ mod cclemon;
 mod parser;
 
 use calculator::EvalResult;
-use udamanami::ai;
+use udamanami::ai::{self, Query};
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
@@ -146,11 +146,17 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    if let Ok(mut chat_log) = bot.chat_log.lock() {
-        if chat_log.len() > 100 {
-            chat_log.pop_front();
+    // 発言をAIにチェックさせる
+    let query = Query::new(&msg.author.name, &msg.content);
+    let response = bot.ai.fetch_ai_response(vec![query]).await;
+    // 大丈夫ならログに格納する
+    if response.is_ok() {
+        if let Ok(mut chat_log) = bot.chat_log.lock() {
+            if chat_log.len() > 100 {
+                chat_log.pop_front();
+            }
+            chat_log.push_back(msg.clone());
         }
-        chat_log.push_back(msg.clone())
     };
 
     // if message is from bot, ignore
@@ -217,12 +223,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .await
                     .unwrap();
             } else {
+                // まなみが自由に応答するコーナー
                 let query = bot
                     .chat_log
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
-                    .map(|m| ai::Query::new(m.author.name.to_owned(), m.content.to_owned()))
+                    .map(|m| ai::Query::new(&m.author.name, &m.content))
                     .collect();
                 let response = bot.ai.fetch_ai_response(query).await;
                 let content = match response {
