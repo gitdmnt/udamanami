@@ -1,0 +1,28 @@
+name: Shuttle Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: shuttle-hq/deploy-action@v2
+        with:
+          shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
+          project-id: proj_01JCJS9WKRQ1RC9MVZW6WDJK97
+          extra-args: --allow-dirty --no-test
+          secrets: |
+            AI_API_KEY = '${{ secrets.AI_API_KEY }}'
+            DISCORD_TOKEN = '${{ secrets.DISCORD_TOKEN }}'
+            DEBUG_ROOM_ID = '${{ secrets.DEBUG_ROOM_ID }}'
+            FREETALK1_ROOM_ID = '${{ secrets.FREETALK1_ROOM_ID }}'
+            FREETALK2_ROOM_ID = '${{ secrets.FREETALK2_ROOM_ID }}'
+            MADSISTERS_ROOM_ID = '${{ secrets.MADSISTERS_ROOM_ID }}'
+            SHYBOYS_ROOM_ID = '${{ secrets.SHYBOYS_ROOM_ID }}'
+            SHUTTLE_API_KEY = '${{ secrets.SHUTTLE_API_KEY }}'
+            
+            
