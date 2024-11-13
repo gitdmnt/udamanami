@@ -40,22 +40,22 @@ pub enum ExprOp2 {
 impl std::fmt::Display for ExprOp2 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ExprOp2::Add => write!(f, "+"),
-            ExprOp2::Sub => write!(f, "-"),
-            ExprOp2::Mul => write!(f, "*"),
-            ExprOp2::Div => write!(f, "/"),
-            ExprOp2::Mod => write!(f, "%"),
-            ExprOp2::Pow => write!(f, "^"),
-            ExprOp2::Dice => write!(f, "d"),
-            ExprOp2::Gt => write!(f, ">"),
-            ExprOp2::Ge => write!(f, ">="),
-            ExprOp2::Lt => write!(f, "<"),
-            ExprOp2::Le => write!(f, "<="),
-            ExprOp2::Eq => write!(f, "=="),
-            ExprOp2::Ne => write!(f, "!="),
-            ExprOp2::AndL => write!(f, "&&"),
-            ExprOp2::OrL => write!(f, "||"),
-            ExprOp2::XorL => write!(f, "^^"),
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
+            Self::Mul => write!(f, "*"),
+            Self::Div => write!(f, "/"),
+            Self::Mod => write!(f, "%"),
+            Self::Pow => write!(f, "^"),
+            Self::Dice => write!(f, "d"),
+            Self::Gt => write!(f, ">"),
+            Self::Ge => write!(f, ">="),
+            Self::Lt => write!(f, "<"),
+            Self::Le => write!(f, "<="),
+            Self::Eq => write!(f, "=="),
+            Self::Ne => write!(f, "!="),
+            Self::AndL => write!(f, "&&"),
+            Self::OrL => write!(f, "||"),
+            Self::XorL => write!(f, "^^"),
         }
     }
 }
@@ -71,9 +71,9 @@ pub enum ExprOp1 {
 impl std::fmt::Display for ExprOp1 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ExprOp1::Neg => write!(f, "-"),
-            ExprOp1::OneDice => write!(f, "d"),
-            ExprOp1::NotL => write!(f, "!"),
+            Self::Neg => write!(f, "-"),
+            Self::OneDice => write!(f, "d"),
+            Self::NotL => write!(f, "!"),
         }
     }
 }
@@ -99,11 +99,11 @@ pub enum Expr {
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Expr::IVal(i) => write!(f, "{}", i),
-            Expr::FVal(v) => write!(f, "{}", v),
-            Expr::BVal(b) => write!(f, "{}", b),
-            Expr::SVal(s) => write!(f, "\"{}\"", s.escape_debug()),
-            Expr::List(l) => write!(
+            Self::IVal(i) => write!(f, "{}", i),
+            Self::FVal(v) => write!(f, "{}", v),
+            Self::BVal(b) => write!(f, "{}", b),
+            Self::SVal(s) => write!(f, "\"{}\"", s.escape_debug()),
+            Self::List(l) => write!(
                 f,
                 "[{}]",
                 l.iter()
@@ -111,8 +111,8 @@ impl std::fmt::Display for Expr {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Expr::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
-            Expr::Object(o) => write!(
+            Self::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
+            Self::Object(o) => write!(
                 f,
                 "{{{}}}",
                 o.iter()
@@ -120,11 +120,11 @@ impl std::fmt::Display for Expr {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Expr::Get(e, k) => write!(f, "{}.{}", e, k),
-            Expr::Const(s) => write!(f, "{}", s),
-            Expr::Op1(op, e) => write!(f, "{}{}", op, e),
-            Expr::Op2(op, e1, e2) => write!(f, "({} {} {})", e1, op, e2),
-            Expr::Apply(name, args) => {
+            Self::Get(e, k) => write!(f, "{}.{}", e, k),
+            Self::Const(s) => write!(f, "{}", s),
+            Self::Op1(op, e) => write!(f, "{}{}", op, e),
+            Self::Op2(op, e1, e2) => write!(f, "({} {} {})", e1, op, e2),
+            Self::Apply(name, args) => {
                 write!(
                     f,
                     "{}({})",
@@ -135,7 +135,7 @@ impl std::fmt::Display for Expr {
                         .join(", ")
                 )
             }
-            Expr::Lambda(params, body) => {
+            Self::Lambda(params, body) => {
                 write!(f, "({} => {})", params.join(", "), body)
             }
         }
@@ -269,7 +269,7 @@ fn parse_float(input: &str) -> IResult<&str, Expr> {
 
 // "e"とか"pi"とか。存在チェックは計算時にやる
 fn parse_named_const(input: &str) -> IResult<&str, Expr> {
-    map(parse_identifier, |s: &str| Expr::Const(s.to_string()))(input)
+    map(parse_identifier, |s: &str| Expr::Const(s.to_owned()))(input)
 }
 
 // (x, y, z) => x + y + z
@@ -295,7 +295,7 @@ fn parse_lambda_one(input: &str) -> IResult<&str, Expr> {
             preceded(multispace0, parse_identifier),
             preceded(multispace0, preceded(tag("=>"), parse_expr)),
         ),
-        |(arg, body)| Expr::Lambda(vec![arg.to_string()], Box::new(body)),
+        |(arg, body)| Expr::Lambda(vec![arg.to_owned()], Box::new(body)),
     )(input)
 }
 
@@ -372,7 +372,7 @@ fn parse_object_literal(input: &str) -> IResult<&str, Expr> {
             Expr::Object(
                 pairs
                     .into_iter()
-                    .map(|(k, v)| (k.to_string(), Box::new(v)))
+                    .map(|(k, v)| (k.to_owned(), Box::new(v)))
                     .collect(),
             )
         },
@@ -428,7 +428,7 @@ fn parse_list_at(input: &str) -> IResult<&str, PostfixExprPart> {
 fn parse_object_get(input: &str) -> IResult<&str, PostfixExprPart> {
     map(
         preceded(preceded(multispace0, char('.')), parse_identifier),
-        |k| PostfixExprPart::Get(k.to_string()),
+        |k| PostfixExprPart::Get(k.to_owned()),
     )(input)
 }
 
@@ -551,7 +551,7 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
 type Context = DashMap<String, EvalResult>;
 
-#[derive(Debug, Clone, PartialEq, EnumIter)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter)]
 pub enum EvalStdLibFun {
     //Print,
     //Println,
@@ -597,43 +597,43 @@ pub enum EvalStdLibFun {
 impl std::fmt::Display for EvalStdLibFun {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            EvalStdLibFun::Sin => write!(f, "sin"),
-            EvalStdLibFun::Cos => write!(f, "cos"),
-            EvalStdLibFun::Tan => write!(f, "tan"),
-            EvalStdLibFun::LogE => write!(f, "ln"),
-            EvalStdLibFun::Log10 => write!(f, "log10"),
-            EvalStdLibFun::Log2 => write!(f, "log2"),
-            EvalStdLibFun::Abs => write!(f, "abs"),
-            EvalStdLibFun::Floor => write!(f, "floor"),
-            EvalStdLibFun::Ceil => write!(f, "ceil"),
-            EvalStdLibFun::Round => write!(f, "round"),
-            EvalStdLibFun::URand => write!(f, "urand"),
-            EvalStdLibFun::GRand => write!(f, "grand"),
-            EvalStdLibFun::If => write!(f, "if"),
-            EvalStdLibFun::Map => write!(f, "map"),
-            EvalStdLibFun::Geni => write!(f, "geni"),
-            EvalStdLibFun::Repeat => write!(f, "repeat"),
-            EvalStdLibFun::Filter => write!(f, "filter"),
-            EvalStdLibFun::ZipWith => write!(f, "zipWith"),
-            EvalStdLibFun::Foldl => write!(f, "foldl"),
-            EvalStdLibFun::Foldr => write!(f, "foldr"),
-            EvalStdLibFun::Range => write!(f, "range"),
-            EvalStdLibFun::Len => write!(f, "len"),
-            EvalStdLibFun::Head => write!(f, "head"),
-            EvalStdLibFun::Tail => write!(f, "tail"),
-            EvalStdLibFun::Init => write!(f, "init"),
-            EvalStdLibFun::Last => write!(f, "last"),
-            EvalStdLibFun::While => write!(f, "while"),
-            EvalStdLibFun::Sort => write!(f, "sort"),
-            EvalStdLibFun::Sum => write!(f, "sum"),
-            EvalStdLibFun::Average => write!(f, "average"),
-            EvalStdLibFun::Max => write!(f, "max"),
-            EvalStdLibFun::Min => write!(f, "min"),
-            EvalStdLibFun::Maximum => write!(f, "maximum"),
-            EvalStdLibFun::Minimum => write!(f, "minimum"),
-            EvalStdLibFun::Fix => write!(f, "fix"),
-            EvalStdLibFun::Lazy => write!(f, "lazy"),
-            EvalStdLibFun::Help => write!(f, "help"),
+            Self::Sin => write!(f, "sin"),
+            Self::Cos => write!(f, "cos"),
+            Self::Tan => write!(f, "tan"),
+            Self::LogE => write!(f, "ln"),
+            Self::Log10 => write!(f, "log10"),
+            Self::Log2 => write!(f, "log2"),
+            Self::Abs => write!(f, "abs"),
+            Self::Floor => write!(f, "floor"),
+            Self::Ceil => write!(f, "ceil"),
+            Self::Round => write!(f, "round"),
+            Self::URand => write!(f, "urand"),
+            Self::GRand => write!(f, "grand"),
+            Self::If => write!(f, "if"),
+            Self::Map => write!(f, "map"),
+            Self::Geni => write!(f, "geni"),
+            Self::Repeat => write!(f, "repeat"),
+            Self::Filter => write!(f, "filter"),
+            Self::ZipWith => write!(f, "zipWith"),
+            Self::Foldl => write!(f, "foldl"),
+            Self::Foldr => write!(f, "foldr"),
+            Self::Range => write!(f, "range"),
+            Self::Len => write!(f, "len"),
+            Self::Head => write!(f, "head"),
+            Self::Tail => write!(f, "tail"),
+            Self::Init => write!(f, "init"),
+            Self::Last => write!(f, "last"),
+            Self::While => write!(f, "while"),
+            Self::Sort => write!(f, "sort"),
+            Self::Sum => write!(f, "sum"),
+            Self::Average => write!(f, "average"),
+            Self::Max => write!(f, "max"),
+            Self::Min => write!(f, "min"),
+            Self::Maximum => write!(f, "maximum"),
+            Self::Minimum => write!(f, "minimum"),
+            Self::Fix => write!(f, "fix"),
+            Self::Lazy => write!(f, "lazy"),
+            Self::Help => write!(f, "help"),
         }
     }
 }
@@ -654,15 +654,15 @@ pub enum EvalResult {
 impl PartialEq for EvalResult {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (EvalResult::IVal(i1), EvalResult::IVal(i2)) => i1 == i2,
-            (EvalResult::FVal(f1), EvalResult::FVal(f2)) => f1 == f2,
-            (EvalResult::BVal(b1), EvalResult::BVal(b2)) => b1 == b2,
-            (EvalResult::SVal(s1), EvalResult::SVal(s2)) => s1 == s2,
-            (EvalResult::List(l1), EvalResult::List(l2)) => l1 == l2,
-            (EvalResult::Object(o1), EvalResult::Object(o2)) => o1 == o2,
-            (EvalResult::Closure(a, b, _), EvalResult::Closure(c, d, _)) => a == c && b == d,
-            (EvalResult::FuncStdLib(f1), EvalResult::FuncStdLib(f2)) => f1 == f2,
-            (EvalResult::Lazy(e1), EvalResult::Lazy(e2)) => e1 == e2,
+            (Self::IVal(i1), Self::IVal(i2)) => i1 == i2,
+            (Self::FVal(f1), Self::FVal(f2)) => f1 == f2,
+            (Self::BVal(b1), Self::BVal(b2)) => b1 == b2,
+            (Self::SVal(s1), Self::SVal(s2)) => s1 == s2,
+            (Self::List(l1), Self::List(l2)) => l1 == l2,
+            (Self::Object(o1), Self::Object(o2)) => o1 == o2,
+            (Self::Closure(a, b, _), Self::Closure(c, d, _)) => a == c && b == d,
+            (Self::FuncStdLib(f1), Self::FuncStdLib(f2)) => f1 == f2,
+            (Self::Lazy(e1), Self::Lazy(e2)) => e1 == e2,
             _ => false,
         }
     }
@@ -680,11 +680,11 @@ fn show_context(ctx: &Context) -> String {
 impl std::fmt::Display for EvalResult {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            EvalResult::IVal(i) => write!(f, "{}", i),
-            EvalResult::FVal(v) => write!(f, "{}", v),
-            EvalResult::BVal(b) => write!(f, "{}", b),
-            EvalResult::SVal(s) => write!(f, "\"{}\"", s),
-            EvalResult::List(l) => write!(
+            Self::IVal(i) => write!(f, "{}", i),
+            Self::FVal(v) => write!(f, "{}", v),
+            Self::BVal(b) => write!(f, "{}", b),
+            Self::SVal(s) => write!(f, "\"{}\"", s),
+            Self::List(l) => write!(
                 f,
                 "[{}]",
                 l.iter()
@@ -692,7 +692,7 @@ impl std::fmt::Display for EvalResult {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            EvalResult::Object(o) => write!(
+            Self::Object(o) => write!(
                 f,
                 "{{{}}}",
                 o.iter()
@@ -700,15 +700,15 @@ impl std::fmt::Display for EvalResult {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            EvalResult::Closure(params, body, context) => write!(
+            Self::Closure(params, body, context) => write!(
                 f,
                 "({} => {})@{}",
                 params.join(", "),
                 body,
                 show_context(context)
             ),
-            EvalResult::FuncStdLib(fun) => write!(f, "{}", fun),
-            EvalResult::Lazy(body) => write!(f, "Lazy({})", body),
+            Self::FuncStdLib(fun) => write!(f, "{}", fun),
+            Self::Lazy(body) => write!(f, "Lazy({})", body),
         }
     }
 }
@@ -733,21 +733,20 @@ pub enum EvalError {
 impl std::fmt::Display for EvalError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            EvalError::NegativeDice => write!(f, "Negative dice"),
-            EvalError::InvalidDice => write!(f, "Invalid dice"),
-            EvalError::TooManyDice => write!(f, "Too many dice"),
-            EvalError::UndefinedVar(s) => write!(f, "Undefined variable: {}", s),
-            //EvalError::MismatchedType(t1, t2) => write!(f, "Mismatched type: {:?} and {:?}", t1, t2),
-            EvalError::ArgCountMismatch(a, b) => {
+            Self::NegativeDice => write!(f, "Negative dice"),
+            Self::InvalidDice => write!(f, "Invalid dice"),
+            Self::TooManyDice => write!(f, "Too many dice"),
+            Self::UndefinedVar(s) => write!(f, "Undefined variable: {}", s),
+            Self::ArgCountMismatch(a, b) => {
                 write!(f, "Argument count mismatch: {} and {}", a, b)
             }
-            EvalError::StepLimitExceeded => write!(f, "Step limit exceeded"),
-            EvalError::OutOfRange => write!(f, "Out of range"),
-            EvalError::NotANumber(e) => write!(f, "{} is not a number", e),
-            EvalError::NotAFunction(e) => write!(f, "{} is not a function", e),
-            EvalError::NotAList(e) => write!(f, "{} is not a list", e),
-            EvalError::NotAnIndex(e) => write!(f, "{} is not an index", e),
-            EvalError::NotAnObject(e) => write!(f, "{} is not an object", e),
+            Self::StepLimitExceeded => write!(f, "Step limit exceeded"),
+            Self::OutOfRange => write!(f, "Out of range"),
+            Self::NotANumber(e) => write!(f, "{} is not a number", e),
+            Self::NotAFunction(e) => write!(f, "{} is not a function", e),
+            Self::NotAList(e) => write!(f, "{} is not a list", e),
+            Self::NotAnIndex(e) => write!(f, "{} is not an index", e),
+            Self::NotAnObject(e) => write!(f, "{} is not an object", e),
         }
     }
 }
@@ -756,7 +755,7 @@ pub fn error_str((e, expr): (EvalError, Expr)) -> String {
     format!("Error: {} at {}", e, expr)
 }
 
-pub fn val_as_float(val: &EvalResult) -> Option<f64> {
+pub const fn val_as_float(val: &EvalResult) -> Option<f64> {
     match val {
         EvalResult::IVal(i) => Some(*i as f64),
         EvalResult::BVal(b) => Some(if *b { 1.0 } else { 0.0 }),
@@ -765,7 +764,7 @@ pub fn val_as_float(val: &EvalResult) -> Option<f64> {
     }
 }
 
-pub fn val_as_int(val: &EvalResult) -> Option<i64> {
+pub const fn val_as_int(val: &EvalResult) -> Option<i64> {
     match val {
         EvalResult::IVal(i) => Some(*i),
         EvalResult::BVal(b) => Some(if *b { 1 } else { 0 }),
@@ -774,7 +773,7 @@ pub fn val_as_int(val: &EvalResult) -> Option<i64> {
     }
 }
 
-pub fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
+pub const fn val_as_precise_int(val: &EvalResult) -> Option<i64> {
     match val {
         EvalResult::IVal(i) => Some(*i),
         EvalResult::BVal(b) => Some(if *b { 1 } else { 0 }),
@@ -931,10 +930,10 @@ fn eval_expr_ctx(
         Expr::Get(e, k) => {
             let (val, next_step) = eval_expr_ctx(e, step + 1, true, global_context, local_context)?;
             match val {
-                EvalResult::Object(o) => match o.get(k) {
-                    Some(result) => Ok((*result.clone(), next_step + 1)),
-                    None => Err((EvalError::UndefinedVar(k.clone()), expr.clone())),
-                },
+                EvalResult::Object(o) => o.get(k).map_or_else(
+                    || Err((EvalError::UndefinedVar(k.clone()), expr.clone())),
+                    |result| Ok((*result.clone(), next_step + 1)),
+                ),
                 _ => Err((EvalError::NotAnObject(val), expr.clone())),
             }
         }
@@ -1137,7 +1136,7 @@ fn eval_expr_ctx(
                     Some(Ok((EvalResult::Lazy(Box::new(args[0].clone())), next_step)))
                 }
                 EvalResult::Lazy(body) => {
-                    let newexpr = &Expr::Apply(body.clone(), args.clone());
+                    let newexpr = &Expr::Apply(body, args.clone());
                     Some(eval_expr_ctx(
                         newexpr,
                         next_step,
@@ -1229,6 +1228,7 @@ pub fn eval_apply(
     }
 }
 
+#[allow(clippy::cognitive_complexity)]
 pub fn eval_stdlib(
     expr: &Expr,
     step: usize,
@@ -1964,8 +1964,8 @@ mod tests_parse {
                 "",
                 Expr::Object(
                     vec![
-                        ("a".to_string(), Box::new(Expr::IVal(1))),
-                        ("b".to_string(), Box::new(Expr::IVal(2))),
+                        ("a".to_owned(), Box::new(Expr::IVal(1))),
+                        ("b".to_owned(), Box::new(Expr::IVal(2))),
                     ]
                     .into_iter()
                     .collect(),
@@ -1994,13 +1994,13 @@ mod tests_parse {
                 Expr::Get(
                     Box::new(Expr::Object(
                         vec![
-                            ("a".to_string(), Box::new(Expr::IVal(1))),
-                            ("b".to_string(), Box::new(Expr::IVal(2))),
+                            ("a".to_owned(), Box::new(Expr::IVal(1))),
+                            ("b".to_owned(), Box::new(Expr::IVal(2))),
                         ]
                         .into_iter()
                         .collect(),
                     )),
-                    "a".to_string(),
+                    "a".to_owned(),
                 ),
             )),
         );
@@ -2028,7 +2028,7 @@ mod tests_parse {
     fn test_parse_named_const() {
         assert_eq!(
             parse_named_const("pi"),
-            Ok(("", Expr::Const("pi".to_string())))
+            Ok(("", Expr::Const("pi".to_owned())))
         );
     }
 
@@ -2039,7 +2039,7 @@ mod tests_parse {
             Ok((
                 "",
                 Expr::Apply(
-                    Box::new(Expr::Const("f".to_string())),
+                    Box::new(Expr::Const("f".to_owned())),
                     vec![Expr::IVal(1), Expr::IVal(2)],
                 ),
             )),
@@ -2099,15 +2099,15 @@ mod tests_parse {
             Ok((
                 "",
                 Expr::Lambda(
-                    vec!["x".to_string(), "y".to_string(), "z".to_string()],
+                    vec!["x".to_owned(), "y".to_owned(), "z".to_owned()],
                     Box::new(Expr::Op2(
                         ExprOp2::Add,
                         Box::new(Expr::Op2(
                             ExprOp2::Add,
-                            Box::new(Expr::Const("x".to_string())),
-                            Box::new(Expr::Const("y".to_string()))
+                            Box::new(Expr::Const("x".to_owned())),
+                            Box::new(Expr::Const("y".to_owned()))
                         )),
-                        Box::new(Expr::Const("z".to_string())),
+                        Box::new(Expr::Const("z".to_owned())),
                     )),
                 ),
             )),
@@ -2118,7 +2118,7 @@ mod tests_parse {
     fn test_parse_string() {
         assert_eq!(
             parse_expr("\"Hello, \nworld!\""),
-            Ok(("", Expr::SVal("Hello, \nworld!".to_string()))),
+            Ok(("", Expr::SVal("Hello, \nworld!".to_owned()))),
         );
     }
 

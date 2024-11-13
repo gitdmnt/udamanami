@@ -126,9 +126,8 @@ impl AI {
         };
         dbg!("{}", &response);
         let response = serde_json::from_str::<GeminiResponse>(&response);
-        let response = match response {
-            Ok(response) => response,
-            Err(_) => return Err("まなみ今忙しいの".to_owned()),
+        let Ok(response) = response else {
+            return Err("まなみ今忙しいの".to_owned());
         };
         let response = response.candidates[0].content.as_ref().unwrap().parts[0]
             .text
