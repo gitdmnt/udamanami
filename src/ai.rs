@@ -118,19 +118,17 @@ impl AI {
             .json(&content) // JSON形式でボディを送信
             .send()
             .await;
-        let response = match response {
-            Ok(response) => response,
-            Err(_) => return Err("インターネットがこわれちゃったよ！".to_string()),
+        let Ok(response) = response else {
+            return Err("インターネットがこわれちゃったよ！".to_owned());
         };
-        let response = match response.text().await {
-            Ok(response) => response,
-            Err(_) => return Err("お兄ちゃんこれなに〜！？".to_string()),
+        let Ok(response) = response.text().await else {
+            return Err("お兄ちゃんこれなに〜！？".to_owned());
         };
         dbg!("{}", &response);
         let response = serde_json::from_str::<GeminiResponse>(&response);
         let response = match response {
             Ok(response) => response,
-            Err(_e) => return Err("まなみちょっと今忙しいの".to_string()),
+            Err(_e) => return Err("まなみちょっと今忙しいの".to_owned()),
         };
         let response = response.candidates[0].content.as_ref().unwrap().parts[0]
             .text
@@ -156,7 +154,7 @@ impl AI {
 
         let system_instruction = Instruction {
             parts: Part {
-                text: MANAMI_PROMPT.to_string(),
+                text: MANAMI_PROMPT.to_owned(),
             },
         };
 
@@ -169,7 +167,7 @@ impl AI {
         .iter()
         .map(|category| SafetySetting {
             category: category.to_string(),
-            threshold: "BLOCK_NONE".to_string(),
+            threshold: "BLOCK_NONE".to_owned(),
         })
         .collect();
 
