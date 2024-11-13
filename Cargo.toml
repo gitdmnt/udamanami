@@ -1,6 +1,6 @@
 [package]
 name = "udamanami"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
@@ -26,6 +26,7 @@ strum = { version = "0.26", features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["json"] }
 serde_json = "1.0.132"
 serde = "1.0.215"
+async-openai = "0.26.0"
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }

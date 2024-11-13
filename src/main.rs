@@ -241,21 +241,16 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
                     .map(|(name, msg)| {
-                        ai::Query::new(
+                        ai::Query::from_message(
                             name,
                             &msg.content,
                         )
                     })
                     .collect();
-                let response = bot.ai.fetch_ai_response(query).await;
+                let response = bot.ai.generate(query).await;
                 let content = match response {
                     Ok(response) => response,
                     Err(e) => e,
-                };
-                let content = if content.starts_with("うだまなみ: ") {
-                    content.replace("うだまなみ: ", "")
-                } else {
-                    content
                 };
 
                 reply_channel.say(&ctx.http, content).await.unwrap();
@@ -867,7 +862,7 @@ async fn serenity(
 
     let variables = DashMap::new();
 
-    let ai = ai::AI::new(secrets.get("AI_API_KEY").unwrap());
+    let ai = ai::AI::new(&secrets.get("AI_API_KEY").unwrap());
     let chat_log = DashMap::new();
 
     let jail_process = Arc::new(DashMap::new());
