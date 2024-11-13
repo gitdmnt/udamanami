@@ -31,7 +31,7 @@ mod cclemon;
 mod parser;
 
 use calculator::EvalResult;
-use udamanami::ai::{self, Query};
+use udamanami::ai;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
@@ -237,21 +237,16 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
                     .map(|m| {
-                        ai::Query::new(
+                        ai::Query::from_message(
                             m.author.global_name.as_ref().unwrap_or(&m.author.name),
                             &m.content,
                         )
                     })
                     .collect();
-                let response = bot.ai.fetch_ai_response(query).await;
+                let response = bot.ai.generate(query).await;
                 let content = match response {
                     Ok(response) => response,
                     Err(e) => e,
-                };
-                let content = if content.starts_with("うだまなみ: ") {
-                    content.replace("うだまなみ: ", "")
-                } else {
-                    content
                 };
 
                 reply_channel.say(&ctx.http, content).await.unwrap();
@@ -811,7 +806,7 @@ async fn serenity(
 
     let variables = DashMap::new();
 
-    let ai = ai::AI::new(secrets.get("AI_API_KEY").unwrap());
+    let ai = ai::AI::new(&secrets.get("AI_API_KEY").unwrap());
     let chat_log = DashMap::new();
 
     let client = Client::builder(&token, intents)
