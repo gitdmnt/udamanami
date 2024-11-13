@@ -135,7 +135,7 @@ enum Action {
 
 impl From<Action> for CreateButton {
     fn from(action: Action) -> Self {
-        CreateButton::new(action.to_string()).label(format!("{} ({})", action, action.cost()))
+        Self::new(action.to_string()).label(format!("{} ({})", action, action.cost()))
     }
 }
 
