@@ -26,3 +26,9 @@ strum = { version = "0.26", features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["json"] }
 serde_json = "1.0.132"
 serde = "1.0.215"
+
+[lints.clippy]
+nursery = { level = "warn", priority = -1 }
+manual_let_else = "warn"
+str_to_string = "warn"
+string_to_string = "warn"
