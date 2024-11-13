@@ -15,11 +15,18 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: Check
+        if: github.event_name == 'push'
+        run: |
+          cargo fmt --check
+          cargo clippy --all-targets --all-features -- -D warnings
       - uses: mbrobbel/rustfmt-check@master
+        if: github.event_name == 'pull_request'
         with:
           mode: review
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: giraffate/clippy-action@v1
+        if: github.event_name == 'pull_request'
         with:
           reporter: github-pr-review
           github_token: ${{ secrets.GITHUB_TOKEN }}
