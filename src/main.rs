@@ -262,7 +262,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-async fn update_user<'a>(bot: &'a Bot, userid: &UserId) -> Result<UserData, anyhow::Error> {
+async fn update_user(bot: &Bot, userid: &UserId) -> Result<UserData, anyhow::Error> {
     // get user data
     let user = bot.userdata.entry(*userid).or_insert(UserData {
         room_pointer: bot.channel_ids[0],
