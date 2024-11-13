@@ -51,7 +51,7 @@ struct Bot {
 
     variables: DashMap<String, EvalResult>,
     ai: ai::AI,
-    chat_log: DashMap<ChannelId, Mutex<VecDeque<Message>>>,
+    chat_log: DashMap<ChannelId, Mutex<VecDeque<(String, Message)>>>,
 }
 
 #[derive(Clone)]
@@ -153,6 +153,9 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let channel_id = msg.channel_id;
 
+    // guild内で発言してるってことは確実にmemberなので
+    let member = bot.guild_id.member(&ctx.http, &msg.author.id).await.unwrap();
+
     if let Ok(mut chat_log) = bot
         .chat_log
         .entry(channel_id)
@@ -162,7 +165,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         if chat_log.len() > 100 {
             chat_log.pop_front();
         }
-        chat_log.push_back(msg.clone());
+        chat_log.push_back((member.display_name().to_owned() ,msg.clone()));
     }
 
     // if message is from bot, ignore
@@ -228,6 +231,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .unwrap();
             } else {
                 // まなみが自由に応答するコーナー
+                #[allow(clippy::or_fun_call)]
+                // unwrap_or_else(|_| Mutex::new(VecDeque::new()).lock().unwrap()) とすると、生存期間が合わなくて怒られる
                 let query = bot
                     .chat_log
                     .get(&channel_id)
@@ -235,10 +240,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
-                    .map(|m| {
+                    .map(|(name, msg)| {
                         ai::Query::from_message(
-                            m.author.global_name.as_ref().unwrap_or(&m.author.name),
-                            &m.content,
+                            name,
+                            &msg.content,
                         )
                     })
                     .collect();
@@ -269,10 +274,12 @@ async fn change_room_pointer(
     userid: &UserId,
     room_pointer: ChannelId,
 ) -> Result<(), anyhow::Error> {
-    let mut user = bot.userdata.entry(*userid).or_insert(UserData {
-        room_pointer: bot.channel_ids[0],
-    });
-    user.room_pointer = room_pointer;
+    bot.userdata
+        .entry(*userid)
+        .or_insert(UserData {
+            room_pointer: bot.channel_ids[0],
+        })
+        .room_pointer = room_pointer;
     Ok(())
 }
 
@@ -550,7 +557,7 @@ async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: Str
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
-            bot.variables.insert(var.to_string(), result.clone());
+            bot.variables.insert(var.clone(), result.clone());
             reply.say(&ctx.http, result.to_string()).await.unwrap();
         }
         Err(e) => {
@@ -596,22 +603,16 @@ fn get_userid_from_mention(mention: &str) -> Option<UserId> {
 async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
     let (user, jailterm) = match args {
         [user] => {
-            let user = match get_userid_from_mention(user) {
-                Some(user) => user,
-                None => {
-                    reply.say(&ctx.http, "誰？").await.unwrap();
-                    return;
-                }
+            let Some(user) = get_userid_from_mention(user) else {
+                reply.say(&ctx.http, "誰？").await.unwrap();
+                return;
             };
             (user, JAIL_TERM_DEFAULT)
         }
         [user, args @ ..] => {
-            let user = match get_userid_from_mention(user) {
-                Some(user) => user,
-                None => {
-                    reply.say(&ctx.http, "誰？").await.unwrap();
-                    return;
-                }
+            let Some(user) = get_userid_from_mention(user) else {
+                reply.say(&ctx.http, "誰？").await.unwrap();
+                return;
             };
 
             let expression = args.join(" ");
@@ -733,12 +734,9 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duratio
         reply.say(&ctx.http, content).await.unwrap();
     }
 
-    let Some(newid) = (match bot.jail_id.lock() {
-        Ok(mut oldid) => {
-            *oldid += 1;
-            Some(*oldid)
-        }
-        Err(_) => None,
+    let Some(newid) = bot.jail_id.lock().map_or(None, |mut oldid| {
+        *oldid += 1;
+        Some(*oldid)
     }) else {
         reply.say(&ctx.http, "再収監に失敗したよ").await.unwrap();
         return;
@@ -852,15 +850,15 @@ async fn serenity(
         |id| RoleId::from_str(&id).unwrap(),
     );
 
-    let jail_mark_role_id = match secrets.get("JAIL_MARK_ROLE_ID") {
-        Some(id) => RoleId::from_str(&id).unwrap(),
-        _ => RoleId::from(JAIL_MARK_ROLE_ID),
-    };
+    let jail_mark_role_id = secrets.get("JAIL_MARK_ROLE_ID").map_or_else(
+        || RoleId::from(JAIL_MARK_ROLE_ID),
+        |id| RoleId::from_str(&id).unwrap(),
+    );
 
-    let jail_main_role_id = match secrets.get("JAIL_MAIN_ROLE_ID") {
-        Some(id) => RoleId::from_str(&id).unwrap(),
-        _ => RoleId::from(JAIL_MAIN_ROLE_ID),
-    };
+    let jail_main_role_id = secrets.get("JAIL_MAIN_ROLE_ID").map_or_else(
+        || RoleId::from(JAIL_MAIN_ROLE_ID),
+        |id| RoleId::from_str(&id).unwrap(),
+    );
 
     let variables = DashMap::new();
 
