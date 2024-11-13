@@ -1,6 +1,6 @@
 use std::str::FromStr;
-use std::sync::Mutex;
-use std::time::Duration;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use std::{collections::VecDeque, convert::Into};
 
 use anyhow::Context as _;
@@ -23,7 +23,6 @@ use serenity::{
 use shuttle_runtime::SecretStore;
 use tracing::{error, info};
 
-use std::cmp::min;
 use tokio::{spawn, time::sleep};
 
 mod calculator;
@@ -40,6 +39,10 @@ const JAIL_MAIN_ROLE_ID: u64 = 1305228980697305119;
 
 struct Bot {
     userdata: DashMap<UserId, UserData>,
+    jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
+
+    jail_id: Arc<Mutex<usize>>,
+
     channel_ids: Vec<ChannelId>,
     guild_id: GuildId,
     erogaki_role_id: RoleId,
@@ -51,9 +54,9 @@ struct Bot {
     chat_log: DashMap<ChannelId, Mutex<VecDeque<Message>>>,
 }
 
+#[derive(Clone)]
 struct UserData {
     room_pointer: ChannelId,
-    is_erogaki: bool,
 }
 
 #[async_trait]
@@ -82,7 +85,16 @@ impl EventHandler for Bot {
         let members = guild.members(&ctx.http, None, None).await.unwrap();
         for member in members {
             if member.roles.iter().any(|role| roles.contains(role)) {
-                unjail(&self.channel_ids[4], &ctx, &member.user.id, &guild, &roles).await;
+                unjail(
+                    &self.channel_ids[4],
+                    &ctx,
+                    &member.user.id,
+                    &guild,
+                    &roles,
+                    None,
+                    &self.jail_process,
+                )
+                .await;
             }
         }
     }
@@ -104,19 +116,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    // get user data
-    let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
-        room_pointer: bot.channel_ids[0],
-        is_erogaki: false,
-    });
     // update user data
-    let user = update_user(bot, ctx, &mut user, &msg.author.id)
-        .await
-        .unwrap();
+    let usercache = update_user(bot, &msg.author.id).await.unwrap();
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
-        if let Err(why) = user.room_pointer.say(&ctx.http, &msg.content).await {
+        if let Err(why) = usercache.room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
         return;
@@ -130,8 +135,8 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let dm = &msg.channel_id;
 
     match command_name {
-        "channel" => channel(dm, ctx, command_args, &bot.channel_ids, user).await,
-        "erocheck" => erocheck(dm, ctx, user.is_erogaki).await,
+        "channel" => channel(dm, ctx, command_args, bot, &usercache, &msg.author.id).await,
+        "erocheck" => erocheck(dm, ctx, bot, &msg.author.id).await,
         "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id, &bot.guild_id).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
@@ -148,11 +153,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let channel_id = msg.channel_id;
 
-    if bot.chat_log.get(&channel_id).is_none() {
-        bot.chat_log.insert(channel_id, Mutex::new(VecDeque::new()));
-    }
-
-    if let Ok(mut chat_log) = bot.chat_log.get(&channel_id).unwrap().lock() {
+    if let Ok(mut chat_log) = bot
+        .chat_log
+        .entry(channel_id)
+        .or_insert_with(|| Mutex::new(VecDeque::new()))
+        .lock()
+    {
         if chat_log.len() > 100 {
             chat_log.pop_front();
         }
@@ -175,15 +181,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         None => return,
     };
 
-    // get user data
-    let mut user = bot.userdata.entry(msg.author.id).or_insert(UserData {
-        room_pointer: bot.channel_ids[0],
-        is_erogaki: false,
-    });
     // update user data
-    update_user(bot, ctx, &mut user, &msg.author.id)
-        .await
-        .unwrap();
+    update_user(bot, &msg.author.id).await.unwrap();
 
     // dice command
     match parser::parse_dice(&input_string).finish() {
@@ -255,19 +254,26 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-async fn update_user<'a>(
+async fn update_user<'a>(bot: &'a Bot, userid: &UserId) -> Result<UserData, anyhow::Error> {
+    // get user data
+    let user = bot.userdata.entry(*userid).or_insert(UserData {
+        room_pointer: bot.channel_ids[0],
+    });
+
+    // update user data
+    Ok(user.clone())
+}
+
+async fn change_room_pointer(
     bot: &Bot,
-    ctx: &Context,
-    user: &'a mut UserData,
-    author: &UserId,
-) -> Result<&'a mut UserData, anyhow::Error> {
-    // erogaki role check
-    user.is_erogaki = author
-        .to_user(&ctx.http)
-        .await?
-        .has_role(&ctx.http, bot.guild_id, bot.erogaki_role_id)
-        .await?;
-    Ok(user)
+    userid: &UserId,
+    room_pointer: ChannelId,
+) -> Result<(), anyhow::Error> {
+    let mut user = bot.userdata.entry(*userid).or_insert(UserData {
+        room_pointer: bot.channel_ids[0],
+    });
+    user.room_pointer = room_pointer;
+    Ok(())
 }
 
 // commands
@@ -325,17 +331,18 @@ async fn channel(
     reply: &ChannelId,
     ctx: &Context,
     args: &[&str],
-    channels: &[ChannelId],
-    user: &mut UserData,
+    bot: &Bot,
+    usercache: &UserData,
+    userid: &UserId,
 ) {
     // 引数なしの場合はチャンネル一覧を表示
     if args.is_empty() {
         let mut res = MessageBuilder::new();
         res.push("今は")
-            .channel(user.room_pointer)
+            .channel(usercache.room_pointer)
             .push("で代筆してるよ\n")
             .push("```チャンネル一覧だよ\n");
-        for (i, ch) in channels.iter().enumerate() {
+        for (i, ch) in bot.channel_ids.iter().enumerate() {
             res.push(format!("{i:>2}\t"))
                 .push(ch.name(&ctx.http).await.unwrap())
                 .push("\n");
@@ -351,7 +358,7 @@ async fn channel(
         reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
         return;
     };
-    if selector >= channels.len() {
+    if selector >= bot.channel_ids.len() {
         reply
             .say(&ctx.http, "しらないチャンネルだよ")
             .await
@@ -359,8 +366,10 @@ async fn channel(
         return;
     }
 
-    let next_pointer = channels[selector];
-    user.room_pointer = next_pointer;
+    let next_pointer = bot.channel_ids[selector];
+    change_room_pointer(bot, userid, next_pointer)
+        .await
+        .unwrap();
     reply
         .say(
             &ctx.http,
@@ -424,7 +433,15 @@ async fn dice(reply: &ChannelId, ctx: &Context, parsed: parser::Dice) {
 }
 
 // erogaki status check
-async fn erocheck(reply: &ChannelId, ctx: &Context, is_erogaki: bool) {
+async fn erocheck(reply: &ChannelId, ctx: &Context, bot: &Bot, user_id: &UserId) {
+    let is_erogaki = bot
+        .guild_id
+        .member(&ctx.http, user_id)
+        .await
+        .unwrap()
+        .roles
+        .iter()
+        .any(|role| role == &bot.erogaki_role_id);
     let content = if is_erogaki {
         "エロガキ！！！！"
     } else {
@@ -520,7 +537,6 @@ async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
         Some(caps) => caps.get(1).unwrap().as_str().to_owned(),
         None => return,
     };
-    println!("{}", input);
     let split: Vec<&str> = input.split(';').collect();
     for s in split {
         if s.trim().is_empty() {
@@ -641,15 +657,7 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
             return;
         }
     };
-    jail(
-        reply,
-        ctx,
-        &user,
-        &bot.guild_id,
-        &[bot.jail_mark_role_id, bot.jail_main_role_id],
-        jailterm,
-    )
-    .await;
+    jail(reply, ctx, &user, jailterm, bot).await;
 }
 
 async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
@@ -676,20 +684,18 @@ async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot)
         &user,
         &bot.guild_id,
         &[bot.jail_mark_role_id, bot.jail_main_role_id],
+        None,
+        &bot.jail_process,
     )
     .await;
 }
 
-async fn jail(
-    reply: &ChannelId,
-    ctx: &Context,
-    user: &UserId,
-    guild: &GuildId,
-    roles: &[RoleId],
-    jailterm: Duration,
-) {
+async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duration, bot: &Bot) {
+    let guild = bot.guild_id;
+    let roles = vec![bot.jail_mark_role_id, bot.jail_main_role_id];
+
     let member = guild.member(&ctx.http, user).await.unwrap();
-    match member.add_roles(&ctx.http, roles).await {
+    match member.add_roles(&ctx.http, &roles).await {
         Ok(_) => {}
         Err(_) => {
             reply.say(&ctx.http, "収監に失敗したよ").await.unwrap();
@@ -697,24 +703,58 @@ async fn jail(
         }
     }
 
-    let content = format!(
-        "{}を収監したよ（刑期：{}秒）",
-        user.mention(),
-        jailterm.as_secs()
-    );
-    reply.say(&ctx.http, content).await.unwrap();
+    let jail_term_end = Instant::now() + jailterm;
+    if let Some((_, end)) = bot.jail_process.get(user).map(|r| *r.value()) {
+        if end > jail_term_end {
+            let content = format!(
+                "{}はすでに収監中だよ（残り刑期：{}秒）",
+                user.mention(),
+                end.duration_since(Instant::now()).as_secs()
+            );
+            reply.say(&ctx.http, content).await.unwrap();
+            return; // 既に収監中
+        } else {
+            let content = format!(
+                "{}を再収監したよ（残り刑期：{}秒 → {}秒）",
+                user.mention(),
+                end.duration_since(Instant::now()).as_secs(),
+                jailterm.as_secs()
+            );
+
+            reply.say(&ctx.http, content).await.unwrap();
+        }
+    } else {
+        let content = format!(
+            "{}を収監したよ（刑期：{}秒）",
+            user.mention(),
+            jailterm.as_secs()
+        );
+
+        reply.say(&ctx.http, content).await.unwrap();
+    }
+
+    let Some(newid) = (match bot.jail_id.lock() {
+        Ok(mut oldid) => {
+            *oldid += 1;
+            Some(*oldid)
+        }
+        Err(_) => None,
+    }) else {
+        reply.say(&ctx.http, "再収監に失敗したよ").await.unwrap();
+        return;
+    };
 
     let reply = *reply;
     let ctx = ctx.clone();
     let user = *user;
-    let guild = *guild;
     let roles = roles.to_vec();
-
-    let _ = spawn(async move {
-        sleep(min(jailterm, JAIL_TERM_MAX)).await;
-        unjail(&reply, &ctx, &user, &guild, &roles).await;
-    })
-    .await;
+    bot.jail_process.insert(user, (newid, jail_term_end));
+    let process = bot.jail_process.clone();
+    spawn(async move {
+        sleep(jailterm).await;
+        unjail(&reply, &ctx, &user, &guild, &roles, Some(newid), &process).await;
+        drop(process);
+    });
 }
 
 async fn unjail(
@@ -723,8 +763,26 @@ async fn unjail(
     user: &UserId,
     guild: &GuildId,
     roles: &[RoleId],
+    jail_id: Option<usize>,
+    jail_process: &Arc<DashMap<UserId, (usize, Instant)>>,
 ) {
     let member = guild.member(&ctx.http, user).await.unwrap();
+
+    // 釈放予定表を確認
+    if let Some((id, _)) = jail_process.get(user).map(|r| *r.value()) {
+        if let Some(jail_id) = jail_id {
+            // 釈放するidが指定されている場合
+            if jail_id == id {
+                //当該idのみ釈放
+                jail_process.remove(user);
+            } else {
+                return; // 釈放しない
+            }
+        } else {
+            // 無条件釈放なら、釈放予定表から削除
+            jail_process.remove(user);
+        }
+    }
 
     if !member.roles.iter().any(|role| roles.contains(role)) {
         return;
@@ -809,9 +867,15 @@ async fn serenity(
     let ai = ai::AI::new(&secrets.get("AI_API_KEY").unwrap());
     let chat_log = DashMap::new();
 
+    let jail_process = Arc::new(DashMap::new());
+
+    let jail_id = Arc::new(Mutex::new(0));
+
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
             userdata,
+            jail_process,
+            jail_id,
             channel_ids,
             guild_id,
             erogaki_role_id,

@@ -69,15 +69,15 @@ impl AI {
             .message
             .content
             .clone()
-            .ok_or("No content found".to_string())
+            .ok_or_else(|| "No content found".to_owned())
     }
 }
 
 impl Query {
     pub fn initial_context() -> Self {
         Self {
-            user: "system".to_string(),
-            message: MANAMI_PROMPT.to_string(),
+            user: "system".to_owned(),
+            message: MANAMI_PROMPT.to_owned(),
         }
     }
     pub fn from_message(user: &str, message: &str) -> Self {
