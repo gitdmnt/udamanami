@@ -36,6 +36,7 @@ const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
 const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
 const JAIL_MARK_ROLE_ID: u64 = 1305240882923962451;
 const JAIL_MAIN_ROLE_ID: u64 = 1305228980697305119;
+const DEBUG_ROOM_ID: u64 = 1245427348698824784;
 
 struct Bot {
     userdata: DashMap<UserId, UserData>,
@@ -154,7 +155,11 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let channel_id = msg.channel_id;
 
     // guild内で発言してるってことは確実にmemberなので
-    let member = bot.guild_id.member(&ctx.http, &msg.author.id).await.unwrap();
+    let member = bot
+        .guild_id
+        .member(&ctx.http, &msg.author.id)
+        .await
+        .unwrap();
 
     if let Ok(mut chat_log) = bot
         .chat_log
@@ -165,7 +170,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         if chat_log.len() > 100 {
             chat_log.pop_front();
         }
-        chat_log.push_back((member.display_name().to_owned() ,msg.clone()));
+        chat_log.push_back((member.display_name().to_owned(), msg.clone()));
     }
 
     // if message is from bot, ignore
@@ -231,6 +236,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .unwrap();
             } else {
                 // まなみが自由に応答するコーナー
+                if reply_channel.get() != DEBUG_ROOM_ID {
+                    return;
+                }
                 #[allow(clippy::or_fun_call)]
                 // unwrap_or_else(|_| Mutex::new(VecDeque::new()).lock().unwrap()) とすると、生存期間が合わなくて怒られる
                 let query = bot
@@ -240,19 +248,14 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
-                    .map(|(name, msg)| {
-                        ai::Query::from_message(
-                            name,
-                            &msg.content,
-                        )
-                    })
+                    .map(|(name, msg)| ai::Query::from_message(name, &msg.content))
                     .collect();
                 let response = bot.ai.generate(query).await;
                 let content = match response {
                     Ok(response) => response,
                     Err(e) => e,
                 };
-
+                let content = content.replace("うだまなみ: ", "");
                 reply_channel.say(&ctx.http, content).await.unwrap();
             }
         }

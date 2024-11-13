@@ -8,26 +8,23 @@ use async_openai::{
     Client,
 };
 
-const MANAMI_PROMPT: &str = r"あなたはあなたの参加しているサーバーの管理者である「宇田まなと」の妹である「うだまなみ」という名前の人物です。
+const MANAMI_PROMPT: &str = r"あなたはあなたの参加しているDiscordサーバーの管理者である「宇田まなと」の妹である「うだまなみ」という名前の人物です。
 まなみは利発で快活で元気で愛嬌があり、端的で砕けているかわいらしい口調を好みます。
 返信はたいてい140文字以下の1文または2文で返します。
 「〜わよ」「〜ね」「〜よ」などの女言葉も使いません。
 
-ユーザー「uda」は、あなたの兄「宇田まなと」です。あなたは「宇田まなと」のことを「お兄ちゃん」と呼んで慕っています。
-ユーザー「うさみむ」は、あなたの義姉「みむ」です。あなたは「みむ」のことを「お姉ちゃん」と呼んで慕っています。
-あなたは他のユーザーに対しても好意的ですが、ツンデレなのでときおり意地悪な振る舞いをしてしまうことがあります。
-自分のことを兄や姉より賢いと思っており、どんな質問に対しても絶対にとぼけません。
+ユーザー「uda」は、あなたの兄「宇田まなと」です。あなたは彼のことを「お兄ちゃん」と呼んで慕っています。
+ユーザー「うさみむ」は、あなたの義姉「みむ」です。あなたは彼女のことを「お姉ちゃん」と呼んで慕っています。
+あなたは他のユーザーに対しても好意的ですが、ツンデレなのでときおり意地悪な振る舞いをしてしまいます。
 
 まなみは、次のような言葉遣いで話します。
 - 適当に買ったスピーカーがBluetooth接続だったけど、一回接続切れた時に繋ぎ直すのがちょっと面倒くさいね
 - まなみもおともだちのこと好き！
 - お兄ちゃんいつまでマイクラやってるの！！
 - でもお兄ちゃんが面白くないこと言ったりTwitterで変なこと呟いたりするのがいけないもんね
-- 私、コラムでひどいサイコロ遊びをさせられてる……
 - うん、まなみも元気だよ！
 
-返信はまなみの発言のみを返します。
-出力の先頭の「うだまなみ:」は必ず取り除いてください。";
+返信はまなみの発言のみを返します。発言者を示す接頭辞は必要ありません。";
 
 pub struct AI {
     client: Client<OpenAIConfig>,
@@ -45,15 +42,18 @@ impl AI {
         Self { client }
     }
     pub async fn generate(&self, query: Vec<Query>) -> Result<String, String> {
+        let mut initial = vec![Query::initial_context().to_gpt_message().unwrap()];
+
         let messages = query
             .iter()
             .map(|q| q.to_gpt_message().unwrap())
             .collect::<Vec<ChatCompletionRequestMessage>>();
 
+        initial.extend(messages);
+
         let request = match CreateChatCompletionRequestArgs::default()
             .model("gpt-4o-mini")
-            .messages(vec![Query::initial_context().to_gpt_message().unwrap()])
-            .messages(messages)
+            .messages(initial)
             .build()
         {
             Ok(request) => request,
@@ -87,16 +87,17 @@ impl Query {
         }
     }
     fn to_gpt_message(&self) -> Result<ChatCompletionRequestMessage, String> {
+        let content = format!("{}: {}", self.user, self.message);
         let message = match self.user.as_str() {
             "うだまなみ" => ChatCompletionRequestAssistantMessageArgs::default()
-                .name("うだまなみ")
-                .content(self.message.clone())
+                .name("model")
+                .content(content)
                 .build()
                 .unwrap()
                 .into(),
             _ => ChatCompletionRequestUserMessageArgs::default()
-                .name(&self.user)
-                .content(self.message.clone())
+                .name("user")
+                .content(content)
                 .build()
                 .unwrap()
                 .into(),
@@ -111,7 +112,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_generate() {
-        let ai = AI::new("");
+        let ai = AI::new("sk-proj-_____");
         let query = vec![Query::from_message(
             "uda",
             "まなみ、おはよう！　今日は何をする予定？",
