@@ -51,7 +51,7 @@ struct Bot {
 
     variables: DashMap<String, EvalResult>,
     ai: ai::AI,
-    chat_log: DashMap<ChannelId, Mutex<VecDeque<Message>>>,
+    chat_log: DashMap<ChannelId, Mutex<VecDeque<(String, Message)>>>,
 }
 
 #[derive(Clone)]
@@ -153,6 +153,9 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let channel_id = msg.channel_id;
 
+    // guild内で発言してるってことは確実にmemberなので
+    let member = bot.guild_id.member(&ctx.http, &msg.author.id).await.unwrap();
+
     if let Ok(mut chat_log) = bot
         .chat_log
         .entry(channel_id)
@@ -162,7 +165,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         if chat_log.len() > 100 {
             chat_log.pop_front();
         }
-        chat_log.push_back(msg.clone());
+        chat_log.push_back((member.display_name().to_owned() ,msg.clone()));
     }
 
     // if message is from bot, ignore
@@ -237,10 +240,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .lock()
                     .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
                     .iter()
-                    .map(|m| {
+                    .map(|(name, msg)| {
                         ai::Query::new(
-                            m.author.global_name.as_ref().unwrap_or(&m.author.name),
-                            &m.content,
+                            name,
+                            &msg.content,
                         )
                     })
                     .collect();
