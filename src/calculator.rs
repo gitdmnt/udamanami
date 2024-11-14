@@ -576,6 +576,8 @@ pub enum EvalStdLibFun {
     Foldl,   // foldl(f, init, list)
     Foldr,   // foldr(f, init, list)
     Range,   // range(end) or range(start, end) or range(start, end, step)
+    Join,    // join(list, sep)
+    Slice,   // slice(list, start, end)
     Len,     // len(list)
     Head,    // head(list)
     Tail,    // tail(list)
@@ -618,6 +620,8 @@ impl std::fmt::Display for EvalStdLibFun {
             Self::Foldl => write!(f, "foldl"),
             Self::Foldr => write!(f, "foldr"),
             Self::Range => write!(f, "range"),
+            Self::Join => write!(f, "join"),
+            Self::Slice => write!(f, "slice"),
             Self::Len => write!(f, "len"),
             Self::Head => write!(f, "head"),
             Self::Tail => write!(f, "tail"),
@@ -841,6 +845,13 @@ fn is_str(s: EvalResult) -> bool {
     matches!(s, EvalResult::SVal(_))
 }
 
+pub fn val_as_str(s: &EvalResult) -> String {
+    match s {
+        EvalResult::SVal(s) => s.clone(),
+        _ => format!("{}", s),
+    }
+}
+
 fn list_free_var(expr: &Expr) -> HashSet<String> {
     let result = match expr {
         Expr::IVal(_) => HashSet::new(),
@@ -999,7 +1010,7 @@ fn eval_expr_ctx(
             let (val2, next_step) =
                 eval_expr_ctx(e2, next_step + 1, true, global_context, local_context)?;
 
-            let shortsurcuit: Option<Result<(EvalResult, usize), (EvalError, Expr)>> = match op {
+            let shortcircuit: Option<Result<(EvalResult, usize), (EvalError, Expr)>> = match op {
                 ExprOp2::Add => {
                     if is_str(val1.clone()) || is_str(val2.clone()) {
                         let str1 = match val1.clone() {
@@ -1033,7 +1044,7 @@ fn eval_expr_ctx(
                 _ => None,
             };
 
-            match shortsurcuit {
+            match shortcircuit {
                 Some(Ok(v)) => Ok(v),
                 Some(Err(e)) => Err(e),
                 None => {
@@ -1112,7 +1123,7 @@ fn eval_expr_ctx(
             let (vfun, next_step) =
                 eval_expr_ctx(fun, step + 1, true, global_context, local_context)?;
 
-            let shortsurcuit = match vfun.clone() {
+            let shortcircuit = match vfun.clone() {
                 EvalResult::FuncStdLib(EvalStdLibFun::If) => {
                     if args.len() != 3 {
                         return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
@@ -1148,7 +1159,7 @@ fn eval_expr_ctx(
                 _ => None,
             };
 
-            match shortsurcuit {
+            match shortcircuit {
                 Some(Ok(v)) => Ok(v),
                 Some(Err(e)) => Err(e),
                 None => {
@@ -1575,6 +1586,52 @@ pub fn eval_stdlib(
             }
             Ok((EvalResult::List(new_list), step + 1))
         }
+        EvalStdLibFun::Join => {
+            if args.len() != 2 {
+                return Err((EvalError::ArgCountMismatch(args.len(), 2), expr.clone()));
+            }
+            let sep = val_as_str(&args[1]);
+            val_as_list(&args[0]).map_or_else(
+                || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
+                |l| {
+                    let mut new_str = String::new();
+                    for (i, e) in l.iter().enumerate() {
+                        if i > 0 {
+                            new_str.push_str(&sep);
+                        }
+                        new_str.push_str(&val_as_str(e));
+                    }
+                    Ok((EvalResult::SVal(new_str), step + 1))
+                },
+            )
+        }
+        EvalStdLibFun::Slice => {
+            // slice(list, start, end)
+            if args.len() != 3 {
+                return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
+            }
+            match (
+                val_as_list(&args[0]),
+                val_as_int(&args[1]),
+                val_as_int(&args[2]),
+            ) {
+                (Some(l), Some(s), Some(e)) => {
+                    let start = if s < 0 { l.len() as i64 + s } else { s };
+                    let end = if e < 0 { l.len() as i64 + e } else { e };
+                    if start < 0 || end < 0 || start > end || end as usize > l.len() {
+                        return Err((EvalError::OutOfRange, expr.clone()));
+                    }
+                    let mut new_list = Vec::new();
+                    for i in start..end {
+                        new_list.push(l[i as usize].clone());
+                    }
+                    Ok((EvalResult::List(new_list), step + 1))
+                }
+                (Some(_), _, _) => Err((EvalError::NotANumber(args[1].clone()), expr.clone())),
+                (_, Some(_), _) => Err((EvalError::NotANumber(args[2].clone()), expr.clone())),
+                _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
+            }
+        }
         EvalStdLibFun::Len => {
             if args.len() != 1 {
                 return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
@@ -1902,7 +1959,10 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
         "foldl" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldl)),
         "foldr" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Foldr)),
         "range" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Range)),
+        "join" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Join)),
+        "slice" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Slice)),
         "len" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Len)),
+        "length" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Len)),
         "head" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Head)),
         "tail" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Tail)),
         "last" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Last)),
