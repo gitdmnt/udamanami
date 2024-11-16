@@ -31,7 +31,7 @@ mod calculator;
 mod cclemon;
 mod parser;
 
-use calculator::EvalResult;
+use calculator::{val_as_str, EvalResult};
 use udamanami::ai;
 
 const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
@@ -145,6 +145,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
         "var" => var(dm, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
+        "calcsay" => calcsay(&usercache.room_pointer, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
         _ => {
@@ -300,10 +301,14 @@ async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildI
 
     let about_dm = "## まなみはDMでコマンドを受け付けるよ！
 ```
-!channel        代筆先のチャンネルについてだよ
-!erocheck       あなたがエロガキかどうかを判定するよ
-!help           このヘルプを表示するよ
-!ping           pong!
+!channel             代筆先のチャンネルについてだよ
+!erocheck            あなたがエロガキかどうかを判定するよ
+!help                このヘルプを表示するよ
+!ping                pong!
+!calc <expr>         数式を計算するよ
+!var <name>=<expr>   calcで使える変数を定義するよ
+!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
+!calcsay <expr>      calcの結果を代筆先に送信するよ
 ```
 ";
 
@@ -542,6 +547,13 @@ async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     var_main(reply, ctx, var, expression, bot).await;
 }
 
+async fn calcsay(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
+    let result = calculator::eval_from_str(&expression, &bot.variables);
+    if let Ok(result) = result {
+        reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
+    }
+}
+
 async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     let code_pattern = Regex::new(r"```[a-zA-Z0-9]*(.*)```").unwrap();
 
@@ -564,7 +576,7 @@ async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: Str
     match result {
         Ok(result) => {
             bot.variables.insert(var, result.clone());
-            reply.say(&ctx.http, result.to_string()).await.unwrap();
+            reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
         }
         Err(e) => {
             reply
