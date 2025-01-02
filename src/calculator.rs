@@ -2034,6 +2034,62 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                 )
             }),
         },
+        EvalStdLibFun::Pick => LibFun {
+            name: "pick".to_owned(),
+            alias: vec![],
+            usage: "`pick(list)`".to_owned(),
+            note: "listからランダムに要素を選択します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                match val_as_list(&args[0]) {
+                    Some(l) => {
+                        if l.is_empty() {
+                            return Err((EvalError::OutOfRange, expr.clone()));
+                        }
+                        let i = rand::thread_rng().gen_range(0..l.len());
+                        Ok((l[i].clone(), step + 1))
+                    }
+                    _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
+                }
+            }),
+        },
+        EvalStdLibFun::PickArg => LibFun {
+            name: "pickarg".to_owned(),
+            alias: vec![],
+            usage: "`pickarg(x, y, ...)`".to_owned(),
+            note: "引数からランダムに要素を選択します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.is_empty() {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                let i = rand::thread_rng().gen_range(0..args.len());
+                Ok((args[i].clone(), step + 1))
+            }),
+        },
+        EvalStdLibFun::Shuffle => LibFun {
+            name: "shuffle".to_owned(),
+            alias: vec![],
+            usage: "`shuffle(list)`".to_owned(),
+            note: "listをシャッフルします".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                val_as_list(&args[0]).map_or_else(
+                    || Err((EvalError::NotAList(args[0].clone()), expr.clone())),
+                    |mut l| {
+                        let mut shuffled = Vec::new();
+                        while !l.is_empty() {
+                            let i = rand::thread_rng().gen_range(0..l.len());
+                            shuffled.push(l.remove(i));
+                        }
+                        Ok((EvalResult::List(shuffled), step + 1))
+                    },
+                )
+            }),
+        },
         EvalStdLibFun::Help => LibFun {
             name: "help".to_owned(),
             alias: vec![],
@@ -2131,6 +2187,9 @@ pub enum EvalStdLibFun {
     Minimum, // minimum(list)
     Fix,     // Fix(f) = f(Fix(f))
     Help,    // help() = "sin, cos, ..."
+    Pick,    // pick(list)
+    PickArg, // pickarg(x, y, ...)
+    Shuffle, // shuffle(list)
 }
 
 impl std::fmt::Display for EvalStdLibFun {
