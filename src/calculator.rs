@@ -551,97 +551,6 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 
 type Context = DashMap<String, EvalResult>;
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter)]
-pub enum EvalStdLibFun {
-    //Print,
-    //Println,
-    Sin,
-    Cos,
-    Tan,
-    LogE,
-    Log10,
-    Log2,
-    Abs,
-    Floor,
-    Ceil,
-    Round,
-    URand,   // 0.0 <= x < 1.0 uniform random
-    GRand,   // standerd gaussian random
-    If,      // if(cond, then, else)
-    Map,     // map(f, list)
-    Geni,    // geni(f, n) = [f(0), f(1), ..., f(n-1)]
-    Repeat,  // repeat(f, n) = [f(), f(), ..., f()]
-    Filter,  // filter(f, list)
-    ZipWith, // zipWith(f, list1, list2)
-    Foldl,   // foldl(f, init, list)
-    Foldr,   // foldr(f, init, list)
-    Range,   // range(end) or range(start, end) or range(start, end, step)
-    Join,    // join(list, sep)
-    Slice,   // slice(list, start, end)
-    Len,     // len(list)
-    Head,    // head(list)
-    Tail,    // tail(list)
-    Last,    // last(list)
-    Init,    // init(list)
-    While,   // while(acc => cond, acc => nextacc, init)
-    Sort,    // sort(list)
-    Sum,     // sum(list)
-    Average, // average(list)
-    Max,     // max(x, y, ...)
-    Min,     // min(x, y, ...)
-    Maximum, // maximum(list)
-    Minimum, // minimum(list)
-    Fix,     // Fix(f) = f(Fix(f))
-    Lazy,    // Lazy(expr) = expr
-    Help,    // help() = "sin, cos, ..."
-}
-
-impl std::fmt::Display for EvalStdLibFun {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            Self::Sin => write!(f, "sin"),
-            Self::Cos => write!(f, "cos"),
-            Self::Tan => write!(f, "tan"),
-            Self::LogE => write!(f, "ln"),
-            Self::Log10 => write!(f, "log10"),
-            Self::Log2 => write!(f, "log2"),
-            Self::Abs => write!(f, "abs"),
-            Self::Floor => write!(f, "floor"),
-            Self::Ceil => write!(f, "ceil"),
-            Self::Round => write!(f, "round"),
-            Self::URand => write!(f, "urand"),
-            Self::GRand => write!(f, "grand"),
-            Self::If => write!(f, "if"),
-            Self::Map => write!(f, "map"),
-            Self::Geni => write!(f, "geni"),
-            Self::Repeat => write!(f, "repeat"),
-            Self::Filter => write!(f, "filter"),
-            Self::ZipWith => write!(f, "zipWith"),
-            Self::Foldl => write!(f, "foldl"),
-            Self::Foldr => write!(f, "foldr"),
-            Self::Range => write!(f, "range"),
-            Self::Join => write!(f, "join"),
-            Self::Slice => write!(f, "slice"),
-            Self::Len => write!(f, "len"),
-            Self::Head => write!(f, "head"),
-            Self::Tail => write!(f, "tail"),
-            Self::Init => write!(f, "init"),
-            Self::Last => write!(f, "last"),
-            Self::While => write!(f, "while"),
-            Self::Sort => write!(f, "sort"),
-            Self::Sum => write!(f, "sum"),
-            Self::Average => write!(f, "average"),
-            Self::Max => write!(f, "max"),
-            Self::Min => write!(f, "min"),
-            Self::Maximum => write!(f, "maximum"),
-            Self::Minimum => write!(f, "minimum"),
-            Self::Fix => write!(f, "fix"),
-            Self::Lazy => write!(f, "lazy"),
-            Self::Help => write!(f, "help"),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub enum EvalResult {
     IVal(i64),
@@ -1983,6 +1892,145 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
 
         _ => None,
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter)]
+pub enum EvalStdLibFun {
+    //Print,
+    //Println,
+    Sin,
+    Cos,
+    Tan,
+    LogE,
+    Log10,
+    Log2,
+    Abs,
+    Floor,
+    Ceil,
+    Round,
+    URand,   // 0.0 <= x < 1.0 uniform random
+    GRand,   // standerd gaussian random
+    If,      // if(cond, then, else)
+    Map,     // map(f, list)
+    Geni,    // geni(f, n) = [f(0), f(1), ..., f(n-1)]
+    Repeat,  // repeat(f, n) = [f(), f(), ..., f()]
+    Filter,  // filter(f, list)
+    ZipWith, // zipWith(f, list1, list2)
+    Foldl,   // foldl(f, init, list)
+    Foldr,   // foldr(f, init, list)
+    Range,   // range(end) or range(start, end) or range(start, end, step)
+    Join,    // join(list, sep)
+    Slice,   // slice(list, start, end)
+    Len,     // len(list)
+    Head,    // head(list)
+    Tail,    // tail(list)
+    Last,    // last(list)
+    Init,    // init(list)
+    While,   // while(acc => cond, acc => nextacc, init)
+    Sort,    // sort(list)
+    Sum,     // sum(list)
+    Average, // average(list)
+    Max,     // max(x, y, ...)
+    Min,     // min(x, y, ...)
+    Maximum, // maximum(list)
+    Minimum, // minimum(list)
+    Fix,     // Fix(f) = f(Fix(f))
+    Lazy,    // Lazy(expr) = expr
+    Help,    // help() = "sin, cos, ..."
+}
+
+impl std::fmt::Display for EvalStdLibFun {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::Sin => write!(f, "sin"),
+            Self::Cos => write!(f, "cos"),
+            Self::Tan => write!(f, "tan"),
+            Self::LogE => write!(f, "ln"),
+            Self::Log10 => write!(f, "log10"),
+            Self::Log2 => write!(f, "log2"),
+            Self::Abs => write!(f, "abs"),
+            Self::Floor => write!(f, "floor"),
+            Self::Ceil => write!(f, "ceil"),
+            Self::Round => write!(f, "round"),
+            Self::URand => write!(f, "urand"),
+            Self::GRand => write!(f, "grand"),
+            Self::If => write!(f, "if"),
+            Self::Map => write!(f, "map"),
+            Self::Geni => write!(f, "geni"),
+            Self::Repeat => write!(f, "repeat"),
+            Self::Filter => write!(f, "filter"),
+            Self::ZipWith => write!(f, "zipWith"),
+            Self::Foldl => write!(f, "foldl"),
+            Self::Foldr => write!(f, "foldr"),
+            Self::Range => write!(f, "range"),
+            Self::Join => write!(f, "join"),
+            Self::Slice => write!(f, "slice"),
+            Self::Len => write!(f, "len"),
+            Self::Head => write!(f, "head"),
+            Self::Tail => write!(f, "tail"),
+            Self::Init => write!(f, "init"),
+            Self::Last => write!(f, "last"),
+            Self::While => write!(f, "while"),
+            Self::Sort => write!(f, "sort"),
+            Self::Sum => write!(f, "sum"),
+            Self::Average => write!(f, "average"),
+            Self::Max => write!(f, "max"),
+            Self::Min => write!(f, "min"),
+            Self::Maximum => write!(f, "maximum"),
+            Self::Minimum => write!(f, "minimum"),
+            Self::Fix => write!(f, "fix"),
+            Self::Lazy => write!(f, "lazy"),
+            Self::Help => write!(f, "help"),
+        }
+    }
+}
+
+// 方針：StdLibFunというenumを新造
+// それを使って、関数名と関数の対応を表すHashMapを作る
+
+type LibFunBody = dyn Fn(
+    &Expr,
+    usize,
+    &Context,
+    &Context,
+    Vec<EvalResult>,
+) -> Result<(EvalResult, usize), (EvalError, Expr)>;
+
+pub struct LibFun {
+    name: String,
+    alias: Vec<String>,
+    usage: String,
+    body: Box<LibFunBody>,
+    /*
+    fn(
+        expr: &Expr,
+        step: usize,
+        global_context: &Context,
+        local_context: &Context,
+        func: EvalStdLibFun,
+        args: Vec<EvalResult>,
+    ) -> Result<(EvalResult, usize), (EvalError, Expr)>)
+    */
+}
+
+// show help
+fn help_libfun(
+    LibFun {
+        name, alias, usage, ..
+    }: &LibFun,
+) -> String {
+    format!("{} ({})\nUsage: {}", name, alias.join(", "), usage)
+}
+
+fn eval_libfun(
+    LibFun { body, .. }: &LibFun,
+    expr: &Expr,
+    step: usize,
+    global_context: &Context,
+    local_context: &Context,
+    args: Vec<EvalResult>,
+) -> Result<(EvalResult, usize), (EvalError, Expr)> {
+    body(expr, step, global_context, local_context, args)
 }
 
 pub fn eval_expr(expr: &Expr, global_context: &Context) -> Result<EvalResult, (EvalError, Expr)> {
