@@ -561,6 +561,8 @@ pub enum EvalResult {
     Object(HashMap<String, Box<EvalResult>>),
     Closure(Vec<String>, Box<Expr>, Box<Context>),
     FuncStdLib(EvalStdLibFun),
+    FuncIf,
+    FuncLazy,
     Lazy(Box<Expr>), //適用を受けるまで遅延
 }
 
@@ -1033,7 +1035,7 @@ fn eval_expr_ctx(
                 eval_expr_ctx(fun, step + 1, true, global_context, local_context)?;
 
             let shortcircuit = match vfun.clone() {
-                EvalResult::FuncStdLib(EvalStdLibFun::If) => {
+                EvalResult::FuncIf => {
                     if args.len() != 3 {
                         return Err((EvalError::ArgCountMismatch(args.len(), 3), expr.clone()));
                     }
@@ -1049,7 +1051,7 @@ fn eval_expr_ctx(
                     };
                     Some(Ok((val, next_step)))
                 }
-                EvalResult::FuncStdLib(EvalStdLibFun::Lazy) => {
+                EvalResult::FuncLazy => {
                     if args.len() != 1 {
                         return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
                     }
@@ -1811,16 +1813,6 @@ pub fn eval_stdlib(
                 vec![func],
             )
         }
-        EvalStdLibFun::If => {
-            //this should be handled in eval_expr_ctx
-            //引数を正格評価すると死ぬので
-            panic!("If should be handled in eval_expr_ctx");
-        }
-        EvalStdLibFun::Lazy => {
-            //this should be handled in eval_expr_ctx
-            //引数を正格評価すると死ぬので
-            panic!("If should be handled in eval_expr_ctx");
-        }
         EvalStdLibFun::Help => {
             let mut help = String::new();
             help.push_str("Available functions: ");
@@ -1840,7 +1832,10 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
         "e" => Some(EvalResult::FVal(std::f64::consts::E)),
         "true" => Some(EvalResult::BVal(true)),
         "false" => Some(EvalResult::BVal(false)),
+        "if" => Some(EvalResult::FuncIf),
+        "lazy" => Some(EvalResult::FuncLazy),
 
+        /*
         // stdlib functions
         "sin" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Sin)),
         "cos" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Cos)),
@@ -1889,7 +1884,7 @@ pub fn match_const(s: &str) -> Option<EvalResult> {
         "fix" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Fix)),
         "lazy" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Lazy)),
         "help" => Some(EvalResult::FuncStdLib(EvalStdLibFun::Help)),
-
+        */
         _ => None,
     }
 }
