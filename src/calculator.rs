@@ -2111,9 +2111,13 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                 } else {
                     let mut help = String::new();
                     help.push_str("Available functions: ");
-                    for stdlibfun in EvalStdLibFun::iter() {
-                        help.push_str(&format!("{}, ", stdlibfun));
-                    }
+                    help.push_str(
+                        &stdlib_list()
+                            .iter()
+                            .map(|(name, _)| format!("`{}`", name))
+                            .collect::<Vec<String>>()
+                            .join(", "),
+                    );
                     Ok((EvalResult::SVal(help), step + 1))
                 }
             }),
