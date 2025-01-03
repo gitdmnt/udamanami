@@ -1,7 +1,10 @@
-use std::str::FromStr;
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
-use std::{collections::VecDeque, convert::Into};
+use std::{
+    collections::VecDeque,
+    convert::Into,
+    str::FromStr,
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use anyhow::Context as _;
 use dashmap::DashMap;
@@ -21,9 +24,8 @@ use serenity::{
     utils::{parse_user_mention, MessageBuilder},
 };
 use shuttle_runtime::SecretStore;
-use tracing::{error, info};
-
 use tokio::{spawn, time::sleep};
+use tracing::{error, info};
 
 mod calculator;
 mod cclemon;
@@ -199,15 +201,17 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             dice(&msg.channel_id, ctx, parsed).await;
             return;
         }
-        Err(Error { code, .. }) => {
-            if code == ErrorKind::MapRes {
-                msg.channel_id
-                    .say(&ctx.http, "数字がおかしいよ")
-                    .await
-                    .unwrap();
-                return;
-            }
+        Err(Error {
+            code: ErrorKind::MapRes,
+            ..
+        }) => {
+            msg.channel_id
+                .say(&ctx.http, "数字がおかしいよ")
+                .await
+                .unwrap();
+            return;
         }
+        Err(_) => {}
     };
 
     // handle other command
@@ -373,15 +377,14 @@ async fn channel(
         reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
         return;
     };
-    if selector >= bot.channel_ids.len() {
+    let Some(&next_pointer) = bot.channel_ids.get(selector) else {
         reply
             .say(&ctx.http, "しらないチャンネルだよ")
             .await
             .unwrap();
         return;
-    }
+    };
 
-    let next_pointer = bot.channel_ids[selector];
     change_room_pointer(bot, userid, next_pointer)
         .await
         .unwrap();
@@ -466,15 +469,15 @@ async fn erocheck(reply: &ChannelId, ctx: &Context, bot: &Bot, user_id: &UserId)
 }
 
 async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
-    if command_args.len() != 1 {
+    let [command_args] = command_args else {
         reply
             .say(&ctx.http, "使い方: `!isprime <number>`")
             .await
             .unwrap();
         return;
-    }
+    };
 
-    let Ok(num) = command_args[0].parse::<u64>() else {
+    let Ok(num) = command_args.parse::<u64>() else {
         reply.say(&ctx.http, "わかんないよ").await.unwrap();
         return;
     };
@@ -572,7 +575,7 @@ async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: Str
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
-            bot.variables.insert(var.clone(), result.clone());
+            bot.variables.insert(var, result.clone());
             reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
         }
         Err(e) => {
@@ -585,14 +588,14 @@ async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: Str
 }
 
 async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_args: &[&str]) {
-    if command_args.len() != 1 {
+    let [opponent_id] = command_args else {
         reply
             .say(&ctx.http, "使い方: `!cclemon <相手>`")
             .await
             .unwrap();
         return;
-    }
-    let Some(opponent_id) = parse_user_mention(command_args[0]) else {
+    };
+    let Some(opponent_id) = parse_user_mention(opponent_id) else {
         reply
             .say(&ctx.http, "相手をメンションで指定してね")
             .await
@@ -605,47 +608,34 @@ async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_ar
 const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
 const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
 
-fn get_userid_from_mention(mention: &str) -> Option<UserId> {
-    // "<@120123018923098123>" という形式の文字列を UserId に変換
-    let id_pattern = Regex::new(r"<@(\d+)>").unwrap();
-    let id_str = match id_pattern.captures(mention) {
-        Some(caps) => caps.get(1).unwrap().as_str(),
-        None => return None,
-    };
-    UserId::from_str(id_str).ok()
-}
-
 async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
     let (user, jailterm) = match args {
         [user] => {
-            let Some(user) = get_userid_from_mention(user) else {
+            let Some(user) = parse_user_mention(user) else {
                 reply.say(&ctx.http, "誰？").await.unwrap();
                 return;
             };
             (user, JAIL_TERM_DEFAULT)
         }
         [user, args @ ..] => {
-            let Some(user) = get_userid_from_mention(user) else {
+            let Some(user) = parse_user_mention(user) else {
                 reply.say(&ctx.http, "誰？").await.unwrap();
                 return;
             };
 
             let expression = args.join(" ");
 
-            let jailtermsec = {
-                match calculator::eval_from_str(&expression, &bot.variables) {
-                    Ok(result) => match calculator::val_as_int(&result) {
-                        Some(val) => val as u64,
-                        None => {
-                            reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                            return;
-                        }
-                    },
-                    _ => {
-                        reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                        return;
-                    }
-                }
+            let Ok(jailtermsec) = calculator::eval_from_str(&expression, &bot.variables) else {
+                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
+                return;
+            };
+            let Some(jailtermsec) = calculator::val_as_int(&jailtermsec) else {
+                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
+                return;
+            };
+            let Ok(jailtermsec) = u64::try_from(jailtermsec) else {
+                reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
+                return;
             };
 
             let jailterm = if jailtermsec > JAIL_TERM_MAX.as_secs() {
@@ -677,21 +667,16 @@ async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
 }
 
 async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
-    let user = match args {
-        [user] => match get_userid_from_mention(user) {
-            Some(user) => user,
-            None => {
-                reply.say(&ctx.http, "誰？").await.unwrap();
-                return;
-            }
-        },
-        _ => {
-            reply
-                .say(&ctx.http, "使い方: `!unjail <user>`")
-                .await
-                .unwrap();
-            return;
-        }
+    let [user] = args else {
+        reply
+            .say(&ctx.http, "使い方: `!unjail <user>`")
+            .await
+            .unwrap();
+        return;
+    };
+    let Some(user) = parse_user_mention(user) else {
+        reply.say(&ctx.http, "誰？").await.unwrap();
+        return;
     };
 
     unjail(
@@ -711,12 +696,9 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duratio
     let roles = vec![bot.jail_mark_role_id, bot.jail_main_role_id];
 
     let member = guild.member(&ctx.http, user).await.unwrap();
-    match member.add_roles(&ctx.http, &roles).await {
-        Ok(_) => {}
-        Err(_) => {
-            reply.say(&ctx.http, "収監に失敗したよ").await.unwrap();
-            return;
-        }
+    if member.add_roles(&ctx.http, &roles).await.is_err() {
+        reply.say(&ctx.http, "収監に失敗したよ").await.unwrap();
+        return;
     }
 
     let jail_term_end = Instant::now() + jailterm;
@@ -801,12 +783,9 @@ async fn unjail(
         return;
     }
 
-    match member.remove_roles(&ctx.http, roles).await {
-        Ok(_) => {}
-        Err(_) => {
-            reply.say(&ctx.http, "釈放に失敗したよ").await.unwrap();
-            return;
-        }
+    if member.remove_roles(&ctx.http, roles).await.is_err() {
+        reply.say(&ctx.http, "釈放に失敗したよ").await.unwrap();
+        return;
     }
 
     let content = format!("{}を釈放したよ", user.mention());
