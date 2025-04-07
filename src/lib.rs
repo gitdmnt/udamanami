@@ -6,8 +6,6 @@ use std::{
 
 use dashmap::DashMap;
 
-use calculator::EvalResult;
-
 use regex::Regex;
 use serenity::{
     async_trait,
@@ -22,7 +20,7 @@ use serenity::{
 use tokio::{spawn, time::sleep};
 use tracing::{error, info};
 
-use calculator::val_as_str;
+use calculator::{val_as_str, EvalResult};
 use commands::*;
 
 pub mod commands;
@@ -147,7 +145,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "channel" => channel::run(&command_context).await,
-        "erocheck" => erocheck(dm, ctx, bot, &msg.author.id).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
@@ -211,7 +208,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "help" | "たすけて" | "助けて" => {
             help::run(&command_context).await;
         }
-        "isprime" => isprime(reply_channel, ctx, command_args).await,
+        "isprime" => isprime::run(&command_context).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
         "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
@@ -268,87 +265,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-
-// erogaki status check
-async fn erocheck(reply: &ChannelId, ctx: &Context, bot: &Bot, user_id: &UserId) {
-    let is_erogaki = bot
-        .guild_id
-        .member(&ctx.http, user_id)
-        .await
-        .unwrap()
-        .roles
-        .iter()
-        .any(|role| role == &bot.erogaki_role_id);
-    let content = if is_erogaki {
-        "エロガキ！！！！"
-    } else {
-        "エロガキじゃないよ"
-    };
-    reply.say(&ctx.http, content).await.unwrap();
-}
-
-async fn isprime(reply: &ChannelId, ctx: &Context, command_args: &[&str]) {
-    let [command_args] = command_args else {
-        reply
-            .say(&ctx.http, "使い方: `!isprime <number>`")
-            .await
-            .unwrap();
-        return;
-    };
-
-    let Ok(num) = command_args.parse::<u64>() else {
-        reply.say(&ctx.http, "わかんないよ").await.unwrap();
-        return;
-    };
-
-    let (is_prime, factor) = match num {
-        0 | 1 => (false, vec![]),
-        2 => (true, vec![2]),
-        _ => {
-            let mut num = num;
-            let mut factor = vec![];
-
-            while num % 2 == 0 {
-                num /= 2;
-                factor.push(2);
-            }
-
-            let mut i = 3;
-
-            while i * i <= num {
-                if num % i == 0 {
-                    num /= i;
-                    factor.push(i);
-                } else {
-                    i += 2;
-                }
-            }
-
-            if num != 1 {
-                factor.push(num);
-            }
-
-            if factor.len() == 1 {
-                (true, factor)
-            } else {
-                (false, factor)
-            }
-        }
-    };
-
-    let is_prime = format!(
-        "{}は{}",
-        num,
-        if is_prime {
-            "素数だよ".to_owned()
-        } else if factor.is_empty() {
-            "素数じゃないよ。あたりまえでしょ？".to_owned()
-        } else {
-            format!("素数じゃないよ。素因数は{:?}だよ", factor)
-        }
-    );
-    reply.say(&ctx.http, is_prime).await.unwrap();
-}
 
 const VAR_DEFAULT: &str = "_";
 

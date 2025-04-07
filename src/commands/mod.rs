@@ -1,11 +1,11 @@
 pub mod channel;
 pub mod dice;
 pub mod help;
+pub mod isprime;
 
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
     pub http_cache: &'a serenity::http::Http,
-
     pub channel_id: &'a serenity::model::id::ChannelId,
     pub author_id: &'a serenity::model::id::UserId,
     pub command: String,
