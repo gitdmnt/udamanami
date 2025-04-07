@@ -104,12 +104,11 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    // update user data
-    let usercache = update_user(bot, &msg.author.id).await.unwrap();
+    let room_pointer = get_user_room_pointer(bot, &msg.author.id);
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
-        if let Err(why) = usercache.room_pointer.say(&ctx.http, &msg.content).await {
+        if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
         return;
@@ -132,14 +131,14 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     };
 
     match command_name {
-        "channel" => channel(dm, ctx, command_args, bot, &usercache, &msg.author.id).await,
+        "channel" => channel(dm, ctx, command_args, bot, &room_pointer, &msg.author.id).await,
         "erocheck" => erocheck(dm, ctx, bot, &msg.author.id).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
         "var" => var(dm, ctx, command_args.join(" "), bot).await,
         "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
-        "calcsay" => calcsay(&usercache.room_pointer, ctx, command_args.join(" "), bot).await,
+        "calcsay" => calcsay(&room_pointer, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
         _ => {
@@ -184,9 +183,6 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         ),
         None => return,
     };
-
-    // update user data
-    update_user(bot, &msg.author.id).await.unwrap();
 
     // dice command
     match parser::parse_dice(&input_string).finish() {
@@ -285,14 +281,14 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
     true
 }
 
-async fn update_user(bot: &Bot, userid: &UserId) -> Result<UserData, anyhow::Error> {
-    // get user data
-    let user = bot.userdata.entry(*userid).or_insert(UserData {
-        room_pointer: bot.channel_ids[0],
-    });
-
-    // update user data
-    Ok(user.clone())
+fn get_user_room_pointer(bot: &Bot, userid: &UserId) -> ChannelId {
+    bot.userdata
+        .entry(*userid)
+        .or_insert(UserData {
+            room_pointer: bot.channel_ids[0],
+        })
+        .clone()
+        .room_pointer
 }
 
 async fn change_room_pointer(
@@ -317,14 +313,14 @@ async fn channel(
     ctx: &Context,
     args: &[&str],
     bot: &Bot,
-    usercache: &UserData,
+    room_pointer: &ChannelId,
     userid: &UserId,
 ) {
     // 引数なしの場合はチャンネル一覧を表示
     if args.is_empty() {
         let mut res = MessageBuilder::new();
         res.push("今は")
-            .channel(usercache.room_pointer)
+            .channel(room_pointer)
             .push("で代筆してるよ\n")
             .push("```チャンネル一覧だよ\n");
         for (i, ch) in bot.channel_ids.iter().enumerate() {
