@@ -100,17 +100,7 @@ impl EventHandler for Bot {
 
 //direct message
 async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    // if message is from bot, ignore
-    if msg.author.bot {
-        return;
-    }
-    // ユーザーがこっちにきてはいけないに存在しない場合は無視
-    if bot
-        .guild_id
-        .member(&ctx.http, &msg.author.id)
-        .await
-        .is_err()
-    {
+    if !has_privilege(bot, ctx, msg).await {
         return;
     }
 
@@ -180,8 +170,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         chat_log.push_back((member.display_name().to_owned(), msg.clone()));
     }
 
-    // if message is from bot, ignore
-    if msg.author.bot {
+    if !has_privilege(bot, ctx, msg).await {
         return;
     }
 
@@ -280,6 +269,22 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
+async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
+    if msg.author.bot {
+        return false;
+    }
+    // ユーザーがこっちにきてはいけないに存在しない場合は無視
+    if bot
+        .guild_id
+        .member(&ctx.http, &msg.author.id)
+        .await
+        .is_err()
+    {
+        return false;
+    }
+    true
+}
+
 async fn update_user(bot: &Bot, userid: &UserId) -> Result<UserData, anyhow::Error> {
     // get user data
     let user = bot.userdata.entry(*userid).or_insert(UserData {
@@ -306,7 +311,6 @@ async fn change_room_pointer(
 
 // commands
 
-// help command
 // change channel
 async fn channel(
     reply: &ChannelId,
