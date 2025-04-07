@@ -157,7 +157,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     };
 
     match command_name {
-        "channel" => channel::run(ctx).await,
+        "channel" => channel::run(&command_context).await,
         "erocheck" => erocheck(dm, ctx, bot, &msg.author.id).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
