@@ -7,10 +7,7 @@ use std::{
 use dashmap::DashMap;
 
 use calculator::EvalResult;
-use nom::{
-    error::{Error, ErrorKind},
-    Finish as _,
-};
+
 use regex::Regex;
 use serenity::{
     async_trait,
@@ -20,7 +17,7 @@ use serenity::{
         id::{ChannelId, GuildId, RoleId, UserId},
     },
     prelude::*,
-    utils::{parse_user_mention, MessageBuilder},
+    utils::parse_user_mention,
 };
 use tokio::{spawn, time::sleep};
 use tracing::{error, info};
@@ -139,22 +136,14 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
+    let command_context = CommandContext::new(bot, &ctx.http, msg, msg.content[1..].to_string());
+
     // if message is command, handle command
     // handle command
     let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
     let command_name = &split_message[0][1..]; // 先頭の "!" を削除
     let command_args = &split_message[1..];
     let dm = &msg.channel_id;
-
-    let command_context = CommandContext {
-        bot,
-        http: &ctx.http,
-        msg,
-        guild_id: Some(bot.guild_id),
-        channel_id: &msg.channel_id,
-        user_id: &msg.author.id,
-        args: command_args.iter().map(|s| s.to_string()).collect(),
-    };
 
     match command_name {
         "channel" => channel::run(&command_context).await,
@@ -210,40 +199,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         None => return,
     };
 
-    // dice command
-    match parser::parse_dice(&input_string).finish() {
-        Ok((_, parsed)) => {
-            dice(&msg.channel_id, ctx, parsed).await;
-            return;
-        }
-        Err(Error {
-            code: ErrorKind::MapRes,
-            ..
-        }) => {
-            msg.channel_id
-                .say(&ctx.http, "数字がおかしいよ")
-                .await
-                .unwrap();
-            return;
-        }
-        Err(_) => {}
-    };
+    let command_context = CommandContext::new(bot, &ctx.http, msg, input_string.clone());
 
     // handle other command
     let split_message = input_string.split_whitespace().collect::<Vec<&str>>();
     let command_name = split_message[0].trim();
     let command_args = &split_message[1..];
     let reply_channel = &msg.channel_id;
-
-    let command_context = CommandContext {
-        bot,
-        http: &ctx.http,
-        msg,
-        guild_id: Some(bot.guild_id),
-        channel_id: &msg.channel_id,
-        user_id: &msg.author.id,
-        args: command_args.iter().map(|s| s.to_string()).collect(),
-    };
 
     match command_name {
         "help" | "たすけて" | "助けて" => {
@@ -260,10 +222,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
-                reply_channel
-                    .say(&ctx.http, "しらないコマンドだよ")
-                    .await
-                    .unwrap();
+                dice::run(&command_context).await;
             } else {
                 // まなみが自由に応答するコーナー
                 if reply_channel.get() != bot.channel_ids[4].get() {
@@ -309,109 +268,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-
-// change channel
-async fn channel(
-    reply: &ChannelId,
-    ctx: &Context,
-    args: &[&str],
-    bot: &Bot,
-    room_pointer: &ChannelId,
-    userid: &UserId,
-) {
-    // 引数なしの場合はチャンネル一覧を表示
-    if args.is_empty() {
-        let mut res = MessageBuilder::new();
-        res.push("今は")
-            .channel(room_pointer)
-            .push("で代筆してるよ\n")
-            .push("```チャンネル一覧だよ\n");
-        for (i, ch) in bot.channel_ids.iter().enumerate() {
-            res.push(format!("{i:>2}\t"))
-                .push(ch.name(&ctx.http).await.unwrap())
-                .push("\n");
-        }
-        let res = res.push("```").push("使い方: `!channel <ID>`").build();
-
-        reply.say(&ctx.http, &res).await.unwrap();
-        return;
-    }
-
-    // それ以外の場合は指定されたチャンネルに切り替え
-    let Ok(selector) = args[0].parse::<usize>() else {
-        reply.say(&ctx.http, "IDは数字で指定してね").await.unwrap();
-        return;
-    };
-    let Some(&next_pointer) = bot.channel_ids.get(selector) else {
-        reply
-            .say(&ctx.http, "しらないチャンネルだよ")
-            .await
-            .unwrap();
-        return;
-    };
-
-    bot.change_room_pointer(userid, next_pointer).unwrap();
-    reply
-        .say(
-            &ctx.http,
-            MessageBuilder::new()
-                .push("送信先を")
-                .channel(next_pointer)
-                .push("に設定したよ")
-                .build(),
-        )
-        .await
-        .unwrap();
-}
-
-// dice command
-async fn dice(reply: &ChannelId, ctx: &Context, parsed: parser::Dice) {
-    // パース
-    let parser::Dice { num, dice, cmp } = parsed;
-
-    // 入力のチェック
-    if num > 1000000 {
-        reply
-            .say(&ctx.http, "そんないっぱい振れないよ")
-            .await
-            .unwrap();
-        return;
-    } else if num == 0 {
-        reply.say(&ctx.http, "じゃあ振らないよ").await.unwrap();
-        return;
-    }
-
-    // ダイスロール
-    let mut sum = 0;
-    let mut vec = vec![];
-    for _ in 0..num {
-        let r = rand::random::<u64>() % dice + 1;
-        vec.push(r.to_string());
-        sum += u128::from(r);
-    }
-    // 結果
-    let roll_result = format!("{}D{} -> {}", num, dice, sum);
-    // 内訳
-    let roll_items = format!(" ({})", vec.join(", "));
-
-    // 比較オプション
-    let operation_result = cmp.map(|(operator, operand)| {
-        let is_ok = parser::cmp_with_operator(&operator, sum, operand);
-        let is_ok = if is_ok { "OK" } else { "NG" };
-        format!(" {} {} -> {}", Into::<&str>::into(operator), operand, is_ok)
-    });
-
-    // メッセージの生成と送信
-    let mut res = MessageBuilder::new();
-    res.push(roll_result);
-    if 1 < dice && roll_items.len() <= 100 {
-        res.push(roll_items);
-    }
-    if let Some(operation_result) = operation_result {
-        res.push(operation_result);
-    }
-    reply.say(&ctx.http, &res.build()).await.unwrap();
-}
 
 // erogaki status check
 async fn erocheck(reply: &ChannelId, ctx: &Context, bot: &Bot, user_id: &UserId) {
