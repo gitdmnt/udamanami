@@ -147,7 +147,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let dm = &msg.channel_id;
 
     let command_context = CommandContext {
-        bot: &bot,
+        bot,
         http: &ctx.http,
         msg,
         guild_id: Some(bot.guild_id),
@@ -236,7 +236,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let reply_channel = &msg.channel_id;
 
     let command_context = CommandContext {
-        bot: &bot,
+        bot,
         http: &ctx.http,
         msg,
         guild_id: Some(bot.guild_id),
