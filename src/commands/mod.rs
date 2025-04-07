@@ -1,6 +1,8 @@
+pub mod channel;
 pub mod help;
 
 pub struct CommandContext<'a> {
+    pub bot: &'a crate::Bot,
     pub http: &'a serenity::http::Http,
     pub msg: &'a serenity::model::channel::Message,
     pub guild_id: Option<serenity::model::id::GuildId>,
