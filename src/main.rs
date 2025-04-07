@@ -33,12 +33,7 @@ mod parser;
 
 use calculator::{val_as_str, EvalResult};
 use udamanami::ai;
-
-const KOCHIKITE_GUILD_ID: u64 = 1066468273568362496;
-const EROGAKI_ROLE_ID: u64 = 1066667753706102824;
-const JAIL_MARK_ROLE_ID: u64 = 1305240882923962451;
-const JAIL_MAIN_ROLE_ID: u64 = 1305228980697305119;
-const DEBUG_ROOM_ID: u64 = 1245427348698824784;
+use udamanami::commands::*;
 
 struct Bot {
     userdata: DashMap<UserId, UserData>,
@@ -137,10 +132,19 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let command_args = &split_message[1..];
     let dm = &msg.channel_id;
 
+    let command_context = CommandContext {
+        http: &ctx.http,
+        msg,
+        guild_id: Some(bot.guild_id),
+        channel_id: dm,
+        user_id: &msg.author.id,
+        args: command_args.iter().map(|s| s.to_string()).collect(),
+    };
+
     match command_name {
         "channel" => channel(dm, ctx, command_args, bot, &usercache, &msg.author.id).await,
         "erocheck" => erocheck(dm, ctx, bot, &msg.author.id).await,
-        "help" | "たすけて" | "助けて" => help(dm, ctx, &msg.author.id, &bot.guild_id).await,
+        "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
         "var" => var(dm, ctx, command_args.join(" "), bot).await,
@@ -220,9 +224,18 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let command_args = &split_message[1..];
     let reply_channel = &msg.channel_id;
 
+    let command_context = CommandContext {
+        http: &ctx.http,
+        msg,
+        guild_id: Some(bot.guild_id),
+        channel_id: &msg.channel_id,
+        user_id: &msg.author.id,
+        args: command_args.iter().map(|s| s.to_string()).collect(),
+    };
+
     match command_name {
         "help" | "たすけて" | "助けて" => {
-            help(reply_channel, ctx, &msg.author.id, &bot.guild_id).await;
+            help::run(&command_context).await;
         }
         "isprime" => isprime(reply_channel, ctx, command_args).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
@@ -241,7 +254,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .unwrap();
             } else {
                 // まなみが自由に応答するコーナー
-                if reply_channel.get() != DEBUG_ROOM_ID {
+                if reply_channel.get() != bot.channel_ids[4].get() {
                     return;
                 }
                 #[allow(clippy::or_fun_call)]
@@ -294,57 +307,6 @@ async fn change_room_pointer(
 // commands
 
 // help command
-async fn help(reply: &ChannelId, ctx: &Context, user_id: &UserId, guild: &GuildId) {
-    // 文章
-    let about_me = "# まなみの自己紹介だよ！\n";
-    let about_ghostwrite = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
-
-    let about_dm = "## まなみはDMでコマンドを受け付けるよ！
-```
-!channel             代筆先のチャンネルについてだよ
-!erocheck            あなたがエロガキかどうかを判定するよ
-!help                このヘルプを表示するよ
-!ping                pong!
-!calc <expr>         数式を計算するよ
-!var <name>=<expr>   calcで使える変数を定義するよ
-!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
-!calcsay <expr>      calcの結果を代筆先に送信するよ
-```
-";
-
-    let about_guild = "## まなみはグループチャットでコマンドを受け付けるよ！
-```
-![n]d<m>             m面ダイスをn回振るよ
-!help                このヘルプを表示するよ
-!isprime <n>         nが素数かどうかを判定するよ
-!calc <expr>         数式を計算するよ
-!var <name>=<expr>   calcで使える変数を定義するよ
-!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ
-!jail <user> [sec]   不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ
-!unjail <user>       収監を解除するよ
-!cclemon <opponent>  CCレモンをするよ
-!clear               コマンドを実行したチャンネルのログを忘れるよ
-```
-";
-
-    let mut content = MessageBuilder::new();
-    content.push(about_me).push(about_ghostwrite);
-
-    // ユーザーがこっちにきてはいけないに存在する場合はDMの話もする
-    if GuildId::from(guild)
-        .member(&ctx.http, user_id)
-        .await
-        .is_ok()
-    {
-        content.push(about_dm);
-    }
-
-    content.push(about_guild);
-    let content = content.build();
-
-    reply.say(&ctx.http, content).await.unwrap();
-}
-
 // change channel
 async fn channel(
     reply: &ChannelId,
@@ -834,25 +796,25 @@ async fn serenity(
     .collect();
 
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
-    let guild_id = secrets.get("GUILD_ID").map_or_else(
-        || GuildId::from(KOCHIKITE_GUILD_ID),
-        |id| GuildId::from_str(&id).unwrap(),
-    );
+    let guild_id = secrets
+        .get("DISCORD_GUILD_ID")
+        .map(|id| GuildId::from_str(&id).unwrap())
+        .unwrap();
 
-    let erogaki_role_id = secrets.get("EROGAKI_ROLE_ID").map_or_else(
-        || RoleId::from(EROGAKI_ROLE_ID),
-        |id| RoleId::from_str(&id).unwrap(),
-    );
+    let erogaki_role_id = secrets
+        .get("EROGAKI_ROLE_ID")
+        .map(|id| RoleId::from_str(&id).unwrap())
+        .unwrap();
 
-    let jail_mark_role_id = secrets.get("JAIL_MARK_ROLE_ID").map_or_else(
-        || RoleId::from(JAIL_MARK_ROLE_ID),
-        |id| RoleId::from_str(&id).unwrap(),
-    );
+    let jail_mark_role_id = secrets
+        .get("JAIL_MARK_ROLE_ID")
+        .map(|id| RoleId::from_str(&id).unwrap())
+        .unwrap();
 
-    let jail_main_role_id = secrets.get("JAIL_MAIN_ROLE_ID").map_or_else(
-        || RoleId::from(JAIL_MAIN_ROLE_ID),
-        |id| RoleId::from_str(&id).unwrap(),
-    );
+    let jail_main_role_id = secrets
+        .get("JAIL_MAIN_ROLE_ID")
+        .map(|id| RoleId::from_str(&id).unwrap())
+        .unwrap();
 
     let variables = DashMap::new();
 
