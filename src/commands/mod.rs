@@ -4,7 +4,9 @@ pub mod dice;
 pub mod help;
 pub mod isprime;
 pub mod var;
+pub mod varbulk;
 
+#[derive(Clone)]
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
     pub http_cache: &'a serenity::http::Http,

@@ -149,7 +149,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "ping" => ping(dm, ctx).await,
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
-        "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
+        "varbulk" => varbulk::run(&command_context).await,
         "calcsay" => calcsay(&room_pointer, ctx, command_args.join(" "), bot).await,
 
         // Unknown command
@@ -211,7 +211,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "isprime" => isprime::run(&command_context).await,
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
-        "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
+        "varbulk" => varbulk::run(&command_context).await,
         "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         "jail" => jail_main(reply_channel, ctx, command_args, bot).await,
         "unjail" => unjail_main(reply_channel, ctx, command_args, bot).await,
@@ -265,56 +265,10 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-
-const VAR_DEFAULT: &str = "_";
-
-async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
-    let split: Vec<&str> = input.split('=').collect();
-    let (var, expression) = if split.len() < 2 {
-        (VAR_DEFAULT.to_owned(), input)
-    } else {
-        (split[0].trim().to_owned(), split[1..].join("="))
-    };
-    var_main(reply, ctx, var, expression, bot).await;
-}
-
 async fn calcsay(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
     let result = calculator::eval_from_str(&expression, &bot.variables);
     if let Ok(result) = result {
         reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
-    }
-}
-
-async fn varbulk(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
-    let code_pattern = Regex::new(r"```[a-zA-Z0-9]*(.*)```").unwrap();
-
-    //get input in code block
-    let input = match code_pattern.captures(&input) {
-        Some(caps) => caps.get(1).unwrap().as_str().to_owned(),
-        None => return,
-    };
-    let split: Vec<&str> = input.split(';').collect();
-    for s in split {
-        if s.trim().is_empty() {
-            continue;
-        }
-        var(reply, ctx, s.to_owned(), bot).await;
-    }
-}
-
-async fn var_main(reply: &ChannelId, ctx: &Context, var: String, expression: String, bot: &Bot) {
-    let result = calculator::eval_from_str(&expression, &bot.variables);
-    match result {
-        Ok(result) => {
-            bot.variables.insert(var, result.clone());
-            reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
-        }
-        Err(e) => {
-            reply
-                .say(&ctx.http, format!("{} ……だってさ。", e))
-                .await
-                .unwrap();
-        }
     }
 }
 
