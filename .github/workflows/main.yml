@@ -14,7 +14,7 @@ jobs:
         with:
           shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
           project-id: proj_01JCJS9WKRQ1RC9MVZW6WDJK97
-          extra-args: --allow-dirty --no-test
+          extra-args: --allow-dirty
           secrets: |
             AI_API_KEY = '${{ secrets.AI_API_KEY }}'
             DISCORD_TOKEN = '${{ secrets.DISCORD_TOKEN }}'
@@ -24,5 +24,7 @@ jobs:
             MADSISTERS_ROOM_ID = '${{ secrets.MADSISTERS_ROOM_ID }}'
             SHYBOYS_ROOM_ID = '${{ secrets.SHYBOYS_ROOM_ID }}'
             SHUTTLE_API_KEY = '${{ secrets.SHUTTLE_API_KEY }}'
-            
-            
+            EROGAKI_ROLE_ID = '${{ secrets.EROGAKI_ROLE_ID }}'
+            JAIL_MARK_ROLE_ID = '${{ secrets.JAIL_MARK_ROLE_ID }}'
+            JAIL_MAIN_ROLE_ID = '${{ secrets.JAIL_MAIN_ROLE_ID }}'
+            DISCORD_GUILD_ID = '${{ secrets.DISCORD_GUILD_ID }}'
