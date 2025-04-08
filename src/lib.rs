@@ -147,7 +147,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "channel" => channel::run(&command_context).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
-        "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
+        "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
         "calcsay" => calcsay(&room_pointer, ctx, command_args.join(" "), bot).await,
@@ -209,7 +209,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             help::run(&command_context).await;
         }
         "isprime" => isprime::run(&command_context).await,
-        "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
+        "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
         "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
@@ -267,10 +267,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 // commands
 
 const VAR_DEFAULT: &str = "_";
-
-async fn calc(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
-    var_main(reply, ctx, VAR_DEFAULT.to_owned(), expression, bot).await;
-}
 
 async fn var(reply: &ChannelId, ctx: &Context, input: String, bot: &Bot) {
     let split: Vec<&str> = input.split('=').collect();

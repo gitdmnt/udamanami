@@ -21,7 +21,7 @@ pub async fn run(ctx: &CommandContext<'_>) {
     var_main(reply, ctx.http_cache, var, expression, bot).await;
 }
 
-async fn var_main(
+pub async fn var_main(
     reply: &ChannelId,
     http_cache: &Http,
     var: String,
