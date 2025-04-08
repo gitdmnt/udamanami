@@ -148,7 +148,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
         "ping" => ping(dm, ctx).await,
         "calc" => calc(dm, ctx, command_args.join(" "), bot).await,
-        "var" => var(dm, ctx, command_args.join(" "), bot).await,
+        "var" => var::run(&command_context).await,
         "varbulk" => varbulk(dm, ctx, command_args.join(" "), bot).await,
         "calcsay" => calcsay(&room_pointer, ctx, command_args.join(" "), bot).await,
 
@@ -210,7 +210,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         }
         "isprime" => isprime::run(&command_context).await,
         "calc" => calc(reply_channel, ctx, command_args.join(" "), bot).await,
-        "var" => var(reply_channel, ctx, command_args.join(" "), bot).await,
+        "var" => var::run(&command_context).await,
         "varbulk" => varbulk(reply_channel, ctx, command_args.join(" "), bot).await,
         "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
         "jail" => jail_main(reply_channel, ctx, command_args, bot).await,

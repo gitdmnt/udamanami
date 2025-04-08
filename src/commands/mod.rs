@@ -1,7 +1,9 @@
+pub mod calc;
 pub mod channel;
 pub mod dice;
 pub mod help;
 pub mod isprime;
+pub mod var;
 
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
