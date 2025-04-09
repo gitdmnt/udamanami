@@ -9,7 +9,7 @@ pub async fn run(ctx: &CommandContext<'_>) {
     let result = eval_from_str(&expression, &bot.variables);
     if let Ok(result) = result {
         reply
-            .say(&ctx.http_cache, val_as_str(&result))
+            .say(&ctx.cache_http(), val_as_str(&result))
             .await
             .unwrap();
     }

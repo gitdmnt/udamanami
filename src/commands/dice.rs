@@ -10,20 +10,20 @@ use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 pub async fn run(ctx: &CommandContext<'_>) {
     match parse_dice(&ctx.command).finish() {
         Ok((_, parsed)) => {
-            dice(ctx.channel_id, ctx.http_cache, parsed).await;
+            dice(ctx.channel_id, ctx.cache_http(), parsed).await;
         }
         Err(Error {
             code: ErrorKind::MapRes,
             ..
         }) => {
             ctx.channel_id
-                .say(&ctx.http_cache, "数字がおかしいよ")
+                .say(ctx.cache_http(), "数字がおかしいよ")
                 .await
                 .unwrap();
         }
         Err(_) => {
             ctx.channel_id
-                .say(&ctx.http_cache, "しらないコマンドだよ")
+                .say(ctx.cache_http(), "しらないコマンドだよ")
                 .await
                 .unwrap();
         }

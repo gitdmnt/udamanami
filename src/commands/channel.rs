@@ -13,26 +13,26 @@ pub async fn run(ctx: &CommandContext<'_>) {
             .push("```チャンネル一覧だよ\n");
         for (i, ch) in ctx.bot.channel_ids.iter().enumerate() {
             res.push(format!("{i:>2}\t"))
-                .push(ch.name(&ctx.http_cache).await.unwrap())
+                .push(ch.name(ctx.cache_http()).await.unwrap())
                 .push("\n");
         }
         let res = res.push("```").push("使い方: `!channel <ID>`").build();
 
-        ctx.channel_id.say(&ctx.http_cache, &res).await.unwrap();
+        ctx.channel_id.say(&ctx.cache_http(), &res).await.unwrap();
         return;
     }
 
     // それ以外の場合は指定されたチャンネルに切り替え
     let Ok(selector) = args[0].parse::<usize>() else {
         ctx.channel_id
-            .say(&ctx.http_cache, "IDは数字で指定してね")
+            .say(&ctx.cache_http(), "IDは数字で指定してね")
             .await
             .unwrap();
         return;
     };
     let Some(&next_pointer) = ctx.bot.channel_ids.get(selector) else {
         ctx.channel_id
-            .say(&ctx.http_cache, "しらないチャンネルだよ")
+            .say(&ctx.cache_http(), "しらないチャンネルだよ")
             .await
             .unwrap();
         return;
@@ -43,7 +43,7 @@ pub async fn run(ctx: &CommandContext<'_>) {
         .unwrap();
     ctx.channel_id
         .say(
-            &ctx.http_cache,
+            &ctx.cache_http(),
             MessageBuilder::new()
                 .push("送信先を")
                 .channel(next_pointer)

@@ -5,7 +5,7 @@ pub async fn run(ctx: &CommandContext<'_>) {
 
     if command_args.len() != 1 {
         ctx.channel_id
-            .say(&ctx.http_cache, "使い方: `!isprime <number>`")
+            .say(ctx.cache_http(), "使い方: `!isprime <number>`")
             .await
             .unwrap();
         return;
@@ -13,7 +13,7 @@ pub async fn run(ctx: &CommandContext<'_>) {
 
     let Ok(num) = command_args[0].parse::<u64>() else {
         ctx.channel_id
-            .say(&ctx.http_cache, "わかんないよ")
+            .say(ctx.cache_http(), "わかんないよ")
             .await
             .unwrap();
         return;
@@ -65,5 +65,8 @@ pub async fn run(ctx: &CommandContext<'_>) {
             format!("素数じゃないよ。素因数は{:?}だよ", factor)
         }
     );
-    ctx.channel_id.say(&ctx.http_cache, is_prime).await.unwrap();
+    ctx.channel_id
+        .say(ctx.cache_http(), is_prime)
+        .await
+        .unwrap();
 }

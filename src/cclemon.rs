@@ -6,13 +6,11 @@ use serenity::{
         CreateMessage, EditMessage,
     },
     futures::StreamExt as _,
-    model::{
-        id::{ChannelId, UserId},
-        mention::Mention,
-    },
-    prelude::*,
+    model::{id::UserId, mention::Mention},
 };
 use strum::{Display, EnumString};
+
+use crate::commands::CommandContext;
 
 #[derive(Debug, Clone, Copy)]
 struct Player {
@@ -64,15 +62,15 @@ impl From<Game> for CreateEmbed {
 }
 
 impl Game {
-    const fn new(users: (UserId, UserId)) -> Self {
+    const fn new(users: (&UserId, &UserId)) -> Self {
         Self {
             player1: Player {
-                id: users.0,
+                id: *users.0,
                 mana: 0,
                 action: None,
             },
             player2: Player {
-                id: users.1,
+                id: *users.1,
                 mana: 0,
                 action: None,
             },
@@ -174,20 +172,21 @@ const fn fight(a: (UserId, &Action), b: (UserId, &Action)) -> Turn {
     }
 }
 
-pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) {
+pub async fn cclemon(ctx: &CommandContext<'_>, users: (&UserId, &UserId)) {
+    let reply = ctx.channel_id;
     reply
-        .send_message(&ctx, CreateMessage::new().content("CCレモンを始めるよ"))
+        .send_message(&ctx.ctx, CreateMessage::new().content("CCレモンを始めるよ"))
         .await
         .unwrap();
     let mut game = Game::new(users);
     loop {
         let mut m_embed = reply
-            .send_message(&ctx, CreateMessage::new().embed(game.into()))
+            .send_message(&ctx.ctx, CreateMessage::new().embed(game.into()))
             .await
             .unwrap();
         let m = reply
             .send_message(
-                &ctx,
+                &ctx.ctx,
                 CreateMessage::new()
                     .content("技を選んでね")
                     .button(Action::Charge.into())
@@ -200,7 +199,7 @@ pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) 
             .unwrap();
 
         let mut interaction_stream = m
-            .await_component_interaction(&ctx.shard)
+            .await_component_interaction(&ctx.ctx.shard)
             .timeout(Duration::from_secs(15))
             .stream();
         while let Some(interaction) = interaction_stream.next().await {
@@ -213,7 +212,7 @@ pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) 
             };
             interaction
                 .create_response(
-                    &ctx,
+                    &ctx.ctx,
                     CreateInteractionResponse::Message(
                         CreateInteractionResponseMessage::new()
                             .ephemeral(true)
@@ -226,18 +225,18 @@ pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) 
                 break;
             }
         }
-        m.delete(&ctx).await.unwrap();
+        m.delete(&ctx.ctx).await.unwrap();
 
         if let Some((a, b)) = game.selected_actions() {
             m_embed
-                .edit(&ctx, EditMessage::new().embed(game.into()))
+                .edit(&ctx.ctx, EditMessage::new().embed(game.into()))
                 .await
                 .unwrap();
             match fight((game.player1.id, a), (game.player2.id, b)) {
                 Turn::Settled(user) => {
                     let content = format!("{}の勝ち", Mention::from(user));
                     reply
-                        .send_message(&ctx, CreateMessage::new().content(content))
+                        .send_message(&ctx.ctx, CreateMessage::new().content(content))
                         .await
                         .unwrap();
                     break;
@@ -255,7 +254,7 @@ pub async fn cclemon(reply: &ChannelId, ctx: &Context, users: (UserId, UserId)) 
                 _ => unreachable!(),
             };
             reply
-                .send_message(&ctx, CreateMessage::new().content(content))
+                .send_message(&ctx.ctx, CreateMessage::new().content(content))
                 .await
                 .unwrap();
             break;

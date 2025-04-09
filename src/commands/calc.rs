@@ -6,5 +6,5 @@ pub async fn run(ctx: &CommandContext<'_>) {
     let bot = ctx.bot;
     let expression = ctx.args().join(" ");
 
-    var_main(reply, ctx.http_cache, "_".to_owned(), expression, bot).await;
+    var_main(reply, ctx.cache_http(), "_".to_owned(), expression, bot).await;
 }

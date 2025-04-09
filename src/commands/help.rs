@@ -42,5 +42,5 @@ pub async fn run(ctx: &CommandContext<'_>) {
         .push(about_guild);
     let content = content.build();
 
-    ctx.channel_id.say(&ctx.http_cache, content).await.unwrap();
+    ctx.channel_id.say(ctx.cache_http(), content).await.unwrap();
 }

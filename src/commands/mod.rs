@@ -1,5 +1,6 @@
 pub mod calc;
 pub mod calcsay;
+pub mod cclemon;
 pub mod channel;
 pub mod dice;
 pub mod help;
@@ -10,7 +11,7 @@ pub mod varbulk;
 #[derive(Clone)]
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
-    pub http_cache: &'a serenity::http::Http,
+    pub ctx: &'a serenity::client::Context,
     pub channel_id: &'a serenity::model::id::ChannelId,
     pub author_id: &'a serenity::model::id::UserId,
     pub command: String,
@@ -19,13 +20,13 @@ pub struct CommandContext<'a> {
 impl<'a> CommandContext<'a> {
     pub const fn new(
         bot: &'a crate::Bot,
-        http_cache: &'a serenity::http::Http,
+        ctx: &'a serenity::client::Context,
         msg: &'a serenity::model::channel::Message,
         command: String,
     ) -> Self {
         Self {
             bot,
-            http_cache,
+            ctx,
             channel_id: &msg.channel_id,
             author_id: &msg.author.id,
             command,
@@ -39,5 +40,8 @@ impl<'a> CommandContext<'a> {
     pub fn args(&self) -> Vec<&str> {
         let split_message = self.command.split_whitespace().collect::<Vec<&str>>();
         split_message[1..].to_vec()
+    }
+    pub fn cache_http(&self) -> &'a serenity::http::Http {
+        &self.ctx.http
     }
 }

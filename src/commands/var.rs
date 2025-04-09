@@ -18,12 +18,12 @@ pub async fn run(ctx: &CommandContext<'_>) {
     } else {
         (split[0].trim().to_owned(), split[1..].join("="))
     };
-    var_main(reply, ctx.http_cache, var, expression, bot).await;
+    var_main(reply, ctx.cache_http(), var, expression, bot).await;
 }
 
 pub async fn var_main(
     reply: &ChannelId,
-    http_cache: &Http,
+    cache_http: &Http,
     var: String,
     expression: String,
     bot: &Bot,
@@ -32,11 +32,11 @@ pub async fn var_main(
     match result {
         Ok(result) => {
             bot.variables.insert(var, result.clone());
-            reply.say(&http_cache, val_as_str(&result)).await.unwrap();
+            reply.say(&cache_http, val_as_str(&result)).await.unwrap();
         }
         Err(e) => {
             reply
-                .say(&http_cache, format!("{} ……だってさ。", e))
+                .say(&cache_http, format!("{} ……だってさ。", e))
                 .await
                 .unwrap();
         }

@@ -134,7 +134,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    let command_context = CommandContext::new(bot, &ctx.http, msg, msg.content[1..].to_string());
+    let command_context = CommandContext::new(bot, &ctx, msg, msg.content[1..].to_string());
 
     // if message is command, handle command
     // handle command
@@ -194,7 +194,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         None => return,
     };
 
-    let command_context = CommandContext::new(bot, &ctx.http, msg, input_string.clone());
+    let command_context = CommandContext::new(bot, &ctx, msg, input_string.clone());
 
     // handle other command
     let split_message = input_string.split_whitespace().collect::<Vec<&str>>();
@@ -210,7 +210,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
-        "cclemon" => cclemon(reply_channel, ctx, msg.author.id, command_args).await,
+        "cclemon" => commands::cclemon::run(&command_context).await,
         "jail" => jail_main(reply_channel, ctx, command_args, bot).await,
         "unjail" => unjail_main(reply_channel, ctx, command_args, bot).await,
         "clear" | "全部忘れて" => forget_channel_log(reply_channel, ctx, bot).await,
@@ -263,24 +263,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-
-async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_args: &[&str]) {
-    let [opponent_id] = command_args else {
-        reply
-            .say(&ctx.http, "使い方: `!cclemon <相手>`")
-            .await
-            .unwrap();
-        return;
-    };
-    let Some(opponent_id) = parse_user_mention(opponent_id) else {
-        reply
-            .say(&ctx.http, "相手をメンションで指定してね")
-            .await
-            .unwrap();
-        return;
-    };
-    cclemon::cclemon(reply, ctx, (author_id, opponent_id)).await;
-}
 
 const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
 const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
