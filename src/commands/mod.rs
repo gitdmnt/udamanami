@@ -6,6 +6,7 @@ pub mod dice;
 pub mod help;
 pub mod isprime;
 pub mod jail;
+pub mod ping;
 pub mod unjail;
 pub mod var;
 pub mod varbulk;

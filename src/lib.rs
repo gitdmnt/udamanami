@@ -142,7 +142,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "channel" => channel::run(&command_context).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
-        "ping" => ping(dm, ctx).await,
+        "ping" => ping::run(&command_context).await,
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
@@ -268,9 +268,4 @@ async fn forget_channel_log(reply: &ChannelId, ctx: &Context, bot: &Bot) {
             chat_log.clear();
         }
     }
-}
-
-// ping command
-async fn ping(reply: &ChannelId, ctx: &Context) {
-    reply.say(&ctx.http, "pong").await.unwrap();
 }
