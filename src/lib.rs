@@ -209,7 +209,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "cclemon" => commands::cclemon::run(&command_context).await,
         "jail" => jail::run(&command_context).await,
         "unjail" => unjail::run(&command_context).await,
-        "clear" | "全部忘れて" => forget_channel_log(reply_channel, ctx, bot).await,
+        "clear" | "全部忘れて" => clear::run(&command_context).await,
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {

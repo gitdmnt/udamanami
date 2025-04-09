@@ -2,6 +2,7 @@ pub mod calc;
 pub mod calcsay;
 pub mod cclemon;
 pub mod channel;
+pub mod clear;
 pub mod dice;
 pub mod help;
 pub mod isprime;
