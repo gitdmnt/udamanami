@@ -122,10 +122,9 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    let room_pointer = bot.get_user_room_pointer(&msg.author.id);
-
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
+        let room_pointer = bot.get_user_room_pointer(&msg.author.id);
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
@@ -137,7 +136,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message is command, handle command
     // handle command
     let command_name = &command_context.command_name()[..];
-    let dm = &msg.channel_id;
 
     match command_name {
         "channel" => channel::run(&command_context).await,
@@ -150,7 +148,11 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
         // Unknown command
         _ => {
-            dm.say(&ctx.http, "しらないコマンドだよ").await.unwrap();
+            let _ = &msg
+                .channel_id
+                .say(&ctx.http, "しらないコマンドだよ")
+                .await
+                .unwrap();
         }
     }
 }
@@ -256,16 +258,4 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
         return false;
     }
     true
-}
-
-// commands
-
-async fn forget_channel_log(reply: &ChannelId, ctx: &Context, bot: &Bot) {
-    reply.say(&ctx.http, "1……2の……ポカン！").await.unwrap();
-
-    if let Some(reflog) = bot.chat_log.get(reply) {
-        if let Ok(mut chat_log) = reflog.lock() {
-            chat_log.clear();
-        }
-    }
 }
