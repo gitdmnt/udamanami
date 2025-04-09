@@ -134,7 +134,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    let command_context = CommandContext::new(bot, &ctx, msg, msg.content[1..].to_string());
+    let command_context = CommandContext::new(bot, ctx, msg, msg.content[1..].to_string());
 
     // if message is command, handle command
     // handle command
@@ -194,7 +194,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         None => return,
     };
 
-    let command_context = CommandContext::new(bot, &ctx, msg, input_string.clone());
+    let command_context = CommandContext::new(bot, ctx, msg, input_string.clone());
 
     // handle other command
     let split_message = input_string.split_whitespace().collect::<Vec<&str>>();

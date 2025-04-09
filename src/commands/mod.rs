@@ -41,6 +41,7 @@ impl<'a> CommandContext<'a> {
         let split_message = self.command.split_whitespace().collect::<Vec<&str>>();
         split_message[1..].to_vec()
     }
+    #[allow(clippy::missing_const_for_fn)]
     pub fn cache_http(&self) -> &'a serenity::http::Http {
         &self.ctx.http
     }
