@@ -20,7 +20,7 @@ use serenity::{
 use tokio::{spawn, time::sleep};
 use tracing::{error, info};
 
-use calculator::{val_as_str, EvalResult};
+use calculator::EvalResult;
 use commands::*;
 
 pub mod commands;
@@ -138,9 +138,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // if message is command, handle command
     // handle command
-    let split_message = msg.content.split_whitespace().collect::<Vec<&str>>();
-    let command_name = &split_message[0][1..]; // 先頭の "!" を削除
-    let command_args = &split_message[1..];
+    let command_name = &command_context.command_name()[..];
     let dm = &msg.channel_id;
 
     match command_name {
@@ -150,7 +148,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
-        "calcsay" => calcsay(&room_pointer, ctx, command_args.join(" "), bot).await,
+        "calcsay" => calcsay::run(&command_context).await,
 
         // Unknown command
         _ => {
@@ -265,12 +263,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-async fn calcsay(reply: &ChannelId, ctx: &Context, expression: String, bot: &Bot) {
-    let result = calculator::eval_from_str(&expression, &bot.variables);
-    if let Ok(result) = result {
-        reply.say(&ctx.http, val_as_str(&result)).await.unwrap();
-    }
-}
 
 async fn cclemon(reply: &ChannelId, ctx: &Context, author_id: UserId, command_args: &[&str]) {
     let [opponent_id] = command_args else {

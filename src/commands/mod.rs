@@ -1,4 +1,5 @@
 pub mod calc;
+pub mod calcsay;
 pub mod channel;
 pub mod dice;
 pub mod help;
