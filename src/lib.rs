@@ -1,7 +1,7 @@
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
-    time::{Duration, Instant},
+    time::Instant,
 };
 
 use dashmap::DashMap;
@@ -15,9 +15,7 @@ use serenity::{
         id::{ChannelId, GuildId, RoleId, UserId},
     },
     prelude::*,
-    utils::parse_user_mention,
 };
-use tokio::{spawn, time::sleep};
 use tracing::{error, info};
 
 use calculator::EvalResult;
@@ -99,20 +97,20 @@ impl EventHandler for Bot {
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;
-        let roles = vec![self.jail_mark_role_id, self.jail_main_role_id];
+        let roles = [self.jail_mark_role_id, self.jail_main_role_id];
         let members = guild.members(&ctx.http, None, None).await.unwrap();
+
+        let command_context = commands::CommandContext {
+            bot: self,
+            ctx: &ctx,
+            channel_id: &self.channel_ids[4],
+            author_id: &ready.user.id,
+            command: "".to_owned(),
+        };
+
         for member in members {
             if member.roles.iter().any(|role| roles.contains(role)) {
-                unjail(
-                    &self.channel_ids[4],
-                    &ctx,
-                    &member.user.id,
-                    &guild,
-                    &roles,
-                    None,
-                    &self.jail_process,
-                )
-                .await;
+                unjail::run(&command_context).await;
             }
         }
     }
@@ -197,9 +195,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let command_context = CommandContext::new(bot, ctx, msg, input_string.clone());
 
     // handle other command
-    let split_message = input_string.split_whitespace().collect::<Vec<&str>>();
-    let command_name = split_message[0].trim();
-    let command_args = &split_message[1..];
+    let command_name = &command_context.command_name()[..];
     let reply_channel = &msg.channel_id;
 
     match command_name {
@@ -211,8 +207,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
         "cclemon" => commands::cclemon::run(&command_context).await,
-        "jail" => jail_main(reply_channel, ctx, command_args, bot).await,
-        "unjail" => unjail_main(reply_channel, ctx, command_args, bot).await,
+        "jail" => jail::run(&command_context).await,
+        "unjail" => unjail::run(&command_context).await,
         "clear" | "全部忘れて" => forget_channel_log(reply_channel, ctx, bot).await,
         // Unknown command
         _ => {
@@ -263,193 +259,6 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
 }
 
 // commands
-
-const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
-const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
-
-async fn jail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
-    let (user, jailterm) = match args {
-        [user] => {
-            let Some(user) = parse_user_mention(user) else {
-                reply.say(&ctx.http, "誰？").await.unwrap();
-                return;
-            };
-            (user, JAIL_TERM_DEFAULT)
-        }
-        [user, args @ ..] => {
-            let Some(user) = parse_user_mention(user) else {
-                reply.say(&ctx.http, "誰？").await.unwrap();
-                return;
-            };
-
-            let expression = args.join(" ");
-
-            let Ok(jailtermsec) = calculator::eval_from_str(&expression, &bot.variables) else {
-                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                return;
-            };
-            let Some(jailtermsec) = calculator::val_as_int(&jailtermsec) else {
-                reply.say(&ctx.http, "刑期がおかしいよ").await.unwrap();
-                return;
-            };
-            let Ok(jailtermsec) = u64::try_from(jailtermsec) else {
-                reply.say(&ctx.http, "刑期が負だよ").await.unwrap();
-                return;
-            };
-
-            let jailterm = if jailtermsec > JAIL_TERM_MAX.as_secs() {
-                reply
-                    .say(
-                        &ctx.http,
-                        format!(
-                            "刑期が長すぎるから切り詰めたよ（最長{}秒）",
-                            JAIL_TERM_MAX.as_secs()
-                        ),
-                    )
-                    .await
-                    .unwrap();
-                JAIL_TERM_MAX
-            } else {
-                Duration::from_secs(jailtermsec)
-            };
-            (user, jailterm)
-        }
-        _ => {
-            reply
-                .say(&ctx.http, "使い方: `!jail <user> [刑期（秒）]`")
-                .await
-                .unwrap();
-            return;
-        }
-    };
-    jail(reply, ctx, &user, jailterm, bot).await;
-}
-
-async fn unjail_main(reply: &ChannelId, ctx: &Context, args: &[&str], bot: &Bot) {
-    let [user] = args else {
-        reply
-            .say(&ctx.http, "使い方: `!unjail <user>`")
-            .await
-            .unwrap();
-        return;
-    };
-    let Some(user) = parse_user_mention(user) else {
-        reply.say(&ctx.http, "誰？").await.unwrap();
-        return;
-    };
-
-    unjail(
-        reply,
-        ctx,
-        &user,
-        &bot.guild_id,
-        &[bot.jail_mark_role_id, bot.jail_main_role_id],
-        None,
-        &bot.jail_process,
-    )
-    .await;
-}
-
-async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duration, bot: &Bot) {
-    let guild = bot.guild_id;
-    let roles = vec![bot.jail_mark_role_id, bot.jail_main_role_id];
-
-    let member = guild.member(&ctx.http, user).await.unwrap();
-    if member.add_roles(&ctx.http, &roles).await.is_err() {
-        reply.say(&ctx.http, "収監に失敗したよ").await.unwrap();
-        return;
-    }
-
-    let jail_term_end = Instant::now() + jailterm;
-    if let Some((_, end)) = bot.jail_process.get(user).map(|r| *r.value()) {
-        if end > jail_term_end {
-            let content = format!(
-                "{}はすでに収監中だよ（残り刑期：{}秒）",
-                user.mention(),
-                end.duration_since(Instant::now()).as_secs()
-            );
-            reply.say(&ctx.http, content).await.unwrap();
-            return; // 既に収監中
-        } else {
-            let content = format!(
-                "{}を再収監したよ（残り刑期：{}秒 → {}秒）",
-                user.mention(),
-                end.duration_since(Instant::now()).as_secs(),
-                jailterm.as_secs()
-            );
-
-            reply.say(&ctx.http, content).await.unwrap();
-        }
-    } else {
-        let content = format!(
-            "{}を収監したよ（刑期：{}秒）",
-            user.mention(),
-            jailterm.as_secs()
-        );
-
-        reply.say(&ctx.http, content).await.unwrap();
-    }
-
-    let Some(newid) = bot.jail_id.lock().map_or(None, |mut oldid| {
-        *oldid += 1;
-        Some(*oldid)
-    }) else {
-        reply.say(&ctx.http, "再収監に失敗したよ").await.unwrap();
-        return;
-    };
-
-    let reply = *reply;
-    let ctx = ctx.clone();
-    let user = *user;
-    let roles = roles.to_vec();
-    bot.jail_process.insert(user, (newid, jail_term_end));
-    let process = bot.jail_process.clone();
-    spawn(async move {
-        sleep(jailterm).await;
-        unjail(&reply, &ctx, &user, &guild, &roles, Some(newid), &process).await;
-        drop(process);
-    });
-}
-
-async fn unjail(
-    reply: &ChannelId,
-    ctx: &Context,
-    user: &UserId,
-    guild: &GuildId,
-    roles: &[RoleId],
-    jail_id: Option<usize>,
-    jail_process: &Arc<DashMap<UserId, (usize, Instant)>>,
-) {
-    let member = guild.member(&ctx.http, user).await.unwrap();
-
-    // 釈放予定表を確認
-    if let Some((id, _)) = jail_process.get(user).map(|r| *r.value()) {
-        if let Some(jail_id) = jail_id {
-            // 釈放するidが指定されている場合
-            if jail_id == id {
-                //当該idのみ釈放
-                jail_process.remove(user);
-            } else {
-                return; // 釈放しない
-            }
-        } else {
-            // 無条件釈放なら、釈放予定表から削除
-            jail_process.remove(user);
-        }
-    }
-
-    if !member.roles.iter().any(|role| roles.contains(role)) {
-        return;
-    }
-
-    if member.remove_roles(&ctx.http, roles).await.is_err() {
-        reply.say(&ctx.http, "釈放に失敗したよ").await.unwrap();
-        return;
-    }
-
-    let content = format!("{}を釈放したよ", user.mention());
-    reply.say(&ctx.http, content).await.unwrap();
-}
 
 async fn forget_channel_log(reply: &ChannelId, ctx: &Context, bot: &Bot) {
     reply.say(&ctx.http, "1……2の……ポカン！").await.unwrap();
