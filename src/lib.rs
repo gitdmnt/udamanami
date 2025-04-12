@@ -100,7 +100,7 @@ impl EventHandler for Bot {
         // ローカルコマンドの登録
         let commands = self
             .guild_id
-            .set_commands(&ctx.http, vec![ping::register()])
+            .set_commands(&ctx.http, vec![ping::register(), dice::register()])
             .await;
 
         match commands {
@@ -149,7 +149,8 @@ impl EventHandler for Bot {
                 &command.data.name,
             );
             let content = match command.data.name.as_str() {
-                "ping" => Some(ping::run().await),
+                "ping" => Some(ping::run()),
+                "dice" => Some(dice::run(&command.data.options())),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {
@@ -261,7 +262,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         // Unknown command
         _ => {
             if msg.content.starts_with('!') {
-                dice::run(&command_context).await;
+                dice::run_old(&command_context).await;
             } else {
                 // まなみが自由に応答するコーナー
                 if reply_channel.get() != bot.channel_ids[4].get() {

@@ -1,7 +1,7 @@
 use serenity::builder::CreateCommand;
 
 // ping command
-pub async fn run() -> String {
+pub fn run() -> String {
     "いるよー！".to_owned()
 }
 
