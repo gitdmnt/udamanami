@@ -122,16 +122,15 @@ impl EventHandler for Bot {
         let roles = [self.jail_mark_role_id, self.jail_main_role_id];
         let members = guild.members(&ctx.http, None, None).await.unwrap();
 
-        let command_context = commands::CommandContext {
-            bot: self,
-            ctx: &ctx,
-            channel_id: &self.channel_ids[4],
-            author_id: &ready.user.id,
-            command: "".to_owned(),
-        };
-
         for member in members {
             if member.roles.iter().any(|role| roles.contains(role)) {
+                let command_context = commands::CommandContext {
+                    bot: self,
+                    ctx: &ctx,
+                    channel_id: &self.channel_ids[4],
+                    author_id: &member.user.id,
+                    command: "".to_owned(),
+                };
                 unjail::run(&command_context).await;
             }
         }
