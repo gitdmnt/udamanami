@@ -120,16 +120,21 @@ impl EventHandler for Bot {
         let commands = self
             .guild_id
             .set_commands(&ctx.http, vec![ping::register()])
-            .await
-            .unwrap();
+            .await;
 
-        self.channel_ids[4]
-            .say(
-                &ctx.http,
-                format!("知ってるコマンドは{}個だよ！", commands.len()),
-            )
-            .await
-            .unwrap();
+        match commands {
+            Ok(commands) => self.channel_ids[4]
+                .say(
+                    &ctx.http,
+                    format!("知ってるコマンドは{}個だよ！", commands.len()),
+                )
+                .await
+                .unwrap(),
+            Err(why) => self.channel_ids[4]
+                .say(&ctx.http, format!("{}だって！", why))
+                .await
+                .unwrap(),
+        };
 
         // グローバルコマンドの登録
         // let _ = Command::create_global_command(&ctx.http, commands::ping::register()).await;
