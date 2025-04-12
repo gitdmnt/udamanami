@@ -117,10 +117,22 @@ impl EventHandler for Bot {
         }
 
         // ローカルコマンドの登録
-        let _ = self
+        let commands = self
             .guild_id
-            .set_commands(&ctx.http, vec![commands::ping::register()])
-            .await;
+            .set_commands(&ctx.http, vec![ping::register()])
+            .await
+            .unwrap();
+
+        self.channel_ids[4]
+            .say(
+                &ctx.http,
+                format!("知ってるコマンドは{}個だよ！", commands.len()),
+            )
+            .await
+            .unwrap();
+
+        // グローバルコマンドの登録
+        // let _ = Command::create_global_command(&ctx.http, commands::ping::register()).await;
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
