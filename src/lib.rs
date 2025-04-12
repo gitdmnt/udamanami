@@ -9,7 +9,9 @@ use dashmap::DashMap;
 use regex::Regex;
 use serenity::{
     async_trait,
+    builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     model::{
+        application::Interaction,
         channel::Message,
         gateway::Ready,
         id::{ChannelId, GuildId, RoleId, UserId},
@@ -113,6 +115,35 @@ impl EventHandler for Bot {
                 unjail::run(&command_context).await;
             }
         }
+
+        // ローカルコマンドの登録
+        let _ = self
+            .guild_id
+            .set_commands(&ctx.http, vec![commands::ping::register()])
+            .await;
+    }
+
+    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
+        if let Interaction::Command(command) = interaction {
+            #[allow(unused_variables)]
+            let command_context = CommandContext::new_from_command_interaction(
+                self,
+                &ctx,
+                &command,
+                &command.data.name,
+            );
+            let content = match command.data.name.as_str() {
+                "ping" => Some(ping::run().await),
+                _ => Some("知らないコマンドだよ！".to_owned()),
+            };
+            if let Some(content) = content {
+                let data = CreateInteractionResponseMessage::new().content(content);
+                let builder = CreateInteractionResponse::Message(data);
+                if let Err(why) = command.create_response(&ctx.http, builder).await {
+                    error!("Error sending message: {:?}", why);
+                }
+            }
+        }
     }
 }
 
@@ -140,7 +171,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     match command_name {
         "channel" => channel::run(&command_context).await,
         "help" | "たすけて" | "助けて" => help::run(&command_context).await,
-        "ping" => ping::run(&command_context).await,
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,

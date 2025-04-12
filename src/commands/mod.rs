@@ -37,6 +37,21 @@ impl<'a> CommandContext<'a> {
         }
     }
 
+    pub fn new_from_command_interaction(
+        bot: &'a crate::Bot,
+        ctx: &'a serenity::client::Context,
+        interaction: &'a serenity::model::application::CommandInteraction,
+        command: &'a str,
+    ) -> Self {
+        Self {
+            bot,
+            ctx,
+            channel_id: &interaction.channel_id,
+            author_id: &interaction.user.id,
+            command: command.to_owned(),
+        }
+    }
+
     pub fn command_name(&self) -> String {
         let split_message = self.command.split_whitespace().collect::<Vec<&str>>();
         split_message[0].trim().to_owned()
