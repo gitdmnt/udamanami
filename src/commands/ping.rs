@@ -6,7 +6,5 @@ pub async fn run() -> String {
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("ping")
-        .name_localized("ja-JP", "いる？")
-        .description("A ping command")
+    CreateCommand::new("ping").description("A ping command")
 }
