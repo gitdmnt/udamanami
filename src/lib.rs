@@ -97,25 +97,6 @@ impl EventHandler for Bot {
             error!("Error sending message: {:?}", why);
         };
 
-        // roles のいずれかが付いているユーザーを恩赦
-        let guild = self.guild_id;
-        let roles = [self.jail_mark_role_id, self.jail_main_role_id];
-        let members = guild.members(&ctx.http, None, None).await.unwrap();
-
-        let command_context = commands::CommandContext {
-            bot: self,
-            ctx: &ctx,
-            channel_id: &self.channel_ids[4],
-            author_id: &ready.user.id,
-            command: "".to_owned(),
-        };
-
-        for member in members {
-            if member.roles.iter().any(|role| roles.contains(role)) {
-                unjail::run(&command_context).await;
-            }
-        }
-
         // ローカルコマンドの登録
         let commands = self
             .guild_id
@@ -135,6 +116,25 @@ impl EventHandler for Bot {
                 .await
                 .unwrap(),
         };
+
+        // roles のいずれかが付いているユーザーを恩赦
+        let guild = self.guild_id;
+        let roles = [self.jail_mark_role_id, self.jail_main_role_id];
+        let members = guild.members(&ctx.http, None, None).await.unwrap();
+
+        let command_context = commands::CommandContext {
+            bot: self,
+            ctx: &ctx,
+            channel_id: &self.channel_ids[4],
+            author_id: &ready.user.id,
+            command: "".to_owned(),
+        };
+
+        for member in members {
+            if member.roles.iter().any(|role| roles.contains(role)) {
+                unjail::run(&command_context).await;
+            }
+        }
 
         // グローバルコマンドの登録
         // let _ = Command::create_global_command(&ctx.http, commands::ping::register()).await;
