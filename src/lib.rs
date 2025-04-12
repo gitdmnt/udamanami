@@ -8,6 +8,7 @@ use dashmap::DashMap;
 
 use regex::Regex;
 use serenity::{
+    all::Command,
     async_trait,
     builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     model::{
@@ -98,24 +99,11 @@ impl EventHandler for Bot {
         };
 
         // ローカルコマンドの登録
-        let commands = self
-            .guild_id
-            .set_commands(&ctx.http, vec![ping::register(), dice::register()])
-            .await;
+        let _ = self.guild_id.set_commands(&ctx.http, vec![]).await;
 
-        match commands {
-            Ok(commands) => self.channel_ids[4]
-                .say(
-                    &ctx.http,
-                    format!("知ってるコマンドは{}個だよ！", commands.len()),
-                )
-                .await
-                .unwrap(),
-            Err(why) => self.channel_ids[4]
-                .say(&ctx.http, format!("{}だって！", why))
-                .await
-                .unwrap(),
-        };
+        // グローバルコマンドの登録
+        let _ = Command::create_global_command(&ctx.http, ping::register()).await;
+        let _ = Command::create_global_command(&ctx.http, dice::register()).await;
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;

@@ -22,10 +22,10 @@ pub fn register() -> CreateCommand {
         .add_option(
             CreateCommandOption::new(CommandOptionType::Integer, "sides", "サイコロの面の数")
                 .min_int_value(1)
-                .max_int_value(u64::MAX),
+                .max_int_value(9007199254740991),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "compare method", "比較方法")
+            CreateCommandOption::new(CommandOptionType::String, "compare_method", "比較方法")
                 .required(false)
                 .add_string_choice(">", ">")
                 .add_string_choice(">=", ">=")
@@ -35,9 +35,9 @@ pub fn register() -> CreateCommand {
                 .add_string_choice("!=", "!="),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::Integer, "compare value", "比較する値")
+            CreateCommandOption::new(CommandOptionType::Integer, "compare_value", "比較する値")
                 .min_int_value(1)
-                .max_int_value(u64::MAX),
+                .max_int_value(9007199254740991),
         )
 }
 
