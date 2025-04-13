@@ -33,7 +33,7 @@ impl From<&str> for CmpOperator {
 impl From<CmpOperator> for String {
     fn from(val: CmpOperator) -> Self {
         match val {
-            CmpOperator::Equal => "==".to_owned(),
+            CmpOperator::Equal => "=".to_owned(),
             CmpOperator::GreaterEqual => ">=".to_owned(),
             CmpOperator::GreaterThan => ">".to_owned(),
             CmpOperator::LessEqual => "<=".to_owned(),
@@ -46,7 +46,7 @@ impl From<CmpOperator> for String {
 impl From<&CmpOperator> for String {
     fn from(val: &CmpOperator) -> Self {
         match val {
-            CmpOperator::Equal => "==".to_owned(),
+            CmpOperator::Equal => "=".to_owned(),
             CmpOperator::GreaterEqual => ">=".to_owned(),
             CmpOperator::GreaterThan => ">".to_owned(),
             CmpOperator::LessEqual => "<=".to_owned(),
