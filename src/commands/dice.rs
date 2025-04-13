@@ -1,5 +1,5 @@
 use crate::commands::CommandContext;
-use crate::parser::{cmp_with_operator, parse_dice, CmpOperator, Dice};
+use crate::parser::{parse_dice, CmpOperator, Dice};
 use nom::{
     error::{Error, ErrorKind},
     Finish as _,
@@ -113,14 +113,7 @@ pub fn run(options: &[ResolvedOption]) -> String {
 
     // compare result if exists
     if let Some(cmp) = cmp {
-        let cmp_result = match cmp.0 {
-            CmpOperator::GreaterThan => sum > cmp.1,
-            CmpOperator::GreaterEqual => sum >= cmp.1,
-            CmpOperator::LessThan => sum < cmp.1,
-            CmpOperator::LessEqual => sum <= cmp.1,
-            CmpOperator::Equal => sum == cmp.1,
-            CmpOperator::NotEqual => sum != cmp.1,
-        };
+        let cmp_result = cmp.0.cmp(sum, cmp.1);
         result.push_str(&format!(
             " {} {} -> {}",
             cmp.0,
@@ -184,7 +177,7 @@ async fn dice(reply: &ChannelId, http: &Http, parsed: Dice) {
 
     // 比較オプション
     let operation_result = cmp.map(|(operator, operand)| {
-        let is_ok = cmp_with_operator(&operator, sum, operand);
+        let is_ok = operator.cmp(sum, operand);
         let is_ok = if is_ok { "OK" } else { "NG" };
         format!(" {} {} -> {}", operator, operand, is_ok)
     });

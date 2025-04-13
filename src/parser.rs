@@ -62,20 +62,23 @@ impl std::fmt::Display for CmpOperator {
     }
 }
 
+impl CmpOperator {
+    pub const fn cmp(&self, left: u128, right: u128) -> bool {
+        match self {
+            Self::Equal => left == right,
+            Self::GreaterEqual => left >= right,
+            Self::GreaterThan => left > right,
+            Self::LessEqual => left <= right,
+            Self::LessThan => left < right,
+            Self::NotEqual => left != right,
+        }
+    }
+}
+
 pub struct Dice {
     pub num: u32,
     pub dice: u64,
     pub cmp: Option<(CmpOperator, u128)>,
-}
-pub const fn cmp_with_operator(operator: &CmpOperator, left: u128, right: u128) -> bool {
-    match *operator {
-        CmpOperator::Equal => left == right,
-        CmpOperator::GreaterEqual => left >= right,
-        CmpOperator::GreaterThan => left > right,
-        CmpOperator::LessEqual => left <= right,
-        CmpOperator::LessThan => left < right,
-        CmpOperator::NotEqual => left != right,
-    }
 }
 
 fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
