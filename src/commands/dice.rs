@@ -1,5 +1,5 @@
 use crate::commands::CommandContext;
-use crate::parser::{cmp_with_operator, parse_dice, Dice};
+use crate::parser::{cmp_with_operator, parse_dice, CmpOperator, Dice};
 use nom::{
     error::{Error, ErrorKind},
     Finish as _,
@@ -15,17 +15,17 @@ pub fn register() -> CreateCommand {
     CreateCommand::new("dice")
         .description("サイコロを振るよ")
         .add_option(
-            CreateCommandOption::new(CommandOptionType::Integer, "count", "振るサイコロの数")
+            CreateCommandOption::new(CommandOptionType::Integer, "num", "振るサイコロの数")
                 .min_int_value(1)
                 .max_int_value(1000000),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::Integer, "sides", "サイコロの面の数")
+            CreateCommandOption::new(CommandOptionType::Integer, "dice", "サイコロの面の数")
                 .min_int_value(1)
                 .max_int_value(9007199254740991),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "compare_method", "比較方法")
+            CreateCommandOption::new(CommandOptionType::String, "operator", "比較方法")
                 .required(false)
                 .add_string_choice(">", ">")
                 .add_string_choice(">=", ">=")
@@ -35,47 +35,73 @@ pub fn register() -> CreateCommand {
                 .add_string_choice("!=", "!="),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::Integer, "compare_value", "比較する値")
+            CreateCommandOption::new(CommandOptionType::Integer, "operand", "比較する値")
                 .min_int_value(1)
                 .max_int_value(9007199254740991),
+        )
+        .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6+2 <= 9")
+                .required(false),
         )
 }
 
 pub fn run(options: &[ResolvedOption]) -> String {
     // parse options
-    let count: u64 = if let ResolvedValue::Integer(i) = options[0].value {
-        i as u64
+
+    let dice = if let ResolvedValue::String(s) = options[4].value {
+        parse_dice(s).finish().map(|(_, parsed)| parsed)
     } else {
-        1
+        let num = match options[0].value {
+            ResolvedValue::Integer(i) => i as u32,
+            _ => 1,
+        };
+        let dice = match options[1].value {
+            ResolvedValue::Integer(i) => i as u64,
+            _ => 6,
+        };
+        let operator = match options[2].value {
+            ResolvedValue::String(s) => match s {
+                ">" | ">=" | "<" | "<=" | "=" | "==" | "===" | "!=" | "!==" => Some(s.into()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let operand = match options[3].value {
+            ResolvedValue::Integer(i) => Some(i as u128),
+            _ => None,
+        };
+
+        let cmp: Option<(CmpOperator, u128)> = if operator.is_some() && operand.is_some() {
+            #[allow(clippy::unnecessary_unwrap)]
+            Some((operator.unwrap(), operand.unwrap()))
+        } else {
+            None
+        };
+
+        Ok(Dice { num, dice, cmp })
     };
-    let sides = if let ResolvedValue::Integer(i) = options[1].value {
-        i as u64
-    } else {
-        6
-    };
-    let compare_method = if let ResolvedValue::String(s) = options[2].value {
-        Some(s)
-    } else {
-        None
-    };
-    let compare_value = if let ResolvedValue::Integer(i) = options[3].value {
-        Some(i as u128)
-    } else {
-        None
+
+    let Dice { num, dice, cmp } = match dice {
+        Ok(dice) => dice,
+        Err(Error {
+            code: ErrorKind::MapRes,
+            ..
+        }) => return "数字がおかしいよ".to_owned(),
+        Err(_) => return "しらないコマンドだよ".to_owned(),
     };
 
     // roll dice
     let mut res: Vec<u64> = Vec::new();
     let mut sum: u128 = 0;
-    for _ in 0..count {
-        let r = rand::random::<u64>() % sides + 1;
+    for _ in 0..num {
+        let r = rand::random::<u64>() % dice + 1;
         res.push(r);
         sum += r as u128;
     }
 
     // format dice roll result
-    let mut result = format!("{}D{} -> {}", count, sides, sum);
-    if count > 1 {
+    let mut result = format!("{}D{} -> {}", num, dice, sum);
+    if num > 1 {
         result.push_str(&format!(
             " ({})",
             res.iter()
@@ -86,23 +112,19 @@ pub fn run(options: &[ResolvedOption]) -> String {
     }
 
     // compare result if exists
-    if let Some(method) = compare_method {
-        let Some(cmp_value) = compare_value else {
-            return result;
-        };
-        let cmp_result = match method {
-            ">" => sum > cmp_value,
-            ">=" => sum >= cmp_value,
-            "<" => sum < cmp_value,
-            "<=" => sum <= cmp_value,
-            "=" => sum == cmp_value,
-            "!=" => sum != cmp_value,
-            _ => false,
+    if let Some(cmp) = cmp {
+        let cmp_result = match cmp.0 {
+            CmpOperator::GreaterThan => sum > cmp.1,
+            CmpOperator::GreaterEqual => sum >= cmp.1,
+            CmpOperator::LessThan => sum < cmp.1,
+            CmpOperator::LessEqual => sum <= cmp.1,
+            CmpOperator::Equal => sum == cmp.1,
+            CmpOperator::NotEqual => sum != cmp.1,
         };
         result.push_str(&format!(
             " {} {} -> {}",
-            method,
-            cmp_value,
+            cmp.0,
+            cmp.1,
             if cmp_result { "OK" } else { "NG" }
         ));
     }
@@ -164,7 +186,7 @@ async fn dice(reply: &ChannelId, http: &Http, parsed: Dice) {
     let operation_result = cmp.map(|(operator, operand)| {
         let is_ok = cmp_with_operator(&operator, sum, operand);
         let is_ok = if is_ok { "OK" } else { "NG" };
-        format!(" {} {} -> {}", Into::<&str>::into(operator), operand, is_ok)
+        format!(" {} {} -> {}", operator, operand, is_ok)
     });
 
     // メッセージの生成と送信

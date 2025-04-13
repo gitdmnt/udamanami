@@ -17,25 +17,56 @@ pub enum CmpOperator {
     NotEqual,
 }
 
+impl From<&str> for CmpOperator {
+    fn from(val: &str) -> Self {
+        match val {
+            ">" => Self::GreaterThan,
+            ">=" => Self::GreaterEqual,
+            "<" => Self::LessThan,
+            "<=" => Self::LessEqual,
+            "=" | "==" | "===" => Self::Equal,
+            "!=" | "!==" => Self::NotEqual,
+            _ => Self::Equal,
+        }
+    }
+}
+impl From<CmpOperator> for String {
+    fn from(val: CmpOperator) -> Self {
+        match val {
+            CmpOperator::Equal => "==".to_owned(),
+            CmpOperator::GreaterEqual => ">=".to_owned(),
+            CmpOperator::GreaterThan => ">".to_owned(),
+            CmpOperator::LessEqual => "<=".to_owned(),
+            CmpOperator::LessThan => "<".to_owned(),
+            CmpOperator::NotEqual => "!=".to_owned(),
+        }
+    }
+}
+
+impl From<&CmpOperator> for String {
+    fn from(val: &CmpOperator) -> Self {
+        match val {
+            CmpOperator::Equal => "==".to_owned(),
+            CmpOperator::GreaterEqual => ">=".to_owned(),
+            CmpOperator::GreaterThan => ">".to_owned(),
+            CmpOperator::LessEqual => "<=".to_owned(),
+            CmpOperator::LessThan => "<".to_owned(),
+            CmpOperator::NotEqual => "!=".to_owned(),
+        }
+    }
+}
+
+impl std::fmt::Display for CmpOperator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", String::from(self))
+    }
+}
+
 pub struct Dice {
     pub num: u32,
     pub dice: u64,
     pub cmp: Option<(CmpOperator, u128)>,
 }
-
-impl From<CmpOperator> for &str {
-    fn from(val: CmpOperator) -> Self {
-        match val {
-            CmpOperator::Equal => "==",
-            CmpOperator::GreaterEqual => ">=",
-            CmpOperator::GreaterThan => ">",
-            CmpOperator::LessEqual => "<=",
-            CmpOperator::LessThan => "<",
-            CmpOperator::NotEqual => "!=",
-        }
-    }
-}
-
 pub const fn cmp_with_operator(operator: &CmpOperator, left: u128, right: u128) -> bool {
     match *operator {
         CmpOperator::Equal => left == right,
