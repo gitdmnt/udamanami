@@ -11,6 +11,7 @@ use serenity::{
 
 use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 
+// slash command
 pub fn register() -> CreateCommand {
     CreateCommand::new("dice")
         .description("サイコロを振るよ")
@@ -120,6 +121,7 @@ pub fn run(options: &[ResolvedOption]) -> String {
     result
 }
 
+// old command
 pub async fn run_old(ctx: &CommandContext<'_>) {
     match parse_dice(&ctx.command).finish() {
         Ok((_, parsed)) => {
