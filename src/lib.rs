@@ -244,7 +244,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
         "cclemon" => commands::cclemon::run(&command_context).await,
-        "jail" => jail::run(&command_context).await,
+        "jail" => jail::run_old(&command_context).await,
         "unjail" => unjail::run(&command_context).await,
         "clear" | "全部忘れて" => clear::run(&command_context).await,
         // Unknown command
