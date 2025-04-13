@@ -91,24 +91,18 @@ pub fn run(options: &[ResolvedOption]) -> String {
     };
 
     // roll dice
-    let mut res: Vec<u64> = Vec::new();
+    let mut res = vec![];
     let mut sum: u128 = 0;
     for _ in 0..num {
         let r = rand::random::<u64>() % dice + 1;
-        res.push(r);
+        res.push(r.to_string());
         sum += r as u128;
     }
 
     // format dice roll result
     let mut result = format!("{}D{} -> {}", num, dice, sum);
     if num > 1 {
-        result.push_str(&format!(
-            " ({})",
-            res.iter()
-                .map(|x| x.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+        result.push_str(&format!(" ({})", res.join(", ")));
     }
 
     // compare result if exists
