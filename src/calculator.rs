@@ -9,7 +9,7 @@ use nom::{
     },
     combinator::{map, recognize, value},
     multi::{fold_many0, many0, many0_count, many1_count, separated_list0},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
     IResult,
 };
 use rand::{prelude::Distribution, Rng};
@@ -539,7 +539,7 @@ fn parse_term7(input: &str) -> IResult<&str, Expr> {
 }
 
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    parse_term7(input)
+    terminated(parse_term7, multispace0)(input)
 }
 
 /*
