@@ -104,6 +104,7 @@ impl EventHandler for Bot {
         // グローバルコマンドの登録
         let _ = Command::create_global_command(&ctx.http, ping::register()).await;
         let _ = Command::create_global_command(&ctx.http, dice::register()).await;
+        let _ = Command::create_global_command(&ctx.http, bf::register()).await;
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;
@@ -138,7 +139,8 @@ impl EventHandler for Bot {
             );
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
-                "dice" => Some(dice::run(&command.data.options())),
+                "d" | "dice" => Some(dice::run(&command.data.options())),
+                "bf" | "brainfuck" => Some(bf::run(&command.data.options())),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {

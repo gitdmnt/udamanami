@@ -1,3 +1,4 @@
+pub mod bf;
 pub mod calc;
 pub mod calcsay;
 pub mod cclemon;
