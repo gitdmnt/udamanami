@@ -2103,6 +2103,11 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                             let libfun = get_libfun(f);
                             Ok((EvalResult::SVal(help_libfun(&libfun)), step + 1))
                         }
+                        EvalResult::FuncIf => {
+                            let helpstr =  "### `if(cond, then, else)`\n\
+                                                    condがtrueのときthenを、falseのときelseの値を、それぞれショートサーキット評価して返します。".to_owned();
+                            Ok((EvalResult::SVal(helpstr), step + 1))
+                        },
                         _ => Ok((
                             EvalResult::SVal("関数の説明を表示するには標準ライブラリの関数を直接引数に入れてください。例：`help(foldl)`".to_owned()),
                             step + 1,
@@ -2549,6 +2554,20 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::Object(o)) => {
                 println!("{:?}", o);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignore_space() {
+        let expr = parse_expr(" ( 1 + 2 * 3 / 2 )").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::FVal(f)) => {
+                println!("{}", f);
             }
             _ => {
                 std::panic!();
