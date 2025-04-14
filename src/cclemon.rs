@@ -110,6 +110,7 @@ impl Game {
         }
     }
 
+    #[allow(clippy::missing_const_for_fn)]
     fn next_turn(&mut self) {
         self.turn += 1;
         self.player1.action = None;
