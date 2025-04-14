@@ -9,7 +9,7 @@ use nom::{
     },
     combinator::{map, recognize, value},
     multi::{fold_many0, many0, many0_count, many1_count, separated_list0},
-    sequence::{delimited, pair, preceded, separated_pair, tuple},
+    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
     IResult,
 };
 use rand::{prelude::Distribution, Rng};
@@ -143,7 +143,7 @@ impl std::fmt::Display for Expr {
 
 /*
 演算子の結合性と優先順位
-1. 単項 - D
+1. 単項 - D !
 2. 左結合 D
 3. 右結合 ^
 4. 左結合 * / %
@@ -463,8 +463,17 @@ fn parse_one_dice(input: &str) -> IResult<&str, Expr> {
     })(input)
 }
 
+fn parse_not(input: &str) -> IResult<&str, Expr> {
+    map(pair(char('!'), parse_term0), |(_, e)| {
+        Expr::Op1(ExprOp1::NotL, Box::new(e))
+    })(input)
+}
+
 fn parse_term1(input: &str) -> IResult<&str, Expr> {
-    preceded(multispace0, alt((parse_neg, parse_one_dice, parse_term0)))(input)
+    preceded(
+        multispace0,
+        alt((parse_neg, parse_one_dice, parse_not, parse_term0)),
+    )(input)
 }
 
 // 2: D 左結合
@@ -539,7 +548,7 @@ fn parse_term7(input: &str) -> IResult<&str, Expr> {
 }
 
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    parse_term7(input)
+    terminated(parse_term7, multispace0)(input)
 }
 
 /*
@@ -897,23 +906,36 @@ fn eval_expr_ctx(
         ),
         Expr::Op1(op, e) => {
             let (val, next_step) = eval_expr_ctx(e, step + 1, true, global_context, local_context)?;
-            let fval = match val {
-                EvalResult::IVal(i) => i as f64,
-                EvalResult::FVal(f) => f,
-                _ => return Err((EvalError::NotANumber(val), expr.clone())),
-            };
-
             match op {
-                ExprOp1::Neg => Ok((EvalResult::FVal(-fval), next_step + 1)),
+                ExprOp1::Neg => {
+                    let fval = match val {
+                        EvalResult::IVal(i) => i as f64,
+                        EvalResult::FVal(f) => f,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
+                    Ok((EvalResult::FVal(-fval), next_step + 1))
+                }
                 ExprOp1::OneDice => {
-                    let i = fval as i64;
+                    let i = match val {
+                        EvalResult::IVal(i) => i,
+                        EvalResult::FVal(f) => f as i64,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
                     if i < 1 {
                         return Err((EvalError::InvalidDice, expr.clone()));
                     }
                     let r = rand::thread_rng().gen_range(1..=i);
                     Ok((EvalResult::IVal(r), next_step + 1))
                 }
-                ExprOp1::NotL => Ok((EvalResult::BVal(fval == 0.0), next_step + 1)),
+                ExprOp1::NotL => {
+                    let bval = match val {
+                        EvalResult::IVal(i) => i != 0,
+                        EvalResult::FVal(f) => f != 0.0,
+                        EvalResult::BVal(b) => b,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
+                    Ok((EvalResult::BVal(!bval), next_step + 1))
+                }
             }
         }
         Expr::Op2(op, e1, e2) => {
@@ -2103,6 +2125,11 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                             let libfun = get_libfun(f);
                             Ok((EvalResult::SVal(help_libfun(&libfun)), step + 1))
                         }
+                        EvalResult::FuncIf => {
+                            let helpstr =  "### `if(cond, then, else)`\n\
+                                                    condがtrueのときthenを、falseのときelseの値を、それぞれショートサーキット評価して返します。".to_owned();
+                            Ok((EvalResult::SVal(helpstr), step + 1))
+                        },
                         _ => Ok((
                             EvalResult::SVal("関数の説明を表示するには標準ライブラリの関数を直接引数に入れてください。例：`help(foldl)`".to_owned()),
                             step + 1,
@@ -2549,6 +2576,20 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::Object(o)) => {
                 println!("{:?}", o);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_ignore_space() {
+        let expr = parse_expr(" ( 1 + 2 * 3 / 2 )").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::FVal(f)) => {
+                println!("{}", f);
             }
             _ => {
                 std::panic!();
