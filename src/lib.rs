@@ -139,8 +139,8 @@ impl EventHandler for Bot {
             );
             let content = match command.data.name.as_str() {
                 "ping" => Some(ping::run()),
-                "d" | "dice" => Some(dice::run(&command.data.options())),
-                "bf" | "brainfuck" => Some(bf::run(&command.data.options())),
+                "dice" => Some(dice::run(&command.data.options())),
+                "bf" => Some(bf::run(&command.data.options())),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {

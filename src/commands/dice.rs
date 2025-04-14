@@ -41,7 +41,7 @@ pub fn register() -> CreateCommand {
                 .max_int_value(9007199254740991),
         )
         .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6+2 <= 9")
+            CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6 <= 9")
                 .required(false),
         )
 }
