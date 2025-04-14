@@ -110,7 +110,7 @@ impl Game {
         }
     }
 
-    const fn next_turn(&mut self) {
+    fn next_turn(&mut self) {
         self.turn += 1;
         self.player1.action = None;
         self.player2.action = None;
