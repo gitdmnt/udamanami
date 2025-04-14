@@ -906,23 +906,36 @@ fn eval_expr_ctx(
         ),
         Expr::Op1(op, e) => {
             let (val, next_step) = eval_expr_ctx(e, step + 1, true, global_context, local_context)?;
-            let fval = match val {
-                EvalResult::IVal(i) => i as f64,
-                EvalResult::FVal(f) => f,
-                _ => return Err((EvalError::NotANumber(val), expr.clone())),
-            };
-
             match op {
-                ExprOp1::Neg => Ok((EvalResult::FVal(-fval), next_step + 1)),
+                ExprOp1::Neg => {
+                    let fval = match val {
+                        EvalResult::IVal(i) => i as f64,
+                        EvalResult::FVal(f) => f,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
+                    Ok((EvalResult::FVal(-fval), next_step + 1))
+                }
                 ExprOp1::OneDice => {
-                    let i = fval as i64;
+                    let i = match val {
+                        EvalResult::IVal(i) => i,
+                        EvalResult::FVal(f) => f as i64,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
                     if i < 1 {
                         return Err((EvalError::InvalidDice, expr.clone()));
                     }
                     let r = rand::thread_rng().gen_range(1..=i);
                     Ok((EvalResult::IVal(r), next_step + 1))
                 }
-                ExprOp1::NotL => Ok((EvalResult::BVal(fval == 0.0), next_step + 1)),
+                ExprOp1::NotL => {
+                    let bval = match val {
+                        EvalResult::IVal(i) => i != 0,
+                        EvalResult::FVal(f) => f != 0.0,
+                        EvalResult::BVal(b) => b,
+                        _ => return Err((EvalError::NotANumber(val), expr.clone())),
+                    };
+                    Ok((EvalResult::BVal(!bval), next_step + 1))
+                }
             }
         }
         Expr::Op2(op, e1, e2) => {
