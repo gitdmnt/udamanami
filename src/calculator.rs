@@ -143,7 +143,7 @@ impl std::fmt::Display for Expr {
 
 /*
 演算子の結合性と優先順位
-1. 単項 - D
+1. 単項 - D !
 2. 左結合 D
 3. 右結合 ^
 4. 左結合 * / %
@@ -463,8 +463,17 @@ fn parse_one_dice(input: &str) -> IResult<&str, Expr> {
     })(input)
 }
 
+fn parse_not(input: &str) -> IResult<&str, Expr> {
+    map(pair(char('!'), parse_term0), |(_, e)| {
+        Expr::Op1(ExprOp1::NotL, Box::new(e))
+    })(input)
+}
+
 fn parse_term1(input: &str) -> IResult<&str, Expr> {
-    preceded(multispace0, alt((parse_neg, parse_one_dice, parse_term0)))(input)
+    preceded(
+        multispace0,
+        alt((parse_neg, parse_one_dice, parse_not, parse_term0)),
+    )(input)
 }
 
 // 2: D 左結合
