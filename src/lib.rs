@@ -102,9 +102,11 @@ impl EventHandler for Bot {
         let _ = self.guild_id.set_commands(&ctx.http, vec![]).await;
 
         // グローバルコマンドの登録
+        let _ = Command::create_global_command(&ctx.http, help::register()).await;
         let _ = Command::create_global_command(&ctx.http, ping::register()).await;
-        let _ = Command::create_global_command(&ctx.http, dice::register()).await;
+
         let _ = Command::create_global_command(&ctx.http, bf::register()).await;
+        let _ = Command::create_global_command(&ctx.http, dice::register()).await;
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;
@@ -135,9 +137,10 @@ impl EventHandler for Bot {
                 &command.data.name,
             );
             let content = match command.data.name.as_str() {
+                "help" => Some(help::run()),
                 "ping" => Some(ping::run()),
-                "dice" => Some(dice::run(&command.data.options())),
                 "bf" => Some(bf::run(&command.data.options())),
+                "dice" => Some(dice::run(&command.data.options())),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {
@@ -174,7 +177,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "channel" => channel::run(&command_context).await,
-        "help" | "たすけて" | "助けて" => help::run(&command_context).await,
+        "help" | "たすけて" | "助けて" => help::run_old(&command_context).await,
         "calc" => calc::run(&command_context).await,
         "var" => var::run(&command_context).await,
         "varbulk" => varbulk::run(&command_context).await,
@@ -236,7 +239,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "help" | "たすけて" | "助けて" => {
-            help::run(&command_context).await;
+            help::run_old(&command_context).await;
         }
         "isprime" => isprime::run(&command_context).await,
         "calc" => calc::run(&command_context).await,
