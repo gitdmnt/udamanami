@@ -99,10 +99,9 @@ impl EventHandler for Bot {
         info!("{} is connected!", ready.user.name);
 
         let message_hello = match (self.commit_hash.clone(), self.commit_date.clone()) {
-            (Some(commit_hash), Some(commit_date)) => format!(
-                "おはようっ！ (deployed commit: {} at {})",
-                commit_hash, commit_date
-            ),
+            (Some(commit_hash), Some(commit_date)) => {
+                format!("おはようっ！ ||commit: {} ({})||", commit_hash, commit_date)
+            }
             _ => "おはようっ！".to_owned(),
         };
 

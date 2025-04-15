@@ -21,7 +21,7 @@ jobs:
       - uses: shuttle-hq/deploy-action@v2
         with:
           shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
-          project-id: ${{ secrets.SHUTTLE_PROJECT_ID || 'proj_01JRX6XSJCDVPJ2HE3ZHZB7A4S' }}
+          project-id: ${{ secrets.SHUTTLE_PROJECT_ID || 'proj_01JCJS9WKRQ1RC9MVZW6WDJK97' }}
           extra-args: --allow-dirty
           secrets: |
             AI_API_KEY = '${{ secrets.AI_API_KEY }}'
