@@ -975,6 +975,11 @@ fn eval_expr_ctx(
                         }
                     }
                 }
+                ExprOp2::Eq => Some(Ok((EvalResult::BVal(deep_eq(&val1, &val2)), next_step + 1))),
+                ExprOp2::Ne => Some(Ok((
+                    EvalResult::BVal(!deep_eq(&val1, &val2)),
+                    next_step + 1,
+                ))),
                 _ => None,
             };
 
@@ -1134,6 +1139,49 @@ fn eval_expr_ctx(
         }
     } else {
         result
+    }
+}
+
+pub fn deep_eq(a: &EvalResult, b: &EvalResult) -> bool {
+    match (a, b) {
+        (EvalResult::List(l1), EvalResult::List(l2)) => {
+            if l1.len() != l2.len() {
+                return false;
+            }
+            for (e1, e2) in l1.iter().zip(l2.iter()) {
+                if !deep_eq(e1, e2) {
+                    return false;
+                }
+            }
+            true
+        }
+        (EvalResult::Object(o1), EvalResult::Object(o2)) => {
+            if o1.len() != o2.len() {
+                return false;
+            }
+            for (k, v1) in o1.iter() {
+                if let Some(v2) = o2.get(k) {
+                    if !deep_eq(v1, v2) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+        (EvalResult::SVal(s1), EvalResult::SVal(s2)) => s1 == s2,
+        _ => {
+            let Some(fval1) = val_as_float(a) else {
+                return false;
+            };
+
+            let Some(fval2) = val_as_float(b) else {
+                return false;
+            };
+
+            fval1 == fval2
+        }
     }
 }
 
@@ -2590,6 +2638,76 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::FVal(f)) => {
                 println!("{}", f);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_int() {
+        let expr = parse_expr("1 == 1").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_float() {
+        let expr = parse_expr("1.0 == 1").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_string() {
+        let expr = parse_expr("\"abc\" == \"abc\"").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_list() {
+        let expr = parse_expr("[1, 2, 3] == [1, 2, 3]").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_object() {
+        let expr = parse_expr("{a: 1, b: 2} == {b: 2, a: 1}").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
             }
             _ => {
                 std::panic!();
