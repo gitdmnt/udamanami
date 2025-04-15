@@ -123,9 +123,6 @@ impl EventHandler for Bot {
                 unjail::run(&command_context).await;
             }
         }
-
-        // グローバルコマンドの登録
-        // let _ = Command::create_global_command(&ctx.http, commands::ping::register()).await;
     }
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {

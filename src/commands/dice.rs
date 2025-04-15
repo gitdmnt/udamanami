@@ -16,6 +16,10 @@ pub fn register() -> CreateCommand {
     CreateCommand::new("dice")
         .description("サイコロを振るよ")
         .add_option(
+            CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6 <= 9")
+                .required(false),
+        )
+        .add_option(
             CreateCommandOption::new(CommandOptionType::Integer, "num", "振るサイコロの数")
                 .min_int_value(1)
                 .max_int_value(1000000),
@@ -39,10 +43,6 @@ pub fn register() -> CreateCommand {
             CreateCommandOption::new(CommandOptionType::Integer, "operand", "比較する値")
                 .min_int_value(1)
                 .max_int_value(9007199254740991),
-        )
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6 <= 9")
-                .required(false),
         )
 }
 
