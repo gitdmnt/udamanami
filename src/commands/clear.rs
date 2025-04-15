@@ -6,9 +6,5 @@ pub async fn run(ctx: &CommandContext<'_>) {
         .await
         .unwrap();
 
-    if let Some(reflog) = ctx.bot.chat_log.get(ctx.channel_id) {
-        if let Ok(mut chat_log) = reflog.lock() {
-            chat_log.clear();
-        }
-    }
+    ctx.bot.gemini.clear();
 }

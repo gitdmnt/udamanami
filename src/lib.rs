@@ -1,5 +1,4 @@
 use std::{
-    collections::VecDeque,
     sync::{Arc, Mutex},
     time::Instant,
 };
@@ -48,8 +47,7 @@ pub struct Bot {
     pub jail_main_role_id: RoleId,
 
     pub variables: DashMap<String, EvalResult>,
-    pub ai: ai::AI,
-    pub chat_log: DashMap<ChannelId, Mutex<VecDeque<(String, Message)>>>,
+    pub gemini: ai::GeminiAI,
 }
 
 impl Bot {
@@ -162,6 +160,10 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
+        // AIのためにメッセージを保存する
+        bot.gemini.add_model_log(&msg.content);
+
+        // 代筆先のチャンネルにメッセージを転送する
         let room_pointer = bot.get_user_room_pointer(&msg.author.id);
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
@@ -195,30 +197,14 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 }
 
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    let channel_id = msg.channel_id;
-
-    // guild内で発言してるってことは確実にmemberなので
-    let member = bot
-        .guild_id
-        .member(&ctx.http, &msg.author.id)
-        .await
-        .unwrap();
-
-    if let Ok(mut chat_log) = bot
-        .chat_log
-        .entry(channel_id)
-        .or_insert_with(|| Mutex::new(VecDeque::new()))
-        .lock()
-    {
-        if chat_log.len() > 100 {
-            chat_log.pop_front();
-        }
-        chat_log.push_back((member.display_name().to_owned(), msg.clone()));
-    }
-
+    // 反応すべきメッセージかどうか確認
     if !has_privilege(bot, ctx, msg).await {
         return;
     }
+
+    // AIのためにメッセージを保存する
+    bot.gemini
+        .add_user_log(msg.author.display_name(), &msg.content);
 
     // if message does not contains any command, ignore
     let command_pattern =
@@ -228,14 +214,26 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             caps.get(1).unwrap().as_str().to_owned(),
             caps.get(2).unwrap().as_str().to_owned(),
         ),
-        None => return,
+        None => {
+            // まなみが自由に応答するコーナー
+            if msg.channel_id.get() == bot.channel_ids[4].get() {
+                let content = bot.gemini.generate("gemini-2.0-flash-lite").await;
+                let content = match content {
+                    Ok(content) => content.replace("うだまなみ: ", ""),
+                    Err(e) => {
+                        format!("Error sending message: {:?}", e)
+                    }
+                };
+                let _ = &msg.channel_id.say(&ctx.http, content).await;
+            }
+            return;
+        }
     };
 
     let command_context = CommandContext::new(bot, ctx, msg, input_string.clone());
 
     // handle other command
     let command_name = &command_context.command_name()[..];
-    let reply_channel = &msg.channel_id;
 
     match command_name {
         "help" | "たすけて" | "助けて" => {
@@ -250,34 +248,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "unjail" => unjail::run(&command_context).await,
         "clear" | "全部忘れて" => clear::run(&command_context).await,
         // Unknown command
-        _ => {
-            if msg.content.starts_with('!') {
-                dice::run_old(&command_context).await;
-            } else {
-                // まなみが自由に応答するコーナー
-                if reply_channel.get() != bot.channel_ids[4].get() {
-                    return;
-                }
-                #[allow(clippy::or_fun_call)]
-                // unwrap_or_else(|_| Mutex::new(VecDeque::new()).lock().unwrap()) とすると、生存期間が合わなくて怒られる
-                let query = bot
-                    .chat_log
-                    .get(&channel_id)
-                    .unwrap()
-                    .lock()
-                    .unwrap_or(Mutex::new(VecDeque::new()).lock().unwrap())
-                    .iter()
-                    .map(|(name, msg)| ai::Query::from_message(name, &msg.content))
-                    .collect();
-                let response = bot.ai.generate(query).await;
-                let content = match response {
-                    Ok(response) => response,
-                    Err(e) => e,
-                };
-                let content = content.replace("うだまなみ: ", "");
-                reply_channel.say(&ctx.http, content).await.unwrap();
-            }
-        }
+        _ => dice::run_old(&command_context).await,
     }
 }
 
