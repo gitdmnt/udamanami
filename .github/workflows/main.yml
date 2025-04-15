@@ -17,6 +17,7 @@ jobs:
           extra-args: --allow-dirty
           secrets: |
             AI_API_KEY = '${{ secrets.AI_API_KEY }}'
+            GEMINI_API_KEY = '${{ secrets.GEMINI_API_KEY }}'
             DISCORD_TOKEN = '${{ secrets.DISCORD_TOKEN }}'
             DEBUG_ROOM_ID = '${{ secrets.DEBUG_ROOM_ID }}'
             FREETALK1_ROOM_ID = '${{ secrets.FREETALK1_ROOM_ID }}'
