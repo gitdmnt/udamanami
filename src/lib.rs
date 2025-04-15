@@ -215,17 +215,6 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             caps.get(2).unwrap().as_str().to_owned(),
         ),
         None => {
-            // まなみが自由に応答するコーナー
-            if msg.channel_id.get() == bot.channel_ids[4].get() {
-                let content = bot.gemini.generate("gemini-2.0-flash-lite").await;
-                let content = match content {
-                    Ok(content) => content.replace("うだまなみ: ", ""),
-                    Err(e) => {
-                        format!("Error sending message: {:?}", e)
-                    }
-                };
-                let _ = &msg.channel_id.say(&ctx.http, content).await;
-            }
             return;
         }
     };
@@ -248,7 +237,21 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         "unjail" => unjail::run(&command_context).await,
         "clear" | "全部忘れて" => clear::run(&command_context).await,
         // Unknown command
-        _ => dice::run_old(&command_context).await,
+        _ => {
+            if msg.content.starts_with("!") {
+                dice::run_old(&command_context).await
+            } else if msg.channel_id.get() == bot.channel_ids[4].get() {
+                // まなみが自由に応答するコーナー
+                let content = bot.gemini.generate("gemini-2.0-flash-lite").await;
+                let content = match content {
+                    Ok(content) => content.replace("うだまなみ: ", ""),
+                    Err(e) => {
+                        format!("Error sending message: {:?}", e)
+                    }
+                };
+                let _ = &msg.channel_id.say(&ctx.http, content).await;
+            }
+        }
     }
 }
 
