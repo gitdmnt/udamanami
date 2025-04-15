@@ -63,6 +63,10 @@ async fn serenity(
         .map(|id| RoleId::from_str(&id).unwrap())
         .unwrap();
 
+    let commit_hash = secrets.get("COMMIT_HASH");
+
+    let commit_date = secrets.get("COMMIT_DATE");
+
     let variables = DashMap::new();
 
     let ai = ai::AI::new(&secrets.get("AI_API_KEY").unwrap());
@@ -82,6 +86,8 @@ async fn serenity(
             erogaki_role_id,
             jail_mark_role_id,
             jail_main_role_id,
+            commit_hash,
+            commit_date,
             variables,
             ai,
             chat_log,

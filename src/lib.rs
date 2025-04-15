@@ -47,6 +47,9 @@ pub struct Bot {
     pub jail_mark_role_id: RoleId,
     pub jail_main_role_id: RoleId,
 
+    pub commit_hash: Option<String>,
+    pub commit_date: Option<String>,
+
     pub variables: DashMap<String, EvalResult>,
     pub ai: ai::AI,
     pub chat_log: DashMap<ChannelId, Mutex<VecDeque<(String, Message)>>>,
@@ -94,7 +97,16 @@ impl EventHandler for Bot {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-        if let Err(why) = self.channel_ids[4].say(&ctx.http, "おはようっ！").await {
+
+        let message_hello = match (self.commit_hash.clone(), self.commit_date.clone()) {
+            (Some(commit_hash), Some(commit_date)) => format!(
+                "おはようっ！ (deployed commit: {} at {})",
+                commit_hash, commit_date
+            ),
+            _ => "おはようっ！".to_owned(),
+        };
+
+        if let Err(why) = self.channel_ids[4].say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
         };
 
