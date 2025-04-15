@@ -66,8 +66,14 @@ pub fn run(option: &[ResolvedOption]) -> String {
         Ok(output) => {
             if output.is_empty() {
                 "出力はなかったよ！".to_owned()
+            } else if output.len() > 1960 {
+                format!(
+                    "```\n{}\n...のこり{}文字\n```",
+                    &output[..1960],
+                    output.len() - 1960
+                )
             } else {
-                output
+                format!("```\n{}\n```", output)
             }
         }
         Err(err) => {
