@@ -48,39 +48,34 @@ pub fn register() -> CreateCommand {
 
 pub fn run(options: &[ResolvedOption]) -> String {
     // parse options
+    let (literal, num, dice, operator, operand) = options.iter().fold(
+        (None, None, None, None, None),
+        |(lit, n, d, op, opd), option| match (option.name, &option.value) {
+            ("literal", ResolvedValue::String(s)) => (Some(*s), n, d, op, opd),
+            ("num", ResolvedValue::Integer(i)) => (lit, Some(*i as u32), d, op, opd),
+            ("dice", ResolvedValue::Integer(i)) => (lit, n, Some(*i as u64), op, opd),
+            ("operator", ResolvedValue::String(s)) => (lit, n, d, Some(*s), opd),
+            ("operand", ResolvedValue::Integer(i)) => (lit, n, d, op, Some(*i as u128)),
+            _ => (lit, n, d, op, opd),
+        },
+    );
 
-    let dice = if let ResolvedValue::String(s) = options[4].value {
-        parse_dice(s).finish().map(|(_, parsed)| parsed)
-    } else {
-        let num = match options[0].value {
-            ResolvedValue::Integer(i) => i as u32,
-            _ => 1,
-        };
-        let dice = match options[1].value {
-            ResolvedValue::Integer(i) => i as u64,
-            _ => 6,
-        };
-        let operator = match options[2].value {
-            ResolvedValue::String(s) => match s {
-                ">" | ">=" | "<" | "<=" | "=" | "==" | "===" | "!=" | "!==" => Some(s.into()),
-                _ => None,
-            },
-            _ => None,
-        };
-        let operand = match options[3].value {
-            ResolvedValue::Integer(i) => Some(i as u128),
-            _ => None,
-        };
+    let dice = literal.map_or_else(
+        || {
+            let num = num.map_or(1, |i| i);
+            let dice = dice.map_or(6, |i| i);
+            let operator = operator.map(|s| s.into());
+            let cmp: Option<(CmpOperator, u128)> = if operator.is_some() && operand.is_some() {
+                #[allow(clippy::unnecessary_unwrap)]
+                Some((operator.unwrap(), operand.unwrap()))
+            } else {
+                None
+            };
 
-        let cmp: Option<(CmpOperator, u128)> = if operator.is_some() && operand.is_some() {
-            #[allow(clippy::unnecessary_unwrap)]
-            Some((operator.unwrap(), operand.unwrap()))
-        } else {
-            None
-        };
-
-        Ok(Dice { num, dice, cmp })
-    };
+            Ok(Dice { num, dice, cmp })
+        },
+        |s| parse_dice(s).finish().map(|(_, parsed)| parsed),
+    );
 
     let Dice { num, dice, cmp } = match dice {
         Ok(dice) => dice,

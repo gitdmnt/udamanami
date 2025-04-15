@@ -47,15 +47,19 @@ pub fn register() -> CreateCommand {
 }
 
 pub fn run(option: &[ResolvedOption]) -> String {
-    let ResolvedValue::String(code) = option[0].value else {
+    let (code, input) = option.iter().fold((None, None), |(code, input), option| {
+        match (option.name, &option.value) {
+            ("code", ResolvedValue::String(s)) => (Some(*s), input),
+            ("input", ResolvedValue::String(s)) => (code, Some(*s)),
+            _ => (code, input),
+        }
+    });
+
+    let Some(code) = code else {
         return "エラーだよ！".to_owned();
     };
     let code = code.chars().map(BrainfuckCommand::from).collect::<Vec<_>>();
-
-    let input = match option[1].value {
-        ResolvedValue::String(s) => s,
-        _ => "",
-    };
+    let input = input.unwrap_or("");
 
     let output = interpreter(code, input);
     match output {
