@@ -66,9 +66,16 @@ pub fn run(option: &[ResolvedOption]) -> String {
         Ok(output) => {
             if output.is_empty() {
                 "出力はなかったよ！".to_owned()
+            } else if output.split("\n").count() > 16 {
+                let output = output.split("\n").take(16).collect::<Vec<_>>();
+                format!(
+                    "```\n{}\n...のこり{}行は省略しちゃうね！\n```",
+                    &output.join("\n"),
+                    output.len() - 16
+                )
             } else if output.len() > 1960 {
                 format!(
-                    "```\n{}\n...のこり{}文字\n```",
+                    "```\n{}\n...のこり{}文字は省略しちゃうね！\n```",
                     &output[..1960],
                     output.len() - 1960
                 )
@@ -76,9 +83,7 @@ pub fn run(option: &[ResolvedOption]) -> String {
                 format!("```\n{}\n```", output)
             }
         }
-        Err(err) => {
-            format!("エラーだよ！\n```{}```", err)
-        }
+        Err(err) => err,
     }
 }
 
@@ -93,6 +98,7 @@ fn interpreter(code: Vec<BrainfuckCommand>, input: &str) -> Result<String, Strin
     let mut input_iter = input.chars();
     let mut output = String::new();
     let mut loop_stack = Vec::new();
+    let mut loop_count = 0;
 
     while code_pointer < code.len() {
         let cmd = &code[code_pointer];
@@ -114,12 +120,15 @@ fn interpreter(code: Vec<BrainfuckCommand>, input: &str) -> Result<String, Strin
                 }
             }
             BrainfuckCommand::LoopStart => {
+                loop_count += 1;
+                if loop_count > MAX_LOOP_COUNT {
+                    return Err("ループが多すぎるよ！　無限ループじゃない？".to_owned());
+                }
+
                 if memory[memory_pointer] == 0 {
-                    let mut loop_count = 0;
                     let mut loop_depth = 1;
 
                     while loop_depth > 0 {
-                        loop_count += 1;
                         code_pointer += 1;
                         match code[code_pointer] {
                             BrainfuckCommand::LoopStart => loop_depth += 1,
@@ -132,9 +141,6 @@ fn interpreter(code: Vec<BrainfuckCommand>, input: &str) -> Result<String, Strin
                         if loop_depth > MAX_LOOP_DEPTH {
                             return Err("ループが深すぎるよ！".to_owned());
                         }
-                        if loop_count > MAX_LOOP_COUNT {
-                            return Err("ループが多すぎるよ！　無限ループじゃない？".to_owned());
-                        }
                     }
                 } else {
                     loop_stack.push(code_pointer);
@@ -142,9 +148,10 @@ fn interpreter(code: Vec<BrainfuckCommand>, input: &str) -> Result<String, Strin
             }
             BrainfuckCommand::LoopEnd => {
                 if memory[memory_pointer] != 0 {
-                    code_pointer = *loop_stack.last().unwrap();
+                    code_pointer = *loop_stack.last().unwrap() - 1;
                 } else {
                     loop_stack.pop();
+                    loop_count = 0;
                 }
             }
             BrainfuckCommand::Invalid => {}
