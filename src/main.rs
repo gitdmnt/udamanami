@@ -63,6 +63,10 @@ async fn serenity(
         .map(|id| RoleId::from_str(&id).unwrap())
         .unwrap();
 
+    let commit_hash = secrets.get("COMMIT_HASH");
+
+    let commit_date = secrets.get("COMMIT_DATE");
+
     let variables = DashMap::new();
 
     let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
@@ -81,6 +85,8 @@ async fn serenity(
             erogaki_role_id,
             jail_mark_role_id,
             jail_main_role_id,
+            commit_hash,
+            commit_date,
             variables,
 
             gemini,
