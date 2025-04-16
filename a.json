@@ -1,10 +1,4 @@
-cargo shuttle deploy --allow-dirty --no-test -idle-minutes 0
-cargo shuttle project statuscar
-
-curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyCMZF6aXWOxZavG0XKN1dpIenv9uOpkBJs" \
-  -H 'Content-Type: application/json' \
-  -X POST \
-  -d '{
+{
   "system_instruction": {
     "role": null,
     "parts": [
@@ -19,4 +13,5 @@ curl "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:g
       "parts": [{ "text": "宇田: まなみ、おはよう！　今日は何をする予定？" }]
     }
   ]
-}'
+}
+

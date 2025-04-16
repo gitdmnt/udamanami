@@ -65,8 +65,7 @@ async fn serenity(
 
     let variables = DashMap::new();
 
-    let ai = ai::AI::new(&secrets.get("AI_API_KEY").unwrap());
-    let chat_log = DashMap::new();
+    let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
 
     let jail_process = Arc::new(DashMap::new());
 
@@ -83,8 +82,8 @@ async fn serenity(
             jail_mark_role_id,
             jail_main_role_id,
             variables,
-            ai,
-            chat_log,
+
+            gemini,
         })
         .await
         .expect("Err creating client");

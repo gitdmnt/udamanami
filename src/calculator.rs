@@ -975,6 +975,11 @@ fn eval_expr_ctx(
                         }
                     }
                 }
+                ExprOp2::Eq => Some(Ok((EvalResult::BVal(deep_eq(&val1, &val2)), next_step + 1))),
+                ExprOp2::Ne => Some(Ok((
+                    EvalResult::BVal(!deep_eq(&val1, &val2)),
+                    next_step + 1,
+                ))),
                 _ => None,
             };
 
@@ -1134,6 +1139,49 @@ fn eval_expr_ctx(
         }
     } else {
         result
+    }
+}
+
+pub fn deep_eq(a: &EvalResult, b: &EvalResult) -> bool {
+    match (a, b) {
+        (EvalResult::List(l1), EvalResult::List(l2)) => {
+            if l1.len() != l2.len() {
+                return false;
+            }
+            for (e1, e2) in l1.iter().zip(l2.iter()) {
+                if !deep_eq(e1, e2) {
+                    return false;
+                }
+            }
+            true
+        }
+        (EvalResult::Object(o1), EvalResult::Object(o2)) => {
+            if o1.len() != o2.len() {
+                return false;
+            }
+            for (k, v1) in o1.iter() {
+                if let Some(v2) = o2.get(k) {
+                    if !deep_eq(v1, v2) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            true
+        }
+        (EvalResult::SVal(s1), EvalResult::SVal(s2)) => s1 == s2,
+        _ => {
+            let Some(fval1) = val_as_float(a) else {
+                return false;
+            };
+
+            let Some(fval2) = val_as_float(b) else {
+                return false;
+            };
+
+            fval1 == fval2
+        }
     }
 }
 
@@ -2149,6 +2197,80 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                 }
             }),
         },
+        EvalStdLibFun::AtoF => LibFun {
+            name: "atof".to_owned(),
+            alias: vec![
+                "parseFloat".to_owned(),
+                "parsefloat".to_owned(),
+                "float".to_owned(),
+            ],
+            usage: "`atof(string)`".to_owned(),
+            note: "stringを浮動小数点数に変換します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                let s = val_as_str(&args[0]);
+                s.parse::<f64>().map_or_else(
+                    |_| Ok((EvalResult::FVal(f64::NAN), step + 1)),
+                    |f| Ok((EvalResult::FVal(f), step + 1)),
+                )
+            }),
+        },
+        EvalStdLibFun::AtoI => LibFun {
+            name: "atoi".to_owned(),
+            alias: vec![
+                "parseInt".to_owned(),
+                "parseint".to_owned(),
+                "int".to_owned(),
+            ],
+            usage: "`atoi(string)`".to_owned(),
+            note: "stringを整数に変換します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                let s = val_as_str(&args[0]);
+                s.parse::<i64>().map_or_else(
+                    |_| Ok((EvalResult::IVal(0), step + 1)),
+                    |i| Ok((EvalResult::IVal(i), step + 1)),
+                )
+            }),
+        },
+        EvalStdLibFun::AtoB => LibFun {
+            name: "atob".to_owned(),
+            alias: vec!["parseBool".to_owned(), "parsebool".to_owned()],
+            usage: "`atob(string)`".to_owned(),
+            note: "stringを真偽値に変換します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                let s = val_as_str(&args[0]);
+                match s.to_lowercase().as_str() {
+                    "true" => Ok((EvalResult::BVal(true), step + 1)),
+                    "false" => Ok((EvalResult::BVal(false), step + 1)),
+                    _ => Ok((EvalResult::BVal(false), step + 1)),
+                }
+            }),
+        },
+        EvalStdLibFun::ToStr => LibFun {
+            name: "tostr".to_owned(),
+            alias: vec![
+                "toString".to_owned(),
+                "tostring".to_owned(),
+                "str".to_owned(),
+            ],
+            usage: "`tostr(value)`".to_owned(),
+            note: "valueを文字列に変換します".to_owned(),
+            body: Box::new(|expr, step, _, _, args| {
+                if args.len() != 1 {
+                    return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
+                }
+                let s = val_as_str(&args[0]);
+                Ok((EvalResult::SVal(s), step + 1))
+            }),
+        },
         //_ => panic!("function not implemented: {:?}", func),
     }
 }
@@ -2221,6 +2343,10 @@ pub enum EvalStdLibFun {
     Pick,    // pick(list)
     PickArg, // pickarg(x, y, ...)
     Shuffle, // shuffle(list)
+    AtoF,    // atof(string)
+    AtoI,    // atoi(string)
+    AtoB,    // atob(string)
+    ToStr,   // tostr(value)
 }
 
 impl std::fmt::Display for EvalStdLibFun {
@@ -2590,6 +2716,132 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::FVal(f)) => {
                 println!("{}", f);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_int() {
+        let expr = parse_expr("1 == 1").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_float() {
+        let expr = parse_expr("1.0 == 1").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_string() {
+        let expr = parse_expr("\"abc\" == \"abc\"").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_list() {
+        let expr = parse_expr("[1, 2, 3] == [1, 2, 3]").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_equal_object() {
+        let expr = parse_expr("{a: 1, b: 2} == {b: 2, a: 1}").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::BVal(true)) => {
+                //println!("{}", b);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_atof() {
+        let expr = parse_expr("atof(\"123.456\")").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::FVal(f)) => {
+                assert_eq!(f, 123.456);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_atoi() {
+        let expr = parse_expr("atoi(\"123456\")").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::IVal(i)) => {
+                assert_eq!(i, 123456);
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_atob() {
+        let expr = parse_expr("atob(\"true\")").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(bv) => {
+                assert_eq!(bv, EvalResult::BVal(true));
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+
+    #[test]
+    fn test_tostr() {
+        let expr = parse_expr("tostr(123.456)").unwrap().1;
+        let context = DashMap::new();
+        match eval_expr(&expr, &context) {
+            Ok(EvalResult::SVal(s)) => {
+                assert_eq!(s, "123.456");
             }
             _ => {
                 std::panic!();
