@@ -221,8 +221,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     // AIのためにメッセージを保存する
-    bot.gemini
-        .add_user_log(msg.author.display_name(), &msg.content);
+    if msg.channel_id.get() == bot.channel_ids[4].get() {
+        bot.gemini
+            .add_user_log(msg.author.display_name(), &msg.content);
+    }
 
     // if message does not contains any command, ignore
     let command_pattern =
