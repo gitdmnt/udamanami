@@ -50,6 +50,7 @@ pub struct Bot {
     pub commit_date: Option<String>,
 
     pub variables: DashMap<String, EvalResult>,
+
     pub gemini: ai::GeminiAI,
 }
 
@@ -255,7 +256,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 dice::run_old(&command_context).await
             } else if msg.channel_id.get() == bot.channel_ids[4].get() {
                 // まなみが自由に応答するコーナー
-                let content = bot.gemini.generate("gemini-2.0-flash-lite").await;
+                let content = bot.gemini.generate().await;
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),
                     Err(e) => {

@@ -57,7 +57,22 @@ const MANAMI_PROMPT: &str = r"
 返信はまなみの発言のみを返しなさい。発言者を示す接頭辞やカギカッコは禁止です。
 ";
 
+enum GeminiModel {
+    Gemini20Flash,
+    Gemini20FlashLite,
+}
+
+impl std::fmt::Display for GeminiModel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Gemini20Flash => write!(f, "gemini-2.0-flash"),
+            Self::Gemini20FlashLite => write!(f, "gemini-2.0-flash-lite"),
+        }
+    }
+}
+
 pub struct GeminiAI {
+    model: GeminiModel,
     api_key: String,
     conversation: GeminiConversation,
 }
@@ -119,6 +134,7 @@ impl std::fmt::Display for GeminiConversation {
 impl GeminiAI {
     pub fn new(api_key: &str) -> Self {
         Self {
+            model: GeminiModel::Gemini20FlashLite,
             api_key: api_key.to_owned(),
             conversation: GeminiConversation::new(),
         }
@@ -156,10 +172,10 @@ impl GeminiAI {
         self.conversation.to_string()
     }
 
-    pub async fn generate(&self, model: &str) -> Result<String, anyhow::Error> {
+    pub async fn generate(&self) -> Result<String, anyhow::Error> {
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, self.api_key
+            self.model, self.api_key
         );
         let prompt = self.conversation.to_string();
         let client = reqwest::Client::new();
@@ -202,7 +218,7 @@ mod gemini_tests {
         let ai = GeminiAI::new("");
         ai.add_user_log("宇田", "まなみ、おはよう！　今日は何をする予定？");
         println!("{}", &ai.conversation);
-        let response = ai.generate("gemini-2.0-flash-lite").await;
+        let response = ai.generate().await;
         match response {
             Ok(res) => println!("Response: {}", res),
             Err(err) => println!("Error: {}", err),
