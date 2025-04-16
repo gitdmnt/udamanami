@@ -57,7 +57,7 @@ const MANAMI_PROMPT: &str = r"
 返信はまなみの発言のみを返しなさい。発言者を示す接頭辞やカギカッコは禁止です。
 ";
 
-enum GeminiModel {
+pub enum GeminiModel {
     Gemini20Flash,
     Gemini20FlashLite,
 }
@@ -71,8 +71,18 @@ impl std::fmt::Display for GeminiModel {
     }
 }
 
+impl From<&str> for GeminiModel {
+    fn from(model: &str) -> Self {
+        match model {
+            "gemini-2.0-flash" => Self::Gemini20Flash,
+            "gemini-2.0-flash-lite" => Self::Gemini20FlashLite,
+            _ => Self::Gemini20FlashLite,
+        }
+    }
+}
+
 pub struct GeminiAI {
-    model: GeminiModel,
+    model: Mutex<GeminiModel>,
     api_key: String,
     conversation: GeminiConversation,
 }
@@ -134,7 +144,7 @@ impl std::fmt::Display for GeminiConversation {
 impl GeminiAI {
     pub fn new(api_key: &str) -> Self {
         Self {
-            model: GeminiModel::Gemini20FlashLite,
+            model: Mutex::new(GeminiModel::Gemini20FlashLite),
             api_key: api_key.to_owned(),
             conversation: GeminiConversation::new(),
         }
@@ -175,7 +185,8 @@ impl GeminiAI {
     pub async fn generate(&self) -> Result<String, anyhow::Error> {
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            self.model, self.api_key
+            self.model.lock().unwrap(),
+            self.api_key
         );
         let prompt = self.conversation.to_string();
         let client = reqwest::Client::new();
@@ -206,6 +217,10 @@ impl GeminiAI {
         } else {
             Err(anyhow!(response))
         }
+    }
+
+    pub fn set_model(&self, model: GeminiModel) {
+        *self.model.lock().unwrap() = model;
     }
 }
 

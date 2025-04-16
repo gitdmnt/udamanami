@@ -5,6 +5,7 @@ pub mod cclemon;
 pub mod channel;
 pub mod clear;
 pub mod dice;
+pub mod gemini;
 pub mod help;
 pub mod isprime;
 pub mod jail;

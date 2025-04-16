@@ -109,7 +109,10 @@ impl EventHandler for Bot {
         };
 
         // ローカルコマンドの登録
-        let _ = self.guild_id.set_commands(&ctx.http, vec![]).await;
+        let _ = self
+            .guild_id
+            .set_commands(&ctx.http, vec![gemini::register()])
+            .await;
 
         // グローバルコマンドの登録
         let _ = Command::create_global_command(&ctx.http, help::register()).await;
@@ -151,6 +154,7 @@ impl EventHandler for Bot {
                 "ping" => Some(ping::run()),
                 "bf" => Some(bf::run(&command.data.options())),
                 "dice" => Some(dice::run(&command.data.options())),
+                "gemini" => Some(gemini::run(&command.data.options(), self).await),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {
