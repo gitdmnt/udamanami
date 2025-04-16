@@ -10,10 +10,18 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set commit metadata
+        run: |
+          echo "COMMIT_HASH=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "COMMIT_DATE=$(git show -s --format=%ci HEAD)" >> $GITHUB_ENV
+
       - uses: shuttle-hq/deploy-action@v2
         with:
           shuttle-api-key: ${{ secrets.SHUTTLE_API_KEY }}
-          project-id: proj_01JCJS9WKRQ1RC9MVZW6WDJK97
+          project-id: ${{ secrets.SHUTTLE_PROJECT_ID || 'proj_01JCJS9WKRQ1RC9MVZW6WDJK97' }}
           extra-args: --allow-dirty
           secrets: |
             AI_API_KEY = '${{ secrets.AI_API_KEY }}'
@@ -29,3 +37,5 @@ jobs:
             JAIL_MARK_ROLE_ID = '${{ secrets.JAIL_MARK_ROLE_ID }}'
             JAIL_MAIN_ROLE_ID = '${{ secrets.JAIL_MAIN_ROLE_ID }}'
             DISCORD_GUILD_ID = '${{ secrets.DISCORD_GUILD_ID }}'
+            COMMIT_HASH = '${{ env.COMMIT_HASH }}'
+            COMMIT_DATE = '${{ env.COMMIT_DATE }}'
