@@ -171,14 +171,16 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
-        // AIのためにメッセージを保存する
-        bot.gemini.add_model_log(&msg.content);
-
         // 代筆先のチャンネルにメッセージを転送する
         let room_pointer = bot.get_user_room_pointer(&msg.author.id);
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
+
+        // AIのためにメッセージを保存する
+        if room_pointer.get() == bot.channel_ids[4].get() {
+            bot.gemini.add_model_log(&msg.content);
+        }
         return;
     }
 
