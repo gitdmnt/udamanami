@@ -68,6 +68,10 @@ impl ReplyToAllModeData {
         self.until = Some(Instant::now() + self.duration);
     }
 
+    pub fn end(&mut self) {
+        self.until = None;
+    }
+
     pub fn is_active(&self) -> bool {
         self.until.is_some_and(|until| until > Instant::now())
     }
@@ -151,7 +155,10 @@ impl EventHandler for Bot {
         // ローカルコマンドの登録
         let _ = self
             .guild_id
-            .set_commands(&ctx.http, vec![gemini::register(), auto::register()])
+            .set_commands(
+                &ctx.http,
+                vec![gemini::register(), auto::register(), endauto::register()],
+            )
             .await;
 
         // グローバルコマンドの登録
@@ -196,6 +203,7 @@ impl EventHandler for Bot {
                 "dice" => Some(dice::run(&command.data.options())),
                 "gemini" => Some(gemini::run(&command.data.options(), self).await),
                 "auto" => Some(auto::run(&command.data.options(), self).await),
+                "endauto" => Some(endauto::run(self).await),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {
