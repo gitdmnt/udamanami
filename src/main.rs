@@ -75,6 +75,8 @@ async fn serenity(
 
     let jail_id = Arc::new(Mutex::new(0));
 
+    let reply_to_all_mode = Arc::new(Mutex::new(udamanami::ReplyToAllModeData::blank()));
+
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
             userdata,
@@ -88,6 +90,7 @@ async fn serenity(
             commit_hash,
             commit_date,
             variables,
+            reply_to_all_mode,
 
             gemini,
         })

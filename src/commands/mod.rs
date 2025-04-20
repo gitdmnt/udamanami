@@ -1,3 +1,4 @@
+pub mod auto;
 pub mod bf;
 pub mod calc;
 pub mod calcsay;
@@ -5,6 +6,7 @@ pub mod cclemon;
 pub mod channel;
 pub mod clear;
 pub mod dice;
+pub mod endauto;
 pub mod gemini;
 pub mod help;
 pub mod isprime;

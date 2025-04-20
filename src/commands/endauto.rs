@@ -1,0 +1,13 @@
+use serenity::builder::CreateCommand;
+
+use crate::Bot;
+
+pub fn register() -> CreateCommand {
+    CreateCommand::new("endauto").description("自動返信を終了するよ")
+}
+
+pub async fn run(bot: &Bot) -> String {
+    bot.reply_to_all_mode.lock().unwrap().end();
+
+    "（全レス終了）".to_owned()
+}
