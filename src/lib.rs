@@ -1,3 +1,4 @@
+use std::time::Duration;
 use std::{
     sync::{Arc, Mutex},
     time::Instant,
@@ -35,6 +36,43 @@ pub struct UserData {
     pub room_pointer: ChannelId,
 }
 
+#[derive(Clone)]
+pub struct ReplyToAllModeData {
+    pub until: Option<Instant>,
+    pub model: ai::GeminiModel,
+    pub duration: Duration,
+}
+
+impl Default for ReplyToAllModeData {
+    fn default() -> Self {
+        Self::blank()
+    }
+}
+
+impl ReplyToAllModeData {
+    pub const fn blank() -> Self {
+        Self {
+            until: None,
+            model: ai::GeminiModel::Gemini20FlashLite,
+            duration: Duration::from_secs(0),
+        }
+    }
+
+    pub fn set(&mut self, model: ai::GeminiModel, duration: Duration) {
+        self.until = Instant::now().checked_add(duration);
+        self.model = model;
+        self.duration = duration;
+    }
+
+    pub fn renew(&mut self) {
+        self.until = Some(Instant::now() + self.duration);
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.until.is_some_and(|until| until > Instant::now())
+    }
+}
+
 pub struct Bot {
     pub userdata: DashMap<UserId, UserData>,
     pub jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
@@ -50,6 +88,8 @@ pub struct Bot {
     pub commit_date: Option<String>,
 
     pub variables: DashMap<String, EvalResult>,
+
+    pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
 
     pub gemini: ai::GeminiAI,
 }
@@ -111,7 +151,7 @@ impl EventHandler for Bot {
         // ローカルコマンドの登録
         let _ = self
             .guild_id
-            .set_commands(&ctx.http, vec![gemini::register()])
+            .set_commands(&ctx.http, vec![gemini::register(), auto::register()])
             .await;
 
         // グローバルコマンドの登録
@@ -155,6 +195,7 @@ impl EventHandler for Bot {
                 "bf" => Some(bf::run(&command.data.options())),
                 "dice" => Some(dice::run(&command.data.options())),
                 "gemini" => Some(gemini::run(&command.data.options(), self).await),
+                "auto" => Some(auto::run(&command.data.options(), self).await),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
             if let Some(content) = content {
@@ -229,6 +270,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         bot.gemini.add_user_log(user_name, &msg.content);
     }
 
+    // 全レスモード中？
+    let response_to_all = bot.reply_to_all_mode.lock().unwrap().is_active();
+    let response_to_all_model = bot.reply_to_all_mode.lock().unwrap().model.clone();
+
     // if message does not contains any command, ignore
     let command_pattern =
         Regex::new(r"(?ms)((?:まなみ(?:ちゃん)?(?:\s|、|は|って|の)?)|!)(.*)").unwrap();
@@ -238,6 +283,18 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             caps.get(2).unwrap().as_str().to_owned(),
         ),
         None => {
+            // 全レスモードの場合のみ返答
+            if msg.channel_id.get() == bot.channel_ids[4].get() && response_to_all {
+                bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
+                let content = bot.gemini.generate_with_model(response_to_all_model).await;
+                let content = match content {
+                    Ok(content) => content.replace("うだまなみ: ", ""),
+                    Err(e) => {
+                        format!("Error sending message: {:?}", e)
+                    }
+                };
+                let _ = &msg.channel_id.say(&ctx.http, content).await;
+            }
             return;
         }
     };
@@ -265,7 +322,13 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 dice::run_old(&command_context).await
             } else if msg.channel_id.get() == bot.channel_ids[4].get() {
                 // まなみが自由に応答するコーナー
-                let content = bot.gemini.generate().await;
+                let content = if response_to_all {
+                    bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
+                                                                   // ↓全レスモードなら全レス用のモデルを使用
+                    bot.gemini.generate_with_model(response_to_all_model).await
+                } else {
+                    bot.gemini.generate().await
+                };
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),
                     Err(e) => {

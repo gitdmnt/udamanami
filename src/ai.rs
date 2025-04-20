@@ -57,6 +57,7 @@ const MANAMI_PROMPT: &str = r"
 返信はまなみの発言のみを返しなさい。発言者を示す接頭辞やカギカッコは禁止です。
 ";
 
+#[derive(Clone)]
 pub enum GeminiModel {
     Gemini20Flash,
     Gemini20FlashLite,
@@ -189,10 +190,14 @@ impl GeminiAI {
     }
 
     pub async fn generate(&self) -> Result<String, anyhow::Error> {
+        let model = self.model.lock().unwrap().clone();
+        self.generate_with_model(model).await
+    }
+
+    pub async fn generate_with_model(&self, model: GeminiModel) -> Result<String, anyhow::Error> {
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            self.model.lock().unwrap(),
-            self.api_key
+            model, self.api_key
         );
         let prompt = self.conversation.to_string();
         let client = reqwest::Client::new();
@@ -227,6 +232,10 @@ impl GeminiAI {
 
     pub fn set_model(&self, model: GeminiModel) {
         *self.model.lock().unwrap() = model;
+    }
+
+    pub fn get_model(&self) -> GeminiModel {
+        self.model.lock().unwrap().clone()
     }
 }
 
