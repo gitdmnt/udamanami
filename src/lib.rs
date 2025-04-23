@@ -82,6 +82,8 @@ pub struct Bot {
     pub jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
     pub jail_id: Arc<Mutex<usize>>,
 
+    pub disabled_commands: Vec<String>,
+
     pub channel_ids: Vec<ChannelId>,
     pub guild_id: GuildId,
     pub erogaki_role_id: RoleId,
@@ -99,6 +101,12 @@ pub struct Bot {
 }
 
 impl Bot {
+    pub fn is_disabled_command(&self, command: &str) -> bool {
+        self.disabled_commands
+            .iter()
+            .any(|disabled| disabled == command)
+    }
+
     pub fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
         self.userdata
             .entry(*user_id)
@@ -157,16 +165,23 @@ impl EventHandler for Bot {
             .guild_id
             .set_commands(
                 &ctx.http,
-                vec![gemini::register(), auto::register(), endauto::register()],
+                vec![gemini::register(), auto::register(), endauto::register()]
+                    .into_iter()
+                    //.filter(|command| !self.is_disabled_command(&command.name))
+                    .collect::<Vec<_>>(),
             )
             .await;
 
         // グローバルコマンドの登録
-        let _ = Command::create_global_command(&ctx.http, help::register()).await;
-        let _ = Command::create_global_command(&ctx.http, ping::register()).await;
-
-        let _ = Command::create_global_command(&ctx.http, bf::register()).await;
-        let _ = Command::create_global_command(&ctx.http, dice::register()).await;
+        let global_commands =[
+            help::register(),
+            ping::register(),
+            bf::register(),
+            dice::register(),
+        ];
+        for command in global_commands.into_iter() {
+            let _ = Command::create_global_command(&ctx.http, command).await;
+        }
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;

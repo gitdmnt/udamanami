@@ -51,6 +51,16 @@ async fn serenity(
             }
         };
 
+    let disabled_commands = secrets
+        .get("DISABLED_COMMANDS")
+        .map(|commands| {
+            commands
+                .split(',')
+                .map(|command| command.to_string())
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
     let guild_id = secrets
         .get("DISCORD_GUILD_ID")
@@ -91,6 +101,7 @@ async fn serenity(
             userdata,
             jail_process,
             jail_id,
+            disabled_commands,
             channel_ids,
             guild_id,
             erogaki_role_id,
