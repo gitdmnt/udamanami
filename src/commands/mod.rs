@@ -75,22 +75,50 @@ impl<'a> CommandContext<'a> {
 
 pub trait ManamiPrefixCommand {
     fn name(&self) -> &'static [&'static str];
-    fn description(&self) -> &'static str;
     fn usage(&self) -> &'static str;
-    async fn run(&self, ctx: &CommandContext<'_>, options: &[ResolvedOption]);
+    fn description(&self) -> &'static str;
+    fn run(
+        &self,
+        ctx: &CommandContext<'_>,
+        options: &[ResolvedOption],
+    ) -> impl std::future::Future<Output = ()> + Send;
+
+    fn is_dm_command(&self) -> bool;
+    fn is_guild_command(&self) -> bool;
+
+    fn is_enabled(&self, disabled_commands: &[&str]) -> bool {
+        for name in self.name() {
+            if disabled_commands.contains(name) {
+                return false;
+            }
+        }
+        true
+    }
 }
 pub trait ManamiSlashCommand {
     fn name(&self) -> &'static [&'static str];
     fn description(&self) -> &'static str;
     fn register(&self) -> serenity::builder::CreateCommand;
-    async fn run(&self, option: &[ResolvedOption<'_>], bot: &Bot) -> String;
+    fn run(
+        &self,
+        option: &[ResolvedOption<'_>],
+        bot: &Bot,
+    ) -> impl std::future::Future<Output = String> + Send;
 
     fn try_register(&self, disabled_commands: &[&str]) -> Option<serenity::builder::CreateCommand> {
+        if self.is_enabled(disabled_commands) {
+            Some(self.register())
+        } else {
+            None
+        }
+    }
+
+    fn is_enabled(&self, disabled_commands: &[&str]) -> bool {
         for name in self.name() {
             if disabled_commands.contains(name) {
-                return None;
+                return false;
             }
         }
-        Some(self.register())
+        true
     }
 }

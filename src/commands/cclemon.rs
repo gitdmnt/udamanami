@@ -2,6 +2,36 @@ use crate::cclemon;
 use crate::commands::CommandContext;
 use serenity::utils::parse_user_mention;
 
+use crate::commands::ManamiPrefixCommand;
+use serenity::all::ResolvedOption;
+pub struct PrefixCommand;
+
+impl ManamiPrefixCommand for PrefixCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &["cclemon"]
+    }
+
+    fn usage(&self) -> &'static str {
+        "!cclemon <opponent>"
+    }
+
+    fn description(&self) -> &'static str {
+        "CCレモンをするよ！"
+    }
+
+    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
+        run(ctx).await
+    }
+
+    fn is_dm_command(&self) -> bool {
+        false
+    }
+
+    fn is_guild_command(&self) -> bool {
+        true
+    }
+}
+
 pub async fn run(ctx: &CommandContext<'_>) {
     let [opponent_id] = ctx.args()[..] else {
         ctx.channel_id

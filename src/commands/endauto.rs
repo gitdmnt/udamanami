@@ -1,6 +1,28 @@
 use serenity::builder::CreateCommand;
 
-use crate::Bot;
+use crate::{commands::ManamiSlashCommand, Bot};
+use serenity::model::application::ResolvedOption;
+pub struct SlashCommand;
+
+const COMMAND_NAME: &str = "endauto";
+
+impl ManamiSlashCommand for SlashCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &[COMMAND_NAME]
+    }
+
+    fn description(&self) -> &'static str {
+        "呼びかけられなくてもお返事するよ！"
+    }
+
+    fn register(&self) -> CreateCommand {
+        register()
+    }
+
+    async fn run(&self, _: &[ResolvedOption<'_>], bot: &Bot) -> String {
+        run(bot).await
+    }
+}
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("endauto").description("自動返信を終了するよ")

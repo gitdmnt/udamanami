@@ -1,6 +1,36 @@
 use crate::commands::CommandContext;
 use serenity::utils::MessageBuilder;
 
+use crate::commands::ManamiPrefixCommand;
+use serenity::all::ResolvedOption;
+pub struct PrefixCommand;
+
+impl ManamiPrefixCommand for PrefixCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &["channel"]
+    }
+
+    fn usage(&self) -> &'static str {
+        "!channel"
+    }
+
+    fn description(&self) -> &'static str {
+        "代筆先のチャンネルを指定するよ！"
+    }
+
+    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
+        run(ctx).await
+    }
+
+    fn is_dm_command(&self) -> bool {
+        true
+    }
+
+    fn is_guild_command(&self) -> bool {
+        false
+    }
+}
+
 pub async fn run(ctx: &CommandContext<'_>) {
     let args = ctx.args();
 

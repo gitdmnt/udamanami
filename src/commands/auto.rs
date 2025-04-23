@@ -1,10 +1,12 @@
+use crate::ai::GeminiModel;
 use serenity::{
     builder::{CreateCommand, CreateCommandOption},
-    model::application::{CommandOptionType, ResolvedOption, ResolvedValue},
+    model::application::{CommandOptionType, ResolvedValue},
 };
 use std::time::Duration;
 
-use crate::{ai::GeminiModel, commands::ManamiSlashCommand, Bot};
+use crate::{commands::ManamiSlashCommand, Bot};
+use serenity::model::application::ResolvedOption;
 
 pub struct SlashCommand;
 

@@ -11,9 +11,60 @@ use serenity::{
 
 use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 
+use crate::commands::{ManamiPrefixCommand, ManamiSlashCommand};
+use crate::Bot;
+pub struct PrefixCommand;
+
+impl ManamiPrefixCommand for PrefixCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &[]
+    }
+
+    fn usage(&self) -> &'static str {
+        "![n]d<m>"
+    }
+
+    fn description(&self) -> &'static str {
+        "m面ダイスをn回振るよ！"
+    }
+
+    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
+        run_old(ctx).await
+    }
+
+    fn is_dm_command(&self) -> bool {
+        true
+    }
+
+    fn is_guild_command(&self) -> bool {
+        true
+    }
+}
+
+pub struct SlashCommand;
+
+const COMMAND_NAME: &str = "dice";
+
+impl ManamiSlashCommand for SlashCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &[COMMAND_NAME]
+    }
+
+    fn description(&self) -> &'static str {
+        "呼びかけられなくてもお返事するよ！"
+    }
+
+    fn register(&self) -> CreateCommand {
+        register()
+    }
+
+    async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
+        run(options)
+    }
+}
 // slash command
 pub fn register() -> CreateCommand {
-    CreateCommand::new("dice")
+    CreateCommand::new(COMMAND_NAME)
         .description("サイコロを振るよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6 <= 9")
