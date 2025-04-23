@@ -31,16 +31,25 @@ async fn serenity(
         | GatewayIntents::DIRECT_MESSAGES;
 
     let userdata = DashMap::new();
-    let channel_ids = vec![
-        secrets.get("FREETALK1_ROOM_ID"),
-        secrets.get("FREETALK2_ROOM_ID"),
-        secrets.get("MADSISTERS_ROOM_ID"),
-        secrets.get("SHYBOYS_ROOM_ID"),
-        secrets.get("DEBUG_ROOM_ID"),
-    ]
-    .into_iter()
-    .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
-    .collect();
+    let channel_ids = 
+        match secrets.get("ROOMS_ID") {
+            Some(rooms) => rooms
+                .split(',')
+                .map(|id| ChannelId::from_str(id).unwrap())
+                .collect(),
+            None => {
+                vec![
+                    secrets.get("FREETALK1_ROOM_ID"),
+                    secrets.get("FREETALK2_ROOM_ID"),
+                    secrets.get("MADSISTERS_ROOM_ID"),
+                    secrets.get("SHYBOYS_ROOM_ID"),
+                    secrets.get("DEBUG_ROOM_ID"),
+                ]
+                .into_iter()
+                .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
+                .collect()
+            }
+        };
 
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
     let guild_id = secrets
