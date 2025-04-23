@@ -68,7 +68,7 @@ impl ReplyToAllModeData {
         self.until = Some(Instant::now() + self.duration);
     }
 
-    pub fn end(&mut self) {
+    pub const fn end(&mut self) {
         self.until = None;
     }
 
