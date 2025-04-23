@@ -5,6 +5,8 @@ use serenity::{
     model::application::{CommandOptionType, ResolvedOption, ResolvedValue},
 };
 
+use crate::{commands::ManamiSlashCommand, Bot};
+
 enum BrainfuckCommand {
     MoveRight,
     MoveLeft,
@@ -32,9 +34,30 @@ impl From<char> for BrainfuckCommand {
         }
     }
 }
+pub struct SlashCommand;
+
+const COMMAND_NAME: &str = "bf";
+
+impl ManamiSlashCommand for SlashCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &[COMMAND_NAME]
+    }
+
+    fn description(&self) -> &'static str {
+        "まなみはいんたぷりた？　なんだよ！"
+    }
+
+    fn register(&self) -> CreateCommand {
+        register()
+    }
+
+    async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
+        run(options)
+    }
+}
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("bf")
+    CreateCommand::new(COMMAND_NAME)
         .description("Brainfuckを実行するよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "code", "Brainfuckのコード")

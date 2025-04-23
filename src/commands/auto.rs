@@ -4,10 +4,32 @@ use serenity::{
 };
 use std::time::Duration;
 
-use crate::{ai::GeminiModel, Bot};
+use crate::{ai::GeminiModel, commands::ManamiSlashCommand, Bot};
+
+pub struct SlashCommand;
+
+const COMMAND_NAME: &str = "auto";
+
+impl ManamiSlashCommand for SlashCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &[COMMAND_NAME]
+    }
+
+    fn description(&self) -> &'static str {
+        "呼びかけられなくてもお返事するよ！"
+    }
+
+    fn register(&self) -> CreateCommand {
+        register()
+    }
+
+    async fn run(&self, options: &[ResolvedOption<'_>], bot: &Bot) -> String {
+        run(options, bot).await
+    }
+}
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("auto")
+    CreateCommand::new(COMMAND_NAME)
         .description("[sec]秒以内の連続した会話に対して、[model]を使って必ず返信するよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "model", "モデル")
@@ -24,7 +46,6 @@ pub fn register() -> CreateCommand {
                 .max_int_value(600),
         )
 }
-
 pub async fn run(option: &[ResolvedOption<'_>], bot: &Bot) -> String {
     let model = option
         .iter()
