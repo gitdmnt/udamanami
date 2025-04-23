@@ -1,3 +1,6 @@
+use crate::Bot;
+use serenity::all::ResolvedOption;
+
 pub mod auto;
 pub mod bf;
 pub mod calc;
@@ -67,5 +70,27 @@ impl<'a> CommandContext<'a> {
     #[allow(clippy::missing_const_for_fn)]
     pub fn cache_http(&self) -> &'a serenity::http::Http {
         &self.ctx.http
+    }
+}
+
+pub trait ManamiPrefixCommand {
+    fn name(&self) -> &'static [&'static str];
+    fn description(&self) -> &'static str;
+    fn usage(&self) -> &'static str;
+    async fn run(&self, ctx: &CommandContext<'_>, options: &[ResolvedOption]);
+}
+pub trait ManamiSlashCommand {
+    fn name(&self) -> &'static [&'static str];
+    fn description(&self) -> &'static str;
+    fn register(&self) -> serenity::builder::CreateCommand;
+    async fn run(&self, option: &[ResolvedOption<'_>], bot: &Bot) -> String;
+
+    fn try_register(&self, disabled_commands: &[&str]) -> Option<serenity::builder::CreateCommand> {
+        for name in self.name() {
+            if disabled_commands.contains(name) {
+                return None;
+            }
+        }
+        Some(self.register())
     }
 }

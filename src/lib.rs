@@ -173,7 +173,7 @@ impl EventHandler for Bot {
             .await;
 
         // グローバルコマンドの登録
-        let global_commands =[
+        let global_commands = [
             help::register(),
             ping::register(),
             bf::register(),
