@@ -9,7 +9,7 @@ use crate::{commands::ManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 pub struct SlashCommand;
 
-const COMMAND_NAME: &str = "endauto";
+const COMMAND_NAME: &str = "gemini";
 
 impl ManamiSlashCommand for SlashCommand {
     fn name(&self) -> &'static [&'static str] {
@@ -17,7 +17,7 @@ impl ManamiSlashCommand for SlashCommand {
     }
 
     fn description(&self) -> &'static str {
-        "呼びかけられなくてもお返事するよ！"
+        "Geminiの設定を変更するよ！"
     }
 
     fn register(&self) -> CreateCommand {
@@ -27,9 +27,13 @@ impl ManamiSlashCommand for SlashCommand {
     async fn run(&self, option: &[ResolvedOption<'_>], bot: &Bot) -> String {
         run(option, bot).await
     }
+
+    fn is_local_command(&self) -> bool {
+        true
+    }
 }
 pub fn register() -> CreateCommand {
-    CreateCommand::new("gemini")
+    CreateCommand::new(COMMAND_NAME)
         .description("Geminiの設定を変更するよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "model", "モデル")

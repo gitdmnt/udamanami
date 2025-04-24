@@ -105,6 +105,8 @@ pub trait ManamiSlashCommand {
         bot: &Bot,
     ) -> impl std::future::Future<Output = String> + Send;
 
+    fn is_local_command(&self) -> bool;
+
     fn try_register(&self, disabled_commands: &[&str]) -> Option<serenity::builder::CreateCommand> {
         if self.is_enabled(disabled_commands) {
             Some(self.register())

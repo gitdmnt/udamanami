@@ -184,13 +184,14 @@ impl ManamiPrefixCommand for PrefixCommand {
     }
 }
 
+const COMMAND_NAME: &str = "help";
 impl ManamiSlashCommand for SlashCommand {
     fn name(&self) -> &'static [&'static str] {
-        &["help"]
+        &[COMMAND_NAME]
     }
 
     fn description(&self) -> &'static str {
-        "まなみの自己紹介だよ！"
+        "ヘルプを表示するよ！"
     }
 
     fn register(&self) -> serenity::builder::CreateCommand {
@@ -200,10 +201,14 @@ impl ManamiSlashCommand for SlashCommand {
     async fn run(&self, _: &[ResolvedOption<'_>], _: &Bot) -> String {
         self.message.clone()
     }
+
+    fn is_local_command(&self) -> bool {
+        false
+    }
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new("help").description("まなみの自己紹介だよ！")
+    CreateCommand::new(COMMAND_NAME).description("まなみの自己紹介だよ！")
 }
 
 pub fn run() -> String {

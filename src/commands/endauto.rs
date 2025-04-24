@@ -12,7 +12,7 @@ impl ManamiSlashCommand for SlashCommand {
     }
 
     fn description(&self) -> &'static str {
-        "呼びかけられなくてもお返事するよ！"
+        "自動返信を止めるよ！"
     }
 
     fn register(&self) -> CreateCommand {
@@ -21,6 +21,10 @@ impl ManamiSlashCommand for SlashCommand {
 
     async fn run(&self, _: &[ResolvedOption<'_>], bot: &Bot) -> String {
         run(bot).await
+    }
+
+    fn is_local_command(&self) -> bool {
+        true
     }
 }
 

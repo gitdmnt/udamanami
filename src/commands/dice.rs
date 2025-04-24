@@ -51,7 +51,7 @@ impl ManamiSlashCommand for SlashCommand {
     }
 
     fn description(&self) -> &'static str {
-        "呼びかけられなくてもお返事するよ！"
+        "サイコロを振るよ！　ex. 2d6 <= 9"
     }
 
     fn register(&self) -> CreateCommand {
@@ -60,6 +60,10 @@ impl ManamiSlashCommand for SlashCommand {
 
     async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
         run(options)
+    }
+
+    fn is_local_command(&self) -> bool {
+        false
     }
 }
 // slash command

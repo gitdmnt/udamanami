@@ -20,6 +20,10 @@ impl ManamiSlashCommand for SlashCommand {
     async fn run(&self, _: &[ResolvedOption<'_>], _: &crate::Bot) -> String {
         run()
     }
+
+    fn is_local_command(&self) -> bool {
+        false
+    }
 }
 
 // ping command

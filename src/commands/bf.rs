@@ -54,6 +54,10 @@ impl ManamiSlashCommand for SlashCommand {
     async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
         run(options)
     }
+
+    fn is_local_command(&self) -> bool {
+        false
+    }
 }
 
 pub fn register() -> CreateCommand {
