@@ -14,6 +14,35 @@ use serenity::{
 };
 use tokio::{spawn, time::sleep};
 
+use crate::commands::ManamiPrefixCommand;
+pub struct PrefixCommand;
+
+impl ManamiPrefixCommand for PrefixCommand {
+    fn name(&self) -> &'static [&'static str] {
+        &["jail"]
+    }
+
+    fn usage(&self) -> &'static str {
+        "!jail <n>"
+    }
+
+    fn description(&self) -> &'static str {
+        "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！"
+    }
+
+    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
+        run_old(ctx).await
+    }
+
+    fn is_dm_command(&self) -> bool {
+        false
+    }
+
+    fn is_guild_command(&self) -> bool {
+        true
+    }
+}
+
 const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
 const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
 
