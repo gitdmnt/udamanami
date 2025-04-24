@@ -31,32 +31,33 @@ async fn serenity(
         | GatewayIntents::DIRECT_MESSAGES;
 
     let userdata = DashMap::new();
-    let channel_ids = 
-        match secrets.get("ROOMS_ID") {
-            Some(rooms) => rooms
+    let channel_ids = secrets.get("ROOMS_ID").map_or_else(
+        || {
+            vec![
+                secrets.get("FREETALK1_ROOM_ID"),
+                secrets.get("FREETALK2_ROOM_ID"),
+                secrets.get("MADSISTERS_ROOM_ID"),
+                secrets.get("SHYBOYS_ROOM_ID"),
+                secrets.get("DEBUG_ROOM_ID"),
+            ]
+            .into_iter()
+            .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
+            .collect()
+        },
+        |rooms| {
+            rooms
                 .split(',')
                 .map(|id| ChannelId::from_str(id).unwrap())
-                .collect(),
-            None => {
-                vec![
-                    secrets.get("FREETALK1_ROOM_ID"),
-                    secrets.get("FREETALK2_ROOM_ID"),
-                    secrets.get("MADSISTERS_ROOM_ID"),
-                    secrets.get("SHYBOYS_ROOM_ID"),
-                    secrets.get("DEBUG_ROOM_ID"),
-                ]
-                .into_iter()
-                .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
                 .collect()
-            }
-        };
+        },
+    );
 
     let disabled_commands = secrets
         .get("DISABLED_COMMANDS")
         .map(|commands| {
             commands
                 .split(',')
-                .map(|command| command.to_string())
+                .map(|command| command.to_owned())
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
