@@ -3,7 +3,13 @@ use crate::commands::CommandContext;
 use crate::commands::ManamiPrefixCommand;
 pub const PREFIX_CLEAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "clear",
-    alias: &[],
+    alias: &[
+        "forget",
+        "全部忘れて",
+        "ぜんぶ忘れて",
+        "全部わすれて",
+        "ぜんぶわすれて",
+    ],
     usage: "!clear",
     description: "チャンネルの会話ログを忘れるよ！",
     run: |ctx, _| Box::pin(run(ctx)),
