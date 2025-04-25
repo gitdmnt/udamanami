@@ -124,3 +124,24 @@ pub trait ManamiSlashCommand {
         true
     }
 }
+
+pub struct StManamiPrefixCommand {
+    pub name: &'static str,
+    pub usage: &'static str,
+    pub description: &'static str,
+    pub run: fn(
+        &CommandContext<'_>,
+        &[ResolvedOption],
+    ) -> Box<dyn std::future::Future<Output = ()> + Send>,
+    pub is_dm_command: bool,
+    pub is_guild_command: bool,
+}
+
+pub struct StManamiSlashCommand {
+    pub name: &'static str,
+    pub description: &'static str,
+    pub register: fn() -> serenity::builder::CreateCommand,
+    pub run:
+        fn(&[ResolvedOption<'_>], &Bot) -> Box<dyn std::future::Future<Output = String> + Send>,
+    pub is_local_command: bool,
+}
