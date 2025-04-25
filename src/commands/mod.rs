@@ -88,6 +88,7 @@ pub struct StManamiPrefixCommand {
 
 pub struct StManamiSlashCommand {
     pub name: &'static str,
+    pub usage: &'static str,
     pub description: &'static str,
     pub register: fn() -> serenity::builder::CreateCommand,
     pub run: for<'a> fn(Vec<ResolvedOption>, &'a Bot) -> BoxedFuture<'a, String>,

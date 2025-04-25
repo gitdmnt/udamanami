@@ -14,6 +14,7 @@ pub const PREFIX_HELP_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
 
 pub const SLASH_HELP_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "help",
+    usage: "/help",
     description: "ヘルプを表示するよ！",
     register,
     run: |_, bot| {
@@ -47,18 +48,13 @@ fn generate_help_rows(usages: &[(&str, &str)], usage_space_minimum: usize) -> St
 const USAGE_SPACE_MINIMUM: usize = 21;
 
 fn generate_slash_help(slash_commands: &[StManamiSlashCommand]) -> String {
-    let usages = &slash_commands
-        .iter()
-        .map(|cmd| (format!("/{}", cmd.name), cmd.description))
-        .collect::<Vec<_>>();
     let help_str = generate_help_rows(
-        &usages
+        &slash_commands
             .iter()
-            .map(|(name, desc)| (name.as_str(), *desc))
+            .map(|cmd| (cmd.usage, cmd.description))
             .collect::<Vec<_>>(),
         USAGE_SPACE_MINIMUM,
     );
-
     let mut content = MessageBuilder::new();
     content.push("## まなみはスラッシュコマンドに対応しているよ！\n");
     content.push("```\n");

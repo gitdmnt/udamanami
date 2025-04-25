@@ -24,6 +24,7 @@ pub const PREFIX_DICE_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
 
 pub const SLASH_DICE_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "dice",
+    usage: "/dice <operation>",
     description: "サイコロを振るよ！　ex. 2d6 <= 9",
     register,
     run: |options, _| {

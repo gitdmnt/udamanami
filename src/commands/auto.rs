@@ -14,6 +14,7 @@ const COMMAND_NAME: &str = "auto";
 
 pub const SLASH_AUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: COMMAND_NAME,
+    usage: "/auto [model] [sec]",
     description: "呼びかけられなくてもお返事するよ！",
     register,
     run: |option, bot| {

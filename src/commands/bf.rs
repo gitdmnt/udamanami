@@ -37,6 +37,7 @@ impl From<char> for BrainfuckCommand {
 
 pub const SLASH_BF_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "bf",
+    usage: "/bf <code> [input]",
     description: "まなみはいんたぷりた？　なんだよ！",
     register,
     run: |options, _| {

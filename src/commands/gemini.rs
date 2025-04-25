@@ -9,6 +9,7 @@ use crate::{commands::StManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 pub const SLASH_GEMINI_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "gemini",
+    usage: "/gemini <model>",
     description: "Geminiの設定を変更するよ！",
     register,
     run: |option, bot| {

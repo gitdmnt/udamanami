@@ -4,6 +4,7 @@ use super::StManamiSlashCommand;
 
 pub const SLASH_PING_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "ping",
+    usage: "/ping",
     description: "起きてたらお返事するね！",
     register,
     run: |_, _| Box::pin(async { run() }),
