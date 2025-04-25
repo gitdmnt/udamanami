@@ -7,6 +7,18 @@ use serenity::{
 
 use crate::commands::ManamiSlashCommand;
 
+pub const SLASH_BF_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: "bf",
+    usage: "/bf <code> [input]",
+    description: "まなみはいんたぷりた？　なんだよ！",
+    register,
+    run: |options, _| {
+        let result = run(options);
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
+
 enum BrainfuckCommand {
     MoveRight,
     MoveLeft,
@@ -34,18 +46,6 @@ impl From<char> for BrainfuckCommand {
         }
     }
 }
-
-pub const SLASH_BF_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
-    name: "bf",
-    usage: "/bf <code> [input]",
-    description: "まなみはいんたぷりた？　なんだよ！",
-    register,
-    run: |options, _| {
-        let result = run(options);
-        Box::pin(async move { result })
-    },
-    is_local_command: false,
-};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("bf")
