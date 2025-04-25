@@ -61,6 +61,10 @@ pub fn register() -> CreateCommand {
 }
 
 pub fn run(option: Vec<ResolvedOption>) -> String {
+    run_body(parse_options(option))
+}
+
+fn parse_options(option: Vec<ResolvedOption>) -> Result<(Vec<BrainfuckCommand>, &str), &str> {
     let (code, input) = option.iter().fold((None, None), |(code, input), option| {
         match (option.name, &option.value) {
             ("code", ResolvedValue::String(s)) => (Some(*s), input),
@@ -70,10 +74,20 @@ pub fn run(option: Vec<ResolvedOption>) -> String {
     });
 
     let Some(code) = code else {
-        return "エラーだよ！".to_owned();
+        return Err("エラーだよ！");
     };
+
     let code = code.chars().map(BrainfuckCommand::from).collect::<Vec<_>>();
     let input = input.unwrap_or("");
+
+    Ok((code, input))
+}
+
+fn run_body(parsed: Result<(Vec<BrainfuckCommand>, &str), &str>) -> String {
+    let (code, input) = match parsed {
+        Ok((code, input)) => (code, input),
+        Err(err) => return err.to_owned(),
+    };
 
     let output = interpreter(code, input);
     match output {

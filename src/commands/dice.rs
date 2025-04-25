@@ -70,6 +70,10 @@ pub fn register() -> CreateCommand {
 }
 
 pub fn run(options: Vec<ResolvedOption>) -> String {
+    run_body(parse_options(options))
+}
+
+fn parse_options(options: Vec<ResolvedOption>) -> Result<Dice, &str> {
     // parse options
     let (literal, num, dice, operator, operand) = options.iter().fold(
         (None, None, None, None, None),
@@ -100,13 +104,20 @@ pub fn run(options: Vec<ResolvedOption>) -> String {
         |s| parse_dice(s).finish().map(|(_, parsed)| parsed),
     );
 
-    let Dice { num, dice, cmp } = match dice {
-        Ok(dice) => dice,
+    match dice {
+        Ok(dice) => Ok(dice),
         Err(Error {
             code: ErrorKind::MapRes,
             ..
-        }) => return "数字がおかしいよ".to_owned(),
-        Err(_) => return "しらないコマンドだよ".to_owned(),
+        }) => Err("数字がおかしいよ"),
+        Err(_) => Err("しらないコマンドだよ"),
+    }
+}
+
+fn run_body(resdice: Result<Dice, &str>) -> String {
+    let (num, dice, cmp) = match resdice {
+        Ok(dice) => (dice.num, dice.dice, dice.cmp),
+        Err(err) => return err.to_owned(),
     };
 
     // roll dice

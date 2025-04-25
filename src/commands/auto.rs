@@ -18,7 +18,7 @@ pub const SLASH_AUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     description: "呼びかけられなくてもお返事するよ！",
     register,
     run: |option, bot| {
-        let opts = parse(option, bot);
+        let opts = parse_options(option, bot);
         Box::pin(async move { run_body(opts, bot).await })
     },
     is_local_command: true,
@@ -44,10 +44,10 @@ pub fn register() -> CreateCommand {
 }
 
 pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
-    run_body(parse(option, bot), bot).await
+    run_body(parse_options(option, bot), bot).await
 }
 
-fn parse(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> (GeminiModel, Duration) {
+fn parse_options(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> (GeminiModel, Duration) {
     let model = option
         .iter()
         .fold(None, |model, option| match (option.name, &option.value) {
