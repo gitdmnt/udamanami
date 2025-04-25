@@ -129,12 +129,12 @@ impl Bot {
 
 pub fn slash_commands(disabled_commands: &[&str]) -> Vec<StManamiSlashCommand> {
     [
-        commands::auto::SLASH_AUTO_COMMAND,
-        commands::bf::SLASH_BF_COMMAND,
-        commands::endauto::SLASH_ENDAUTO_COMMAND,
-        commands::gemini::SLASH_GEMINI_COMMAND,
         commands::help::SLASH_HELP_COMMAND,
         commands::ping::SLASH_PING_COMMAND,
+        commands::bf::SLASH_BF_COMMAND,
+        commands::auto::SLASH_AUTO_COMMAND,
+        commands::endauto::SLASH_ENDAUTO_COMMAND,
+        commands::gemini::SLASH_GEMINI_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
@@ -143,16 +143,16 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<StManamiSlashCommand> {
 
 pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<StManamiPrefixCommand> {
     [
-        commands::calc::PREFIX_CALC_COMMAND,
-        commands::calcsay::PREFIX_CALCSAY_COMMAND,
-        commands::cclemon::PREFIX_CCLEMON_COMMAND,
+        commands::help::PREFIX_HELP_COMMAND,
+        commands::dice::PREFIX_DICE_COMMAND,
+        commands::isprime::PREFIX_ISPRIME_COMMAND,
         commands::channel::PREFIX_CHANNEL_COMMAND,
         commands::clear::PREFIX_CLEAR_COMMAND,
-        commands::dice::PREFIX_DICE_COMMAND,
-        commands::help::PREFIX_HELP_COMMAND,
-        commands::isprime::PREFIX_ISPRIME_COMMAND,
         commands::jail::PREFIX_JAIL_COMMAND,
         commands::unjail::PREFIX_UNJAIL_COMMAND,
+        commands::cclemon::PREFIX_CCLEMON_COMMAND,
+        commands::calc::PREFIX_CALC_COMMAND,
+        commands::calcsay::PREFIX_CALCSAY_COMMAND,
         commands::var::PREFIX_VAR_COMMAND,
         commands::varbulk::PREFIX_VARBULK_COMMAND,
     ]
