@@ -194,22 +194,21 @@ impl EventHandler for Bot {
             .guild_id
             .set_commands(
                 &ctx.http,
-                vec![gemini::register(), auto::register(), endauto::register()]
-                    .into_iter()
-                    //.filter(|command| !self.is_disabled_command(&command.name))
+                self.slash_commands
+                    .iter()
+                    .filter(|cmd| cmd.is_local_command)
+                    .map(|cmd| (cmd.register)())
                     .collect::<Vec<_>>(),
             )
             .await;
 
         // グローバルコマンドの登録
-        let global_commands = [
-            help::register(),
-            ping::register(),
-            bf::register(),
-            dice::register(),
-        ];
-        for command in global_commands.into_iter() {
-            let _ = Command::create_global_command(&ctx.http, command).await;
+        for command in self
+            .slash_commands
+            .iter()
+            .filter(|cmd| !cmd.is_local_command)
+        {
+            let _ = Command::create_global_command(&ctx.http, (command.register)()).await;
         }
 
         // roles のいずれかが付いているユーザーを恩赦
