@@ -239,22 +239,19 @@ impl EventHandler for Bot {
                 &command,
                 &command.data.name,
             );
-            let content = match command.data.name.as_str() {
-                "help" => Some(help::run(self)),
-                "ping" => Some(ping::run()),
-                "bf" => Some(bf::run(command.data.options())),
-                "dice" => Some(dice::run(command.data.options())),
-                "gemini" => Some(gemini::run(command.data.options(), self).await),
-                "auto" => Some(auto::run(command.data.options(), self).await),
-                "endauto" => Some(endauto::run(self).await),
-                _ => Some("知らないコマンドだよ！".to_owned()),
+            let content = match self
+                .slash_commands
+                .iter()
+                .find(|cmd| cmd.name == command.data.name)
+            {
+                Some(cmd) => (cmd.run)(command.data.options(), self).await,
+                None => "知らないコマンドだよ！".to_owned(),
             };
-            if let Some(content) = content {
-                let data = CreateInteractionResponseMessage::new().content(content);
-                let builder = CreateInteractionResponse::Message(data);
-                if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    error!("Error sending message: {:?}", why);
-                }
+
+            let data = CreateInteractionResponseMessage::new().content(content);
+            let builder = CreateInteractionResponse::Message(data);
+            if let Err(why) = command.create_response(&ctx.http, builder).await {
+                error!("Error sending message: {:?}", why);
             }
         }
     }
