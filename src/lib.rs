@@ -241,7 +241,7 @@ impl EventHandler for Bot {
                 &command.data.name,
             );
             let content = match command.data.name.as_str() {
-                "help" => Some(help::run()),
+                "help" => Some(help::run(self)),
                 "ping" => Some(ping::run()),
                 "bf" => Some(bf::run(command.data.options())),
                 "dice" => Some(dice::run(command.data.options())),
