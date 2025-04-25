@@ -1,8 +1,8 @@
 use serenity::builder::CreateCommand;
 
-use super::StManamiSlashCommand;
+use super::ManamiSlashCommand;
 
-pub const SLASH_PING_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_PING_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "ping",
     usage: "/ping",
     description: "起きてたらお返事するね！",

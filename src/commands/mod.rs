@@ -77,7 +77,7 @@ impl<'a> CommandContext<'a> {
 
 type BoxedFuture<'x, T> = Pin<Box<dyn std::future::Future<Output = T> + Send + 'x>>;
 
-pub struct StManamiPrefixCommand {
+pub struct ManamiPrefixCommand {
     pub name: &'static str,
     pub alias: &'static [&'static str],
     pub usage: &'static str,
@@ -87,7 +87,7 @@ pub struct StManamiPrefixCommand {
     pub is_guild_command: bool,
 }
 
-pub struct StManamiSlashCommand {
+pub struct ManamiSlashCommand {
     pub name: &'static str,
     pub usage: &'static str,
     pub description: &'static str,

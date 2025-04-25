@@ -14,8 +14,8 @@ use serenity::{
 };
 use tokio::{spawn, time::sleep};
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_JAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_JAIL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "jail",
     alias: &[],
     usage: "!jail <n>",

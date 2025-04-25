@@ -1,11 +1,11 @@
 use serenity::builder::CreateCommand;
 
-use crate::{commands::StManamiSlashCommand, Bot};
+use crate::{commands::ManamiSlashCommand, Bot};
 pub struct SlashCommand;
 
 const COMMAND_NAME: &str = "endauto";
 
-pub const SLASH_ENDAUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_ENDAUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: COMMAND_NAME,
     usage: "/endauto",
     description: "自動返信を止めるよ！",

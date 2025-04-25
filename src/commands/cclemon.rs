@@ -2,8 +2,8 @@ use crate::cclemon;
 use crate::commands::CommandContext;
 use serenity::utils::parse_user_mention;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_CCLEMON_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CCLEMON_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "cclemon",
     alias: &[],
     usage: "!cclemon <opponent>",

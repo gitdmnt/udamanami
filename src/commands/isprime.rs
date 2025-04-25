@@ -1,7 +1,7 @@
 use crate::commands::CommandContext;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_ISPRIME_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_ISPRIME_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "isprime",
     alias: &[],
     usage: "!isprime <n>",

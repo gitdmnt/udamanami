@@ -1,8 +1,8 @@
 use crate::commands::CommandContext;
 use serenity::utils::MessageBuilder;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_CHANNEL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CHANNEL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "channel",
     alias: &[],
     usage: "!channel",

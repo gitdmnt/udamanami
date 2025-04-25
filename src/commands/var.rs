@@ -5,9 +5,9 @@ use serenity::model::id::ChannelId;
 use crate::calculator::{self, val_as_str};
 use crate::commands::CommandContext;
 
-use super::StManamiPrefixCommand;
+use super::ManamiPrefixCommand;
 
-pub const PREFIX_VAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_VAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "var",
     alias: &[],
     usage: "!var <name>=<expr>",

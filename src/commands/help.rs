@@ -1,9 +1,9 @@
 use crate::{commands::CommandContext, Bot};
 use serenity::{builder::CreateCommand, utils::MessageBuilder};
 
-use super::{StManamiPrefixCommand, StManamiSlashCommand};
+use super::{ManamiPrefixCommand, ManamiSlashCommand};
 
-pub const PREFIX_HELP_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_HELP_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "help",
     alias: &[],
     usage: "!help",
@@ -13,7 +13,7 @@ pub const PREFIX_HELP_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     is_guild_command: true,
 };
 
-pub const SLASH_HELP_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_HELP_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "help",
     usage: "/help",
     description: "ヘルプを表示するよ！",
@@ -48,7 +48,7 @@ fn generate_help_rows(usages: &[(&str, &str)], usage_space_minimum: usize) -> St
 
 const USAGE_SPACE_MINIMUM: usize = 21;
 
-fn generate_slash_help(slash_commands: &[StManamiSlashCommand]) -> String {
+fn generate_slash_help(slash_commands: &[ManamiSlashCommand]) -> String {
     let help_str = generate_help_rows(
         &slash_commands
             .iter()
@@ -64,7 +64,7 @@ fn generate_slash_help(slash_commands: &[StManamiSlashCommand]) -> String {
     content.build()
 }
 
-fn generate_dm_help(prefix_commands: &[StManamiPrefixCommand]) -> String {
+fn generate_dm_help(prefix_commands: &[ManamiPrefixCommand]) -> String {
     let help_str = generate_help_rows(
         &prefix_commands
             .iter()
@@ -82,7 +82,7 @@ fn generate_dm_help(prefix_commands: &[StManamiPrefixCommand]) -> String {
     content.build()
 }
 
-fn generate_guild_help(prefix_commands: &[StManamiPrefixCommand]) -> String {
+fn generate_guild_help(prefix_commands: &[ManamiPrefixCommand]) -> String {
     let help_str = generate_help_rows(
         &prefix_commands
             .iter()
@@ -101,8 +101,8 @@ fn generate_guild_help(prefix_commands: &[StManamiPrefixCommand]) -> String {
 }
 
 fn generate_help(
-    slash_commands: &[StManamiSlashCommand],
-    prefix_commands: &[StManamiPrefixCommand],
+    slash_commands: &[ManamiSlashCommand],
+    prefix_commands: &[ManamiPrefixCommand],
 ) -> String {
     let mut content = MessageBuilder::new();
     content

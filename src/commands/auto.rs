@@ -5,14 +5,14 @@ use serenity::{
 };
 use std::time::Duration;
 
-use crate::{commands::StManamiSlashCommand, Bot};
+use crate::{commands::ManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 
 pub struct SlashCommand;
 
 const COMMAND_NAME: &str = "auto";
 
-pub const SLASH_AUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: COMMAND_NAME,
     usage: "/auto [model] [sec]",
     description: "呼びかけられなくてもお返事するよ！",

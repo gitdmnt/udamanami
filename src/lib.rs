@@ -97,8 +97,8 @@ pub struct Bot {
 
     pub gemini: ai::GeminiAI,
 
-    pub slash_commands: Vec<StManamiSlashCommand>,
-    pub prefix_commands: Vec<StManamiPrefixCommand>,
+    pub slash_commands: Vec<ManamiSlashCommand>,
+    pub prefix_commands: Vec<ManamiPrefixCommand>,
 }
 
 impl Bot {
@@ -127,7 +127,7 @@ impl Bot {
     }
 }
 
-pub fn slash_commands(disabled_commands: &[&str]) -> Vec<StManamiSlashCommand> {
+pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
     [
         commands::help::SLASH_HELP_COMMAND,
         commands::ping::SLASH_PING_COMMAND,
@@ -141,7 +141,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<StManamiSlashCommand> {
     .collect::<Vec<_>>()
 }
 
-pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<StManamiPrefixCommand> {
+pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
     [
         commands::help::PREFIX_HELP_COMMAND,
         commands::dice::PREFIX_DICE_COMMAND,

@@ -1,8 +1,8 @@
 use crate::calculator::{eval_from_str, val_as_str};
 use crate::commands::CommandContext;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_CALCSAY_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CALCSAY_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "calcsay",
     alias: &[],
     usage: "!calcsay <expr>",

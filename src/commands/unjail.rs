@@ -9,9 +9,9 @@ use serenity::{
     utils::parse_user_mention,
 };
 
-use super::StManamiPrefixCommand;
+use super::ManamiPrefixCommand;
 
-pub const PREFIX_UNJAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_UNJAIL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "unjail",
     alias: &[],
     usage: "!unjail <user>",

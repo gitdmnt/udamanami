@@ -2,9 +2,9 @@ use crate::commands::var;
 use crate::commands::CommandContext;
 use regex::Regex;
 
-use crate::commands::StManamiPrefixCommand;
+use crate::commands::ManamiPrefixCommand;
 
-pub const PREFIX_VARBULK_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_VARBULK_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "varbulk",
     alias: &[],
     usage: "!varbulk <codeblock>",

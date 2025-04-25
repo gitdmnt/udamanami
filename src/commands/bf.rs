@@ -5,7 +5,7 @@ use serenity::{
     model::application::{CommandOptionType, ResolvedOption, ResolvedValue},
 };
 
-use crate::commands::StManamiSlashCommand;
+use crate::commands::ManamiSlashCommand;
 
 enum BrainfuckCommand {
     MoveRight,
@@ -35,7 +35,7 @@ impl From<char> for BrainfuckCommand {
     }
 }
 
-pub const SLASH_BF_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_BF_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "bf",
     usage: "/bf <code> [input]",
     description: "まなみはいんたぷりた？　なんだよ！",

@@ -1,8 +1,8 @@
 use crate::commands::var::var_main;
 use crate::commands::CommandContext;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_CALC_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CALC_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "calc",
     alias: &[],
     usage: "!calc <expr>",

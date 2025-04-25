@@ -1,7 +1,7 @@
 use crate::commands::CommandContext;
 
-use crate::commands::StManamiPrefixCommand;
-pub const PREFIX_CLEAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CLEAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "clear",
     alias: &[],
     usage: "!clear",

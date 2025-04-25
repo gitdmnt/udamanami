@@ -11,9 +11,9 @@ use serenity::{
 
 use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 
-use crate::commands::{StManamiPrefixCommand, StManamiSlashCommand};
+use crate::commands::{ManamiPrefixCommand, ManamiSlashCommand};
 
-pub const PREFIX_DICE_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_DICE_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "dice",
     alias: &[],
     usage: "![n]d<m>",
@@ -23,7 +23,7 @@ pub const PREFIX_DICE_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     is_guild_command: true,
 };
 
-pub const SLASH_DICE_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_DICE_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "dice",
     usage: "/dice <operation>",
     description: "サイコロを振るよ！　ex. 2d6 <= 9",
