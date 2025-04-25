@@ -4,6 +4,7 @@ use crate::commands::CommandContext;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_CALCSAY_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "calcsay",
+    alias: &[],
     usage: "!calcsay <expr>",
     description: "calcの結果を代筆先に送信するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

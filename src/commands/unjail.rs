@@ -13,6 +13,7 @@ use super::StManamiPrefixCommand;
 
 pub const PREFIX_UNJAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "unjail",
+    alias: &[],
     usage: "!unjail <user>",
     description: "収監を解除するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

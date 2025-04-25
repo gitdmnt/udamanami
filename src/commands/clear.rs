@@ -3,6 +3,7 @@ use crate::commands::CommandContext;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_CLEAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "clear",
+    alias: &[],
     usage: "!clear",
     description: "チャンネルの会話ログを忘れるよ！",
     run: |ctx, _| Box::pin(run(ctx)),

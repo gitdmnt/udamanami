@@ -6,6 +6,7 @@ use crate::commands::StManamiPrefixCommand;
 
 pub const PREFIX_VARBULK_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "varbulk",
+    alias: &[],
     usage: "!varbulk <codeblock>",
     description: ";区切りで複数の変数を一度に定義するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

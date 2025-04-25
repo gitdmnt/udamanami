@@ -17,6 +17,7 @@ use tokio::{spawn, time::sleep};
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_JAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "jail",
+    alias: &[],
     usage: "!jail <n>",
     description: "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！",
     run: |ctx, _| Box::pin(run_old(ctx)),

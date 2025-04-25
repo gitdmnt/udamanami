@@ -4,6 +4,7 @@ use crate::commands::CommandContext;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_CALC_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "calc",
+    alias: &[],
     usage: "!calc <expr>",
     description: "数式を計算するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

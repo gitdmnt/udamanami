@@ -9,6 +9,7 @@ use super::StManamiPrefixCommand;
 
 pub const PREFIX_VAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "var",
+    alias: &[],
     usage: "!var <name>=<expr>",
     description: "calcで使える変数を定義するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

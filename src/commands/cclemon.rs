@@ -5,6 +5,7 @@ use serenity::utils::parse_user_mention;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_CCLEMON_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "cclemon",
+    alias: &[],
     usage: "!cclemon <opponent>",
     description: "CCレモンをするよ！",
     run: |ctx, _| Box::pin(run(ctx)),

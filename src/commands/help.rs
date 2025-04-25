@@ -5,6 +5,7 @@ use super::{StManamiPrefixCommand, StManamiSlashCommand};
 
 pub const PREFIX_HELP_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "help",
+    alias: &[],
     usage: "!help",
     description: "まなみの自己紹介だよ！",
     run: |ctx, _| Box::pin(run_old(ctx)),

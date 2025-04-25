@@ -79,6 +79,7 @@ type BoxedFuture<'x, T> = Pin<Box<dyn std::future::Future<Output = T> + Send + '
 
 pub struct StManamiPrefixCommand {
     pub name: &'static str,
+    pub alias: &'static [&'static str],
     pub usage: &'static str,
     pub description: &'static str,
     pub run: for<'a> fn(CommandContext<'a>, Vec<ResolvedOption>) -> BoxedFuture<'a, ()>,

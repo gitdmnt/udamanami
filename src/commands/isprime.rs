@@ -3,6 +3,7 @@ use crate::commands::CommandContext;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_ISPRIME_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "isprime",
+    alias: &[],
     usage: "!isprime <n>",
     description: "nが素数かどうかを判定するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

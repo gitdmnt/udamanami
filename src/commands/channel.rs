@@ -4,6 +4,7 @@ use serenity::utils::MessageBuilder;
 use crate::commands::StManamiPrefixCommand;
 pub const PREFIX_CHANNEL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "channel",
+    alias: &[],
     usage: "!channel",
     description: "代筆先のチャンネルを指定するよ！",
     run: |ctx, _| Box::pin(run(ctx)),

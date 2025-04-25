@@ -14,7 +14,8 @@ use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 use crate::commands::{StManamiPrefixCommand, StManamiSlashCommand};
 
 pub const PREFIX_DICE_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
-    name: "",
+    name: "dice",
+    alias: &[],
     usage: "![n]d<m>",
     description: "m面ダイスをn回振るよ！",
     run: |ctx, _| Box::pin(run_old(ctx)),
