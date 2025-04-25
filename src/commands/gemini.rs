@@ -5,35 +5,18 @@ use serenity::{
 
 use crate::ai::GeminiModel;
 
-use crate::{commands::ManamiSlashCommand, Bot};
+use crate::{commands::StManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
-pub struct SlashCommand;
+pub const GEMINI_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "gemini",
+    description: "Geminiの設定を変更するよ！",
+    register,
+    run: |option, bot| unimplemented!(), /*Box::pin(run(option, bot))*/
+    is_local_command: true,
+};
 
-const COMMAND_NAME: &str = "gemini";
-
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
-
-    fn description(&self) -> &'static str {
-        "Geminiの設定を変更するよ！"
-    }
-
-    fn register(&self) -> CreateCommand {
-        register()
-    }
-
-    async fn run(&self, option: &[ResolvedOption<'_>], bot: &Bot) -> String {
-        run(option, bot).await
-    }
-
-    fn is_local_command(&self) -> bool {
-        true
-    }
-}
 pub fn register() -> CreateCommand {
-    CreateCommand::new(COMMAND_NAME)
+    CreateCommand::new("gemini")
         .description("Geminiの設定を変更するよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "model", "モデル")
@@ -45,7 +28,7 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub async fn run(option: &[ResolvedOption<'_>], bot: &Bot) -> String {
+pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
     let model = option
         .iter()
         .fold(None, |model, option| match (option.name, &option.value) {

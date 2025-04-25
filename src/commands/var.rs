@@ -1,52 +1,24 @@
 use crate::Bot;
-use serenity::all::ResolvedOption;
 use serenity::http::Http;
 use serenity::model::id::ChannelId;
 
 use crate::calculator::{self, val_as_str};
 use crate::commands::CommandContext;
 
-use super::ManamiPrefixCommand;
+use super::StManamiPrefixCommand;
 
-pub struct PrefixCommand;
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["var"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!var <name>=<expr>"
-    }
-
-    fn description(&self) -> &'static str {
-        "calcで使える変数を定義するよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-
-    fn is_enabled(&self, disabled_commands: &[&str]) -> bool {
-        for name in self.name() {
-            if disabled_commands.contains(name) {
-                return false;
-            }
-        }
-        true
-    }
-}
+pub const VAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "var",
+    usage: "!var <name>=<expr>",
+    description: "calcで使える変数を定義するよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
 
 const VAR_DEFAULT: &str = "_";
 
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let bot = ctx.bot;
     let input = ctx.args().join(" ");

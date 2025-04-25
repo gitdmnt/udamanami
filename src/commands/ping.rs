@@ -1,36 +1,19 @@
-use serenity::{all::ResolvedOption, builder::CreateCommand};
+use serenity::builder::CreateCommand;
 
-use super::ManamiSlashCommand;
+use super::StManamiSlashCommand;
 
-pub struct SlashCommand;
-const COMMAND_NAME: &str = "ping";
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
+pub const PING_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "ping",
+    description: "起きてたらお返事するね！",
+    register,
+    run: |_, _| Box::pin(async { run() }),
+    is_local_command: false,
+};
 
-    fn description(&self) -> &'static str {
-        "起きてたらお返事するね！"
-    }
-
-    fn register(&self) -> CreateCommand {
-        register()
-    }
-
-    async fn run(&self, _: &[ResolvedOption<'_>], _: &crate::Bot) -> String {
-        run()
-    }
-
-    fn is_local_command(&self) -> bool {
-        false
-    }
-}
-
-// ping command
 pub fn run() -> String {
     "いるよー！".to_owned()
 }
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new(COMMAND_NAME).description("A ping command")
+    CreateCommand::new("ping").description("A ping command")
 }

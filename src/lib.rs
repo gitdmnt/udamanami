@@ -197,7 +197,7 @@ impl EventHandler for Bot {
                     author_id: &member.user.id,
                     command: "".to_owned(),
                 };
-                unjail::run(&command_context).await;
+                unjail::run(command_context).await;
             }
         }
     }
@@ -214,10 +214,10 @@ impl EventHandler for Bot {
             let content = match command.data.name.as_str() {
                 "help" => Some(help::run()),
                 "ping" => Some(ping::run()),
-                "bf" => Some(bf::run(&command.data.options())),
-                "dice" => Some(dice::run(&command.data.options())),
-                "gemini" => Some(gemini::run(&command.data.options(), self).await),
-                "auto" => Some(auto::run(&command.data.options(), self).await),
+                "bf" => Some(bf::run(command.data.options())),
+                "dice" => Some(dice::run(command.data.options())),
+                "gemini" => Some(gemini::run(command.data.options(), self).await),
+                "auto" => Some(auto::run(command.data.options(), self).await),
                 "endauto" => Some(endauto::run(self).await),
                 _ => Some("知らないコマンドだよ！".to_owned()),
             };
@@ -260,12 +260,12 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let command_name = &command_context.command_name()[..];
 
     match command_name {
-        "channel" => channel::run(&command_context).await,
-        "help" | "たすけて" | "助けて" => help::run_old(&command_context).await,
-        "calc" => calc::run(&command_context).await,
-        "var" => var::run(&command_context).await,
-        "varbulk" => varbulk::run(&command_context).await,
-        "calcsay" => calcsay::run(&command_context).await,
+        "channel" => channel::run(command_context).await,
+        "help" | "たすけて" | "助けて" => help::run_old(command_context).await,
+        "calc" => calc::run(command_context).await,
+        "var" => var::run(command_context).await,
+        "varbulk" => varbulk::run(command_context).await,
+        "calcsay" => calcsay::run(command_context).await,
 
         // Unknown command
         _ => {
@@ -329,20 +329,20 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     match command_name {
         "help" | "たすけて" | "助けて" => {
-            help::run_old(&command_context).await;
+            help::run_old(command_context).await;
         }
-        "isprime" => isprime::run(&command_context).await,
-        "calc" => calc::run(&command_context).await,
-        "var" => var::run(&command_context).await,
-        "varbulk" => varbulk::run(&command_context).await,
-        "cclemon" => commands::cclemon::run(&command_context).await,
-        "jail" => jail::run_old(&command_context).await,
-        "unjail" => unjail::run(&command_context).await,
-        "clear" | "全部忘れて" => clear::run(&command_context).await,
+        "isprime" => isprime::run(command_context).await,
+        "calc" => calc::run(command_context).await,
+        "var" => var::run(command_context).await,
+        "varbulk" => varbulk::run(command_context).await,
+        "cclemon" => commands::cclemon::run(command_context).await,
+        "jail" => jail::run_old(command_context).await,
+        "unjail" => unjail::run(command_context).await,
+        "clear" | "全部忘れて" => clear::run(command_context).await,
         // Unknown command
         _ => {
             if msg.content.starts_with("!") {
-                dice::run_old(&command_context).await
+                dice::run_old(command_context).await
             } else if msg.channel_id.get() == bot.channel_ids[4].get() {
                 // まなみが自由に応答するコーナー
                 let content = if response_to_all {

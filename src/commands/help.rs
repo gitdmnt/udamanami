@@ -1,7 +1,7 @@
-use crate::{commands::CommandContext, Bot};
-use serenity::{all::ResolvedOption, builder::CreateCommand, utils::MessageBuilder};
+use crate::commands::CommandContext;
+use serenity::{builder::CreateCommand, utils::MessageBuilder};
 
-use super::{ManamiPrefixCommand, ManamiSlashCommand};
+use super::{StManamiPrefixCommand, StManamiSlashCommand};
 
 const ABOUT_ME: &str = "# まなみの自己紹介だよ！\n";
 const ABOUT_GHOSTWRITE: &str = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
@@ -60,10 +60,10 @@ fn generate_help_str(usages: &[(&str, &str)], usage_space_minimum: usize) -> Str
 
 const USAGE_SPACE_MINIMUM: usize = 21;
 
-fn generate_slash_help(slash_commands: &[&impl ManamiSlashCommand]) -> String {
+fn generate_slash_help(slash_commands: &[&StManamiSlashCommand]) -> String {
     let usages = &slash_commands
         .iter()
-        .map(|cmd| (format!("/{}", cmd.name()[0]), cmd.description()))
+        .map(|cmd| (format!("/{}", cmd.name), cmd.description))
         .collect::<Vec<_>>();
     let help_str = generate_help_str(
         &usages
@@ -81,12 +81,12 @@ fn generate_slash_help(slash_commands: &[&impl ManamiSlashCommand]) -> String {
     content.build()
 }
 
-fn generate_dm_help(prefix_commands: &[&impl ManamiPrefixCommand]) -> String {
+fn generate_dm_help(prefix_commands: &[&StManamiPrefixCommand]) -> String {
     let help_str = generate_help_str(
         &prefix_commands
             .iter()
-            .filter(|cmd| cmd.is_dm_command())
-            .map(|cmd| (cmd.usage(), cmd.description()))
+            .filter(|cmd| cmd.is_dm_command)
+            .map(|cmd| (cmd.usage, cmd.description))
             .collect::<Vec<_>>(),
         USAGE_SPACE_MINIMUM,
     );
@@ -99,12 +99,12 @@ fn generate_dm_help(prefix_commands: &[&impl ManamiPrefixCommand]) -> String {
     content.build()
 }
 
-fn generate_guild_help(prefix_commands: &[&impl ManamiPrefixCommand]) -> String {
+fn generate_guild_help(prefix_commands: &[&StManamiPrefixCommand]) -> String {
     let help_str = generate_help_str(
         &prefix_commands
             .iter()
-            .filter(|cmd| cmd.is_guild_command())
-            .map(|cmd| (cmd.usage(), cmd.description()))
+            .filter(|cmd| !cmd.is_dm_command)
+            .map(|cmd| (cmd.usage, cmd.description))
             .collect::<Vec<_>>(),
         USAGE_SPACE_MINIMUM,
     );
@@ -117,98 +117,25 @@ fn generate_guild_help(prefix_commands: &[&impl ManamiPrefixCommand]) -> String 
     content.build()
 }
 
-pub struct HelpCommand {
-    pub message: String,
-}
-impl HelpCommand {
-    pub fn new(
-        prefix_commands: &[&impl ManamiPrefixCommand],
-        slash_commands: &[&impl ManamiSlashCommand],
-    ) -> Self {
-        let mut content = MessageBuilder::new();
-        content.push(run());
-        content.push(generate_slash_help(slash_commands));
-        content.push(generate_dm_help(prefix_commands));
-        content.push(generate_guild_help(prefix_commands));
-        Self {
-            message: content.build(),
-        }
-    }
+pub const HELP_PREFIX_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "help",
+    usage: "!help",
+    description: "まなみの自己紹介だよ！",
+    run: |ctx, _| Box::pin(run_old(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
 
-    pub fn get_prefix_command(&self) -> impl ManamiPrefixCommand {
-        PrefixCommand {
-            message: self.message.clone(),
-        }
-    }
-
-    pub fn get_slash_command(&self) -> impl ManamiSlashCommand {
-        SlashCommand {
-            message: self.message.clone(),
-        }
-    }
-}
-
-struct PrefixCommand {
-    pub message: String,
-}
-struct SlashCommand {
-    pub message: String,
-}
-
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["help"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!help"
-    }
-
-    fn description(&self) -> &'static str {
-        "まなみの自己紹介だよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        ctx.channel_id
-            .say(ctx.cache_http(), &self.message)
-            .await
-            .unwrap();
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-const COMMAND_NAME: &str = "help";
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
-
-    fn description(&self) -> &'static str {
-        "ヘルプを表示するよ！"
-    }
-
-    fn register(&self) -> serenity::builder::CreateCommand {
-        register()
-    }
-
-    async fn run(&self, _: &[ResolvedOption<'_>], _: &Bot) -> String {
-        self.message.clone()
-    }
-
-    fn is_local_command(&self) -> bool {
-        false
-    }
-}
+pub const HELP_SLASH_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "help",
+    description: "ヘルプを表示するよ！",
+    register,
+    run: |_, _| Box::pin(async { run() }),
+    is_local_command: false,
+};
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new(COMMAND_NAME).description("まなみの自己紹介だよ！")
+    CreateCommand::new("help").description("まなみの自己紹介だよ！")
 }
 
 pub fn run() -> String {
@@ -223,7 +150,7 @@ pub fn run() -> String {
     content.build()
 }
 
-pub async fn run_old(ctx: &CommandContext<'_>) {
+pub async fn run_old(ctx: CommandContext<'_>) {
     let content = run();
 
     ctx.channel_id.say(ctx.cache_http(), content).await.unwrap();

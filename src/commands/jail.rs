@@ -14,34 +14,15 @@ use serenity::{
 };
 use tokio::{spawn, time::sleep};
 
-use crate::commands::ManamiPrefixCommand;
-pub struct PrefixCommand;
-
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["jail"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!jail <n>"
-    }
-
-    fn description(&self) -> &'static str {
-        "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run_old(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        false
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
+use crate::commands::StManamiPrefixCommand;
+pub const JAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "jail",
+    usage: "!jail <n>",
+    description: "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！",
+    run: |ctx, _| Box::pin(run_old(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
 
 const JAIL_TERM_MAX: Duration = Duration::from_secs(3600);
 const JAIL_TERM_DEFAULT: Duration = Duration::from_secs(15);
@@ -61,7 +42,7 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub async fn run(options: &[ResolvedOption<'_>], ctx: &CommandContext<'_>) -> String {
+pub async fn run(options: Vec<ResolvedOption<'_>>, ctx: &CommandContext<'_>) -> String {
     // 引数からユーザと刑期を取得
     let (user, jailterm) = options.iter().fold(
         (None, JAIL_TERM_DEFAULT),
@@ -140,7 +121,7 @@ pub async fn run(options: &[ResolvedOption<'_>], ctx: &CommandContext<'_>) -> St
     result.unwrap()
 }
 
-pub async fn run_old(ctx: &CommandContext<'_>) {
+pub async fn run_old(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let args = &ctx.args()[..];
     let bot = ctx.bot;

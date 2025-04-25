@@ -2,37 +2,18 @@ use crate::commands::var;
 use crate::commands::CommandContext;
 use regex::Regex;
 
-use crate::commands::ManamiPrefixCommand;
-use serenity::all::ResolvedOption;
+use crate::commands::StManamiPrefixCommand;
 
-pub struct PrefixCommand;
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["varbulk"]
-    }
+pub const VARBULK_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "varbulk",
+    usage: "!varbulk <codeblock>",
+    description: ";区切りで複数の変数を一度に定義するよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
 
-    fn usage(&self) -> &'static str {
-        "!varbulk <codeblock>"
-    }
-
-    fn description(&self) -> &'static str {
-        ";区切りで複数の変数を一度に定義するよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let input = ctx.args().join(" ");
 
     let code_pattern = Regex::new(r"```[a-zA-Z0-9]*(.*)```").unwrap();
@@ -44,13 +25,12 @@ pub async fn run(ctx: &CommandContext<'_>) {
     };
     let split: Vec<&str> = input.split(';').collect();
 
-    let mut ctx2 = ctx.clone();
-
     for s in split {
         if s.trim().is_empty() {
             continue;
         }
+        let mut ctx2 = ctx.clone();
         ctx2.command = s.to_owned();
-        var::run(&ctx2).await;
+        var::run(ctx2).await;
     }
 }

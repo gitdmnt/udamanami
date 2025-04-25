@@ -5,7 +5,7 @@ use serenity::{
     model::application::{CommandOptionType, ResolvedOption, ResolvedValue},
 };
 
-use crate::{commands::ManamiSlashCommand, Bot};
+use crate::commands::StManamiSlashCommand;
 
 enum BrainfuckCommand {
     MoveRight,
@@ -34,34 +34,20 @@ impl From<char> for BrainfuckCommand {
         }
     }
 }
-pub struct SlashCommand;
 
-const COMMAND_NAME: &str = "bf";
-
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
-
-    fn description(&self) -> &'static str {
-        "まなみはいんたぷりた？　なんだよ！"
-    }
-
-    fn register(&self) -> CreateCommand {
-        register()
-    }
-
-    async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
-        run(options)
-    }
-
-    fn is_local_command(&self) -> bool {
-        false
-    }
-}
+pub const BF_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "bf",
+    description: "まなみはいんたぷりた？　なんだよ！",
+    register,
+    run: |options, _| {
+        let result = run(options);
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
 
 pub fn register() -> CreateCommand {
-    CreateCommand::new(COMMAND_NAME)
+    CreateCommand::new("bf")
         .description("Brainfuckを実行するよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "code", "Brainfuckのコード")
@@ -73,7 +59,7 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub fn run(option: &[ResolvedOption]) -> String {
+pub fn run(option: Vec<ResolvedOption>) -> String {
     let (code, input) = option.iter().fold((None, None), |(code, input), option| {
         match (option.name, &option.value) {
             ("code", ResolvedValue::String(s)) => (Some(*s), input),

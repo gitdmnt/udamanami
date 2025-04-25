@@ -4,43 +4,23 @@ use std::{sync::Arc, time::Instant};
 use dashmap::DashMap;
 
 use serenity::{
-    all::ResolvedOption,
     model::id::{ChannelId, GuildId, RoleId, UserId},
     prelude::*,
     utils::parse_user_mention,
 };
 
-use super::ManamiPrefixCommand;
+use super::StManamiPrefixCommand;
 
-pub struct PrefixCommand;
+pub const UNJAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "unjail",
+    usage: "!unjail <user>",
+    description: "収監を解除するよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["unjail"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!unjail <user>"
-    }
-
-    fn description(&self) -> &'static str {
-        "収監を解除するよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        false
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let args = &ctx.args()[..];
     let bot = ctx.bot;

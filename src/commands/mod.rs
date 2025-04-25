@@ -1,3 +1,5 @@
+use std::pin::Pin;
+
 use crate::Bot;
 use serenity::all::ResolvedOption;
 
@@ -125,23 +127,25 @@ pub trait ManamiSlashCommand {
     }
 }
 
-pub struct StManamiPrefixCommand {
+pub struct StManamiPrefixCommand<'a> {
     pub name: &'static str,
     pub usage: &'static str,
     pub description: &'static str,
     pub run: fn(
-        &CommandContext<'_>,
-        &[ResolvedOption],
-    ) -> Box<dyn std::future::Future<Output = ()> + Send>,
+        CommandContext<'a>,
+        Vec<ResolvedOption>,
+    ) -> Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>,
     pub is_dm_command: bool,
     pub is_guild_command: bool,
 }
 
-pub struct StManamiSlashCommand {
+pub struct StManamiSlashCommand<'a> {
     pub name: &'static str,
     pub description: &'static str,
     pub register: fn() -> serenity::builder::CreateCommand,
-    pub run:
-        fn(&[ResolvedOption<'_>], &Bot) -> Box<dyn std::future::Future<Output = String> + Send>,
+    pub run: fn(
+        Vec<ResolvedOption>,
+        &'a Bot,
+    ) -> Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>,
     pub is_local_command: bool,
 }

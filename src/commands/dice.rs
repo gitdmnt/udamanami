@@ -11,64 +11,31 @@ use serenity::{
 
 use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 
-use crate::commands::{ManamiPrefixCommand, ManamiSlashCommand};
-use crate::Bot;
-pub struct PrefixCommand;
+use crate::commands::{StManamiPrefixCommand, StManamiSlashCommand};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[]
-    }
+pub const DICE_PREFIX_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "",
+    usage: "![n]d<m>",
+    description: "m面ダイスをn回振るよ！",
+    run: |ctx, _| Box::pin(run_old(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
 
-    fn usage(&self) -> &'static str {
-        "![n]d<m>"
-    }
+pub const DICE_SLASH_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "dice",
+    description: "サイコロを振るよ！　ex. 2d6 <= 9",
+    register,
+    run: |options, _| {
+        let result = run(options);
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
 
-    fn description(&self) -> &'static str {
-        "m面ダイスをn回振るよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run_old(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub struct SlashCommand;
-
-const COMMAND_NAME: &str = "dice";
-
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
-
-    fn description(&self) -> &'static str {
-        "サイコロを振るよ！　ex. 2d6 <= 9"
-    }
-
-    fn register(&self) -> CreateCommand {
-        register()
-    }
-
-    async fn run(&self, options: &[ResolvedOption<'_>], _: &Bot) -> String {
-        run(options)
-    }
-
-    fn is_local_command(&self) -> bool {
-        false
-    }
-}
 // slash command
 pub fn register() -> CreateCommand {
-    CreateCommand::new(COMMAND_NAME)
+    CreateCommand::new("dice")
         .description("サイコロを振るよ")
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "literal", "ex. 2d6 <= 9")
@@ -101,7 +68,7 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub fn run(options: &[ResolvedOption]) -> String {
+pub fn run(options: Vec<ResolvedOption>) -> String {
     // parse options
     let (literal, num, dice, operator, operand) = options.iter().fold(
         (None, None, None, None, None),
@@ -172,7 +139,7 @@ pub fn run(options: &[ResolvedOption]) -> String {
 }
 
 // old command
-pub async fn run_old(ctx: &CommandContext<'_>) {
+pub async fn run_old(ctx: CommandContext<'_>) {
     match parse_dice(&ctx.command).finish() {
         Ok((_, parsed)) => {
             dice(ctx.channel_id, ctx.cache_http(), parsed).await;

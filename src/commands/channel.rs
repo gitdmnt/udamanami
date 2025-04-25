@@ -1,37 +1,17 @@
 use crate::commands::CommandContext;
 use serenity::utils::MessageBuilder;
 
-use crate::commands::ManamiPrefixCommand;
-use serenity::all::ResolvedOption;
-pub struct PrefixCommand;
+use crate::commands::StManamiPrefixCommand;
+pub const CHANNEL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "channel",
+    usage: "!channel",
+    description: "代筆先のチャンネルを指定するよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: false,
+};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["channel"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!channel"
-    }
-
-    fn description(&self) -> &'static str {
-        "代筆先のチャンネルを指定するよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        false
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let args = ctx.args();
 
     // 引数なしの場合はチャンネル一覧を表示

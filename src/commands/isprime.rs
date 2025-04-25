@@ -1,36 +1,16 @@
 use crate::commands::CommandContext;
 
-use crate::commands::ManamiPrefixCommand;
-use serenity::all::ResolvedOption;
-pub struct PrefixCommand;
+use crate::commands::StManamiPrefixCommand;
+pub const ISPRIME_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "isprime",
+    usage: "!isprime <n>",
+    description: "nが素数かどうかを判定するよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["isprime"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!isprime <n>"
-    }
-
-    fn description(&self) -> &'static str {
-        "nが素数かどうかを判定するよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        true
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let command_args = ctx.args();
 
     if command_args.len() != 1 {

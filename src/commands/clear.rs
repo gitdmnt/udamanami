@@ -1,36 +1,16 @@
 use crate::commands::CommandContext;
 
-use crate::commands::ManamiPrefixCommand;
-use serenity::all::ResolvedOption;
-pub struct PrefixCommand;
+use crate::commands::StManamiPrefixCommand;
+pub const CLEAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "clear",
+    usage: "!clear",
+    description: "チャンネルの会話ログを忘れるよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["clear", "全部忘れて"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!clear"
-    }
-
-    fn description(&self) -> &'static str {
-        "チャンネルの会話ログを忘れるよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        false
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     ctx.channel_id
         .say(ctx.cache_http(), "1……2の……ポカン！")
         .await

@@ -2,37 +2,17 @@ use crate::cclemon;
 use crate::commands::CommandContext;
 use serenity::utils::parse_user_mention;
 
-use crate::commands::ManamiPrefixCommand;
-use serenity::all::ResolvedOption;
-pub struct PrefixCommand;
+use crate::commands::StManamiPrefixCommand;
+pub const CCLEMON_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "cclemon",
+    usage: "!cclemon <opponent>",
+    description: "CCレモンをするよ！",
+    run: |ctx, _| Box::pin(run(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
 
-impl ManamiPrefixCommand for PrefixCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &["cclemon"]
-    }
-
-    fn usage(&self) -> &'static str {
-        "!cclemon <opponent>"
-    }
-
-    fn description(&self) -> &'static str {
-        "CCレモンをするよ！"
-    }
-
-    async fn run(&self, ctx: &CommandContext<'_>, _: &[ResolvedOption<'_>]) {
-        run(ctx).await
-    }
-
-    fn is_dm_command(&self) -> bool {
-        false
-    }
-
-    fn is_guild_command(&self) -> bool {
-        true
-    }
-}
-
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let [opponent_id] = ctx.args()[..] else {
         ctx.channel_id
             .say(ctx.cache_http(), "使い方: `!cclemon <相手>`")
@@ -48,5 +28,5 @@ pub async fn run(ctx: &CommandContext<'_>) {
         return;
     };
 
-    cclemon::cclemon(ctx, (ctx.author_id, &opponent_id)).await;
+    cclemon::cclemon(&ctx, (ctx.author_id, &opponent_id)).await;
 }

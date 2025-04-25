@@ -5,34 +5,20 @@ use serenity::{
 };
 use std::time::Duration;
 
-use crate::{commands::ManamiSlashCommand, Bot};
+use crate::{commands::StManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 
 pub struct SlashCommand;
 
 const COMMAND_NAME: &str = "auto";
 
-impl ManamiSlashCommand for SlashCommand {
-    fn name(&self) -> &'static [&'static str] {
-        &[COMMAND_NAME]
-    }
-
-    fn description(&self) -> &'static str {
-        "呼びかけられなくてもお返事するよ！"
-    }
-
-    fn register(&self) -> CreateCommand {
-        register()
-    }
-
-    async fn run(&self, options: &[ResolvedOption<'_>], bot: &Bot) -> String {
-        run(options, bot).await
-    }
-
-    fn is_local_command(&self) -> bool {
-        true
-    }
-}
+pub const AUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: COMMAND_NAME,
+    description: "呼びかけられなくてもお返事するよ！",
+    register,
+    run: |option, bot| unimplemented!(), /*Box::pin(run(option, bot))*/
+    is_local_command: true,
+};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new(COMMAND_NAME)
@@ -52,7 +38,7 @@ pub fn register() -> CreateCommand {
                 .max_int_value(600),
         )
 }
-pub async fn run(option: &[ResolvedOption<'_>], bot: &Bot) -> String {
+pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
     let model = option
         .iter()
         .fold(None, |model, option| match (option.name, &option.value) {
