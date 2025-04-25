@@ -15,6 +15,7 @@ use shuttle_runtime::SecretStore;
 
 use udamanami::ai;
 use udamanami::Bot;
+use udamanami::{prefix_commands, slash_commands};
 
 #[shuttle_runtime::main]
 async fn serenity(
@@ -61,6 +62,10 @@ async fn serenity(
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();
+    let disabled_commands = disabled_commands
+        .iter()
+        .map(|s| s.as_str())
+        .collect::<Vec<_>>();
 
     // 取得できなければ KOCHIKITE_GUILD_ID を使う
     let guild_id = secrets
@@ -97,12 +102,14 @@ async fn serenity(
 
     let reply_to_all_mode = Arc::new(Mutex::new(udamanami::ReplyToAllModeData::blank()));
 
+    let prefix_commands = prefix_commands(&disabled_commands);
+    let slash_commands = slash_commands(&disabled_commands);
+
     let client = Client::builder(&token, intents)
         .event_handler(Bot {
             userdata,
             jail_process,
             jail_id,
-            disabled_commands,
             channel_ids,
             guild_id,
             erogaki_role_id,
@@ -112,8 +119,9 @@ async fn serenity(
             commit_date,
             variables,
             reply_to_all_mode,
-
             gemini,
+            prefix_commands,
+            slash_commands,
         })
         .await
         .expect("Err creating client");

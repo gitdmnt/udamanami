@@ -2,7 +2,7 @@ use crate::commands::CommandContext;
 use serenity::utils::MessageBuilder;
 
 use crate::commands::StManamiPrefixCommand;
-pub const CHANNEL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_CHANNEL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "channel",
     usage: "!channel",
     description: "代筆先のチャンネルを指定するよ！",

@@ -7,7 +7,7 @@ use crate::commands::CommandContext;
 
 use super::StManamiPrefixCommand;
 
-pub const VAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_VAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "var",
     usage: "!var <name>=<expr>",
     description: "calcで使える変数を定義するよ！",

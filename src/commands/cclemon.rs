@@ -3,7 +3,7 @@ use crate::commands::CommandContext;
 use serenity::utils::parse_user_mention;
 
 use crate::commands::StManamiPrefixCommand;
-pub const CCLEMON_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_CCLEMON_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "cclemon",
     usage: "!cclemon <opponent>",
     description: "CCレモンをするよ！",

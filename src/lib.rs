@@ -82,8 +82,6 @@ pub struct Bot {
     pub jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
     pub jail_id: Arc<Mutex<usize>>,
 
-    pub disabled_commands: Vec<String>,
-
     pub channel_ids: Vec<ChannelId>,
     pub guild_id: GuildId,
     pub erogaki_role_id: RoleId,
@@ -98,15 +96,12 @@ pub struct Bot {
     pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
 
     pub gemini: ai::GeminiAI,
+
+    pub slash_commands: Vec<StManamiSlashCommand>,
+    pub prefix_commands: Vec<StManamiPrefixCommand>,
 }
 
 impl Bot {
-    pub fn is_disabled_command(&self, command: &str) -> bool {
-        self.disabled_commands
-            .iter()
-            .any(|disabled| disabled == command)
-    }
-
     pub fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
         self.userdata
             .entry(*user_id)
@@ -130,6 +125,40 @@ impl Bot {
             .room_pointer = room_pointer;
         Ok(())
     }
+}
+
+pub fn slash_commands(disabled_commands: &[&str]) -> Vec<StManamiSlashCommand> {
+    [
+        commands::auto::SLASH_AUTO_COMMAND,
+        commands::bf::SLASH_BF_COMMAND,
+        commands::endauto::SLASH_ENDAUTO_COMMAND,
+        commands::gemini::SLASH_GEMINI_COMMAND,
+        commands::help::SLASH_HELP_COMMAND,
+        commands::ping::SLASH_PING_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
+}
+
+pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<StManamiPrefixCommand> {
+    [
+        commands::calc::PREFIX_CALC_COMMAND,
+        commands::calcsay::PREFIX_CALCSAY_COMMAND,
+        commands::cclemon::PREFIX_CCLEMON_COMMAND,
+        commands::channel::PREFIX_CHANNEL_COMMAND,
+        commands::clear::PREFIX_CLEAR_COMMAND,
+        commands::dice::PREFIX_DICE_COMMAND,
+        commands::help::PREFIX_HELP_COMMAND,
+        commands::isprime::PREFIX_ISPRIME_COMMAND,
+        commands::jail::PREFIX_JAIL_COMMAND,
+        commands::unjail::PREFIX_UNJAIL_COMMAND,
+        commands::var::PREFIX_VAR_COMMAND,
+        commands::varbulk::PREFIX_VARBULK_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
 }
 
 #[async_trait]

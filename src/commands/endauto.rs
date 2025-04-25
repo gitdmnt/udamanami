@@ -5,7 +5,7 @@ pub struct SlashCommand;
 
 const COMMAND_NAME: &str = "endauto";
 
-pub const END_AUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_ENDAUTO_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: COMMAND_NAME,
     description: "自動返信を止めるよ！",
     register,

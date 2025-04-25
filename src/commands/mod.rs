@@ -75,77 +75,21 @@ impl<'a> CommandContext<'a> {
     }
 }
 
-pub trait ManamiPrefixCommand {
-    fn name(&self) -> &'static [&'static str];
-    fn usage(&self) -> &'static str;
-    fn description(&self) -> &'static str;
-    fn run(
-        &self,
-        ctx: &CommandContext<'_>,
-        options: &[ResolvedOption],
-    ) -> impl std::future::Future<Output = ()> + Send;
+type BoxedFuture<'x, T> = Pin<Box<dyn std::future::Future<Output = T> + Send + 'x>>;
 
-    fn is_dm_command(&self) -> bool;
-    fn is_guild_command(&self) -> bool;
-
-    fn is_enabled(&self, disabled_commands: &[&str]) -> bool {
-        for name in self.name() {
-            if disabled_commands.contains(name) {
-                return false;
-            }
-        }
-        true
-    }
-}
-pub trait ManamiSlashCommand {
-    fn name(&self) -> &'static [&'static str];
-    fn description(&self) -> &'static str;
-    fn register(&self) -> serenity::builder::CreateCommand;
-    fn run(
-        &self,
-        option: &[ResolvedOption<'_>],
-        bot: &Bot,
-    ) -> impl std::future::Future<Output = String> + Send;
-
-    fn is_local_command(&self) -> bool;
-
-    fn try_register(&self, disabled_commands: &[&str]) -> Option<serenity::builder::CreateCommand> {
-        if self.is_enabled(disabled_commands) {
-            Some(self.register())
-        } else {
-            None
-        }
-    }
-
-    fn is_enabled(&self, disabled_commands: &[&str]) -> bool {
-        for name in self.name() {
-            if disabled_commands.contains(name) {
-                return false;
-            }
-        }
-        true
-    }
-}
-
-pub struct StManamiPrefixCommand<'a> {
+pub struct StManamiPrefixCommand {
     pub name: &'static str,
     pub usage: &'static str,
     pub description: &'static str,
-    pub run: fn(
-        CommandContext<'a>,
-        Vec<ResolvedOption>,
-    ) -> Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>,
+    pub run: for<'a> fn(CommandContext<'a>, Vec<ResolvedOption>) -> BoxedFuture<'a, ()>,
     pub is_dm_command: bool,
     pub is_guild_command: bool,
 }
 
-pub struct StManamiSlashCommand<'a> {
+pub struct StManamiSlashCommand {
     pub name: &'static str,
     pub description: &'static str,
     pub register: fn() -> serenity::builder::CreateCommand,
-    pub run: fn(
-        Vec<ResolvedOption>,
-        &'a Bot,
-    ) -> Pin<Box<dyn std::future::Future<Output = String> + Send + 'a>>,
+    pub run: for<'a> fn(Vec<ResolvedOption>, &'a Bot) -> BoxedFuture<'a, String>,
     pub is_local_command: bool,
 }

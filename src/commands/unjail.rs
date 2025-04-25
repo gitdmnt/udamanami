@@ -11,7 +11,7 @@ use serenity::{
 
 use super::StManamiPrefixCommand;
 
-pub const UNJAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_UNJAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "unjail",
     usage: "!unjail <user>",
     description: "収監を解除するよ！",

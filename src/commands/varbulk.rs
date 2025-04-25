@@ -4,7 +4,7 @@ use regex::Regex;
 
 use crate::commands::StManamiPrefixCommand;
 
-pub const VARBULK_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_VARBULK_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "varbulk",
     usage: "!varbulk <codeblock>",
     description: ";区切りで複数の変数を一度に定義するよ！",

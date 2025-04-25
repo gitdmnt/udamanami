@@ -1,7 +1,7 @@
 use crate::commands::CommandContext;
 
 use crate::commands::StManamiPrefixCommand;
-pub const CLEAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_CLEAR_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "clear",
     usage: "!clear",
     description: "チャンネルの会話ログを忘れるよ！",

@@ -2,7 +2,7 @@ use crate::commands::var::var_main;
 use crate::commands::CommandContext;
 
 use crate::commands::StManamiPrefixCommand;
-pub const CALC_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_CALC_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "calc",
     usage: "!calc <expr>",
     description: "数式を計算するよ！",

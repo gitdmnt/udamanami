@@ -15,7 +15,7 @@ use serenity::{
 use tokio::{spawn, time::sleep};
 
 use crate::commands::StManamiPrefixCommand;
-pub const JAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_JAIL_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "jail",
     usage: "!jail <n>",
     description: "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！",

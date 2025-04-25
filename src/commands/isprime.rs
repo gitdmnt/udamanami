@@ -1,7 +1,7 @@
 use crate::commands::CommandContext;
 
 use crate::commands::StManamiPrefixCommand;
-pub const ISPRIME_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_ISPRIME_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "isprime",
     usage: "!isprime <n>",
     description: "nが素数かどうかを判定するよ！",

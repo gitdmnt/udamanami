@@ -35,7 +35,7 @@ impl From<char> for BrainfuckCommand {
     }
 }
 
-pub const BF_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+pub const SLASH_BF_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
     name: "bf",
     description: "まなみはいんたぷりた？　なんだよ！",
     register,

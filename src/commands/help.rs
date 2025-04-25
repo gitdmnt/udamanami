@@ -1,7 +1,29 @@
+use std::result;
+
 use crate::commands::CommandContext;
 use serenity::{builder::CreateCommand, utils::MessageBuilder};
 
 use super::{StManamiPrefixCommand, StManamiSlashCommand};
+
+pub const PREFIX_HELP_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+    name: "help",
+    usage: "!help",
+    description: "まなみの自己紹介だよ！",
+    run: |ctx, _| Box::pin(run_old(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
+
+pub const SLASH_HELP_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
+    name: "help",
+    description: "ヘルプを表示するよ！",
+    register,
+    run: |_, _| {
+        let result = run();
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
 
 const ABOUT_ME: &str = "# まなみの自己紹介だよ！\n";
 const ABOUT_GHOSTWRITE: &str = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
@@ -116,23 +138,6 @@ fn generate_guild_help(prefix_commands: &[&StManamiPrefixCommand]) -> String {
     content.push("\n```");
     content.build()
 }
-
-pub const HELP_PREFIX_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
-    name: "help",
-    usage: "!help",
-    description: "まなみの自己紹介だよ！",
-    run: |ctx, _| Box::pin(run_old(ctx)),
-    is_dm_command: true,
-    is_guild_command: true,
-};
-
-pub const HELP_SLASH_COMMAND: StManamiSlashCommand = StManamiSlashCommand {
-    name: "help",
-    description: "ヘルプを表示するよ！",
-    register,
-    run: |_, _| Box::pin(async { run() }),
-    is_local_command: false,
-};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("help").description("まなみの自己紹介だよ！")

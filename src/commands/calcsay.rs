@@ -2,7 +2,7 @@ use crate::calculator::{eval_from_str, val_as_str};
 use crate::commands::CommandContext;
 
 use crate::commands::StManamiPrefixCommand;
-pub const CALCSAY_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
+pub const PREFIX_CALCSAY_COMMAND: StManamiPrefixCommand = StManamiPrefixCommand {
     name: "calcsay",
     usage: "!calcsay <expr>",
     description: "calcの結果を代筆先に送信するよ！",
