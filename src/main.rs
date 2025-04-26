@@ -1,7 +1,4 @@
-use std::{
-    convert::Into,
-    str::FromStr,
-};
+use std::{convert::Into, str::FromStr};
 
 use anyhow::Context as _;
 
@@ -68,15 +65,9 @@ async fn serenity(
         .map(|s| s.as_str())
         .collect::<Vec<_>>();
 
-    // 取得できなければ KOCHIKITE_GUILD_ID を使う
     let guild_id = secrets
         .get("DISCORD_GUILD_ID")
         .map(|id| GuildId::from_str(&id).unwrap())
-        .unwrap();
-
-    let erogaki_role_id = secrets
-        .get("EROGAKI_ROLE_ID")
-        .map(|id| RoleId::from_str(&id).unwrap())
         .unwrap();
 
     let jail_mark_role_id = secrets
@@ -93,11 +84,20 @@ async fn serenity(
 
     let commit_date = secrets.get("COMMIT_DATE");
 
-
     let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
 
     let client = Client::builder(&token, intents)
-        .event_handler(Bot::new(channel_ids, debug_channel_id, guild_id, erogaki_role_id, jail_mark_role_id, jail_main_role_id, gemini, commit_hash, commit_date, &disabled_commands))
+        .event_handler(Bot::new(
+            channel_ids,
+            debug_channel_id,
+            guild_id,
+            jail_mark_role_id,
+            jail_main_role_id,
+            gemini,
+            commit_hash,
+            commit_date,
+            &disabled_commands,
+        ))
         .await
         .expect("Err creating client");
 
