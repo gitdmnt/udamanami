@@ -48,7 +48,7 @@ async fn serenity(
         |rooms| {
             rooms
                 .split(',')
-                .map(|id| ChannelId::from_str(id).unwrap())
+                .map(|id| ChannelId::from_str(id.trim()).unwrap())
                 .collect()
         },
     );
@@ -63,7 +63,7 @@ async fn serenity(
         .map(|commands| {
             commands
                 .split(',')
-                .map(|command| command.to_owned())
+                .map(|command| command.trim().to_owned())
                 .collect::<Vec<String>>()
         })
         .unwrap_or_default();

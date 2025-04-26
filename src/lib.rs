@@ -290,7 +290,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         .prefix_commands
         .iter()
         .filter(|cmd| cmd.is_dm_command)
-        .find(|cmd| cmd.alias.contains(&command_name))
+        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name))
     {
         Some(cmd) => (cmd.run)(command_context).await,
         None => {
@@ -356,7 +356,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         .prefix_commands
         .iter()
         .filter(|cmd| cmd.is_guild_command)
-        .find(|cmd| cmd.alias.contains(&command_name))
+        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name))
     {
         Some(cmd) => (cmd.run)(command_context).await,
         None => {
@@ -365,7 +365,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                     .prefix_commands
                     .iter()
                     .filter(|cmd| cmd.is_guild_command)
-                    .find(|cmd| cmd.alias.contains(&"dice"))
+                    .find(|cmd| cmd.name == "dice")
                 {
                     return (cmd.run)(command_context).await;
                 }

@@ -86,7 +86,7 @@ fn generate_guild_help(prefix_commands: &[ManamiPrefixCommand]) -> String {
     let help_str = generate_help_rows(
         &prefix_commands
             .iter()
-            .filter(|cmd| !cmd.is_dm_command)
+            .filter(|cmd| cmd.is_guild_command)
             .map(|cmd| (cmd.usage, cmd.description))
             .collect::<Vec<_>>(),
         USAGE_SPACE_MINIMUM,
