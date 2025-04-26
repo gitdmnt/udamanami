@@ -1,11 +1,9 @@
 use std::{
     convert::Into,
     str::FromStr,
-    sync::{Arc, Mutex},
 };
 
 use anyhow::Context as _;
-use dashmap::DashMap;
 
 use serenity::{
     model::id::{ChannelId, GuildId, RoleId},
@@ -15,7 +13,6 @@ use shuttle_runtime::SecretStore;
 
 use udamanami::ai;
 use udamanami::Bot;
-use udamanami::{prefix_commands, slash_commands};
 
 #[shuttle_runtime::main]
 async fn serenity(
@@ -31,7 +28,6 @@ async fn serenity(
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
 
-    let userdata = DashMap::new();
     let channel_ids = secrets.get("ROOMS_ID").map_or_else(
         || {
             vec![
@@ -97,38 +93,11 @@ async fn serenity(
 
     let commit_date = secrets.get("COMMIT_DATE");
 
-    let variables = DashMap::new();
 
     let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
 
-    let jail_process = Arc::new(DashMap::new());
-
-    let jail_id = Arc::new(Mutex::new(0));
-
-    let reply_to_all_mode = Arc::new(Mutex::new(udamanami::ReplyToAllModeData::blank()));
-
-    let prefix_commands = prefix_commands(&disabled_commands);
-    let slash_commands = slash_commands(&disabled_commands);
-
     let client = Client::builder(&token, intents)
-        .event_handler(Bot {
-            userdata,
-            jail_process,
-            jail_id,
-            channel_ids,
-            debug_channel_id,
-            guild_id,
-            erogaki_role_id,
-            jail_mark_role_id,
-            jail_main_role_id,
-            commit_hash,
-            commit_date,
-            variables,
-            reply_to_all_mode,
-            gemini,
-            prefix_commands,
-            slash_commands,
-        })
+        .event_handler(Bot::new(channel_ids, debug_channel_id, guild_id, erogaki_role_id, jail_mark_role_id, jail_main_role_id, gemini, commit_hash, commit_date, &disabled_commands))
         .await
         .expect("Err creating client");
 
