@@ -86,7 +86,6 @@ pub struct Bot {
     pub debug_channel_id: ChannelId,
 
     pub guild_id: GuildId,
-    pub erogaki_role_id: RoleId,
     pub jail_mark_role_id: RoleId,
     pub jail_main_role_id: RoleId,
 
@@ -104,12 +103,12 @@ pub struct Bot {
 }
 
 impl Bot {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         channel_ids: Vec<ChannelId>,
         debug_channel_id: ChannelId,
 
         guild_id: GuildId,
-        erogaki_role_id: RoleId,
         jail_mark_role_id: RoleId,
         jail_main_role_id: RoleId,
 
@@ -118,16 +117,15 @@ impl Bot {
         commit_hash: Option<String>,
         commit_date: Option<String>,
 
-        disabled_commands: &[&str]
+        disabled_commands: &[&str],
     ) -> Self {
-
         let userdata = DashMap::new();
         let variables = DashMap::new();
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
         let reply_to_all_mode = Arc::new(Mutex::new(ReplyToAllModeData::blank()));
-        let prefix_commands = prefix_commands(&disabled_commands);
-        let slash_commands = slash_commands(&disabled_commands);
+        let prefix_commands = prefix_commands(disabled_commands);
+        let slash_commands = slash_commands(disabled_commands);
 
         Self {
             userdata,
@@ -136,7 +134,6 @@ impl Bot {
             channel_ids,
             debug_channel_id,
             guild_id,
-            erogaki_role_id,
             jail_mark_role_id,
             jail_main_role_id,
             commit_hash,
@@ -148,7 +145,6 @@ impl Bot {
             slash_commands,
         }
     }
-
 
     pub fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
         self.userdata
