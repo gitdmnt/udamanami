@@ -39,3 +39,5 @@ jobs:
             DISCORD_GUILD_ID = '${{ secrets.DISCORD_GUILD_ID }}'
             COMMIT_HASH = '${{ env.COMMIT_HASH }}'
             COMMIT_DATE = '${{ env.COMMIT_DATE }}'
+            DISABLED_COMMANDS = '${{ secrets.DISABLED_COMMANDS }}'
+            ROOMS_ID = '${{ secrets.ROOMS_ID }}'
