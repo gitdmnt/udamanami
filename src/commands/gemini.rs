@@ -33,25 +33,7 @@ pub fn register() -> CreateCommand {
 }
 
 pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
-    let model = option
-        .iter()
-        .fold(None, |model, option| match (option.name, &option.value) {
-            ("model", ResolvedValue::String(s)) => Some(GeminiModel::from(*s)),
-            _ => model,
-        });
-
-    if let Some(model) = model {
-        let msg = format!("モデルを{}に変更したよ", model);
-        bot.gemini.set_model(model);
-        msg
-    } else {
-        match bot.gemini.generate().await {
-            Ok(content) => content.replace("うだまなみ: ", ""),
-            Err(e) => {
-                format!("Error sending message: {:?}", e)
-            }
-        }
-    }
+    run_body(parse(option, bot), bot).await
 }
 
 fn parse(option: Vec<ResolvedOption<'_>>, _: &Bot) -> Option<GeminiModel> {
