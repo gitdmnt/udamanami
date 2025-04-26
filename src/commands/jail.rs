@@ -20,7 +20,7 @@ pub const PREFIX_JAIL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &[],
     usage: "!jail <n>",
     description: "不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！",
-    run: |ctx, _| Box::pin(run_old(ctx)),
+    run: |ctx| Box::pin(run_old(ctx)),
     is_dm_command: false,
     is_guild_command: true,
 };

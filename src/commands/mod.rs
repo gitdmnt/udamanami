@@ -82,7 +82,7 @@ pub struct ManamiPrefixCommand {
     pub alias: &'static [&'static str],
     pub usage: &'static str,
     pub description: &'static str,
-    pub run: for<'a> fn(CommandContext<'a>, Vec<ResolvedOption>) -> BoxedFuture<'a, ()>,
+    pub run: for<'a> fn(CommandContext<'a>) -> BoxedFuture<'a, ()>,
     pub is_dm_command: bool,
     pub is_guild_command: bool,
 }

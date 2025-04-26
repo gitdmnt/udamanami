@@ -8,7 +8,7 @@ pub const PREFIX_HELP_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &["たすけて", "助けて"],
     usage: "!help",
     description: "まなみの自己紹介だよ！",
-    run: |ctx, _| Box::pin(run_old(ctx)),
+    run: |ctx| Box::pin(run_old(ctx)),
     is_dm_command: true,
     is_guild_command: true,
 };

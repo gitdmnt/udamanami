@@ -7,7 +7,7 @@ pub const PREFIX_CALCSAY_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &[],
     usage: "!calcsay <expr>",
     description: "calcの結果を代筆先に送信するよ！",
-    run: |ctx, _| Box::pin(run(ctx)),
+    run: |ctx| Box::pin(run(ctx)),
     is_dm_command: true,
     is_guild_command: false,
 };

@@ -284,16 +284,14 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // handle command
     let command_name = &command_context.command_name()[..];
 
-    match command_name {
-        "channel" => channel::run(command_context).await,
-        "help" | "たすけて" | "助けて" => help::run_old(command_context).await,
-        "calc" => calc::run(command_context).await,
-        "var" => var::run(command_context).await,
-        "varbulk" => varbulk::run(command_context).await,
-        "calcsay" => calcsay::run(command_context).await,
-
-        // Unknown command
-        _ => {
+    match bot
+        .prefix_commands
+        .iter()
+        .filter(|cmd| cmd.is_dm_command)
+        .find(|cmd| cmd.alias.contains(&command_name))
+    {
+        Some(cmd) => (cmd.run)(command_context).await,
+        None => {
             let _ = &msg
                 .channel_id
                 .say(&ctx.http, "しらないコマンドだよ")
@@ -352,23 +350,26 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // handle other command
     let command_name = &command_context.command_name()[..];
 
-    match command_name {
-        "help" | "たすけて" | "助けて" => {
-            help::run_old(command_context).await;
-        }
-        "isprime" => isprime::run(command_context).await,
-        "calc" => calc::run(command_context).await,
-        "var" => var::run(command_context).await,
-        "varbulk" => varbulk::run(command_context).await,
-        "cclemon" => commands::cclemon::run(command_context).await,
-        "jail" => jail::run_old(command_context).await,
-        "unjail" => unjail::run(command_context).await,
-        "clear" | "全部忘れて" => clear::run(command_context).await,
-        // Unknown command
-        _ => {
+    match bot
+        .prefix_commands
+        .iter()
+        .filter(|cmd| cmd.is_guild_command)
+        .find(|cmd| cmd.alias.contains(&command_name))
+    {
+        Some(cmd) => (cmd.run)(command_context).await,
+        None => {
             if msg.content.starts_with("!") {
-                dice::run_old(command_context).await
-            } else if msg.channel_id.get() == bot.channel_ids[4].get() {
+                if let Some(cmd) = bot
+                    .prefix_commands
+                    .iter()
+                    .filter(|cmd| cmd.is_guild_command)
+                    .find(|cmd| cmd.alias.contains(&"dice"))
+                {
+                    return (cmd.run)(command_context).await;
+                }
+            }
+
+            if msg.channel_id.get() == bot.channel_ids[4].get() {
                 // まなみが自由に応答するコーナー
                 let content = if response_to_all {
                     bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新

@@ -6,7 +6,7 @@ pub const PREFIX_ISPRIME_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &[],
     usage: "!isprime <n>",
     description: "nが素数かどうかを判定するよ！",
-    run: |ctx, _| Box::pin(run(ctx)),
+    run: |ctx| Box::pin(run(ctx)),
     is_dm_command: true,
     is_guild_command: true,
 };

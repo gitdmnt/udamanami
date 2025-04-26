@@ -7,7 +7,7 @@ pub const PREFIX_CHANNEL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &[],
     usage: "!channel",
     description: "代筆先のチャンネルを指定するよ！",
-    run: |ctx, _| Box::pin(run(ctx)),
+    run: |ctx| Box::pin(run(ctx)),
     is_dm_command: true,
     is_guild_command: false,
 };

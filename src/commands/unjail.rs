@@ -16,7 +16,7 @@ pub const PREFIX_UNJAIL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     alias: &[],
     usage: "!unjail <user>",
     description: "収監を解除するよ！",
-    run: |ctx, _| Box::pin(run(ctx)),
+    run: |ctx| Box::pin(run(ctx)),
     is_dm_command: false,
     is_guild_command: true,
 };

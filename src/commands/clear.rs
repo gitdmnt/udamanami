@@ -12,7 +12,7 @@ pub const PREFIX_CLEAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     ],
     usage: "!clear",
     description: "チャンネルの会話ログを忘れるよ！",
-    run: |ctx, _| Box::pin(run(ctx)),
+    run: |ctx| Box::pin(run(ctx)),
     is_dm_command: false,
     is_guild_command: true,
 };
