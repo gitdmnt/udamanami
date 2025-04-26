@@ -53,6 +53,11 @@ async fn serenity(
         },
     );
 
+    let debug_channel_id = secrets
+        .get("DEBUG_ROOM_ID")
+        .map(|id| ChannelId::from_str(&id).unwrap())
+        .unwrap_or_default();
+
     let disabled_commands = secrets
         .get("DISABLED_COMMANDS")
         .map(|commands| {
@@ -111,6 +116,7 @@ async fn serenity(
             jail_process,
             jail_id,
             channel_ids,
+            debug_channel_id,
             guild_id,
             erogaki_role_id,
             jail_mark_role_id,

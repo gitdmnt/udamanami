@@ -83,6 +83,8 @@ pub struct Bot {
     pub jail_id: Arc<Mutex<usize>>,
 
     pub channel_ids: Vec<ChannelId>,
+    pub debug_channel_id: ChannelId,
+
     pub guild_id: GuildId,
     pub erogaki_role_id: RoleId,
     pub jail_mark_role_id: RoleId,
@@ -185,7 +187,7 @@ impl EventHandler for Bot {
             _ => "おはようっ！".to_owned(),
         };
 
-        if let Err(why) = self.channel_ids[4].say(&ctx.http, message_hello).await {
+        if let Err(why) = self.debug_channel_id.say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
         };
 
@@ -221,7 +223,7 @@ impl EventHandler for Bot {
                 let command_context = commands::CommandContext {
                     bot: self,
                     ctx: &ctx,
-                    channel_id: &self.channel_ids[4],
+                    channel_id: &self.debug_channel_id,
                     author_id: &member.user.id,
                     command: "".to_owned(),
                 };
@@ -272,7 +274,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         };
 
         // AIのためにメッセージを保存する
-        if room_pointer.get() == bot.channel_ids[4].get() {
+        if room_pointer.get() == bot.debug_channel_id.get() {
             bot.gemini.add_model_log(&msg.content);
         }
         return;
@@ -308,7 +310,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.channel_ids[4].get() {
+    if msg.channel_id.get() == bot.debug_channel_id.get() {
         let user_name = msg.author_nick(&ctx.http).await;
         let user_name = user_name
             .as_deref()
@@ -330,7 +332,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         ),
         None => {
             // 全レスモードの場合のみ返答
-            if msg.channel_id.get() == bot.channel_ids[4].get() && response_to_all {
+            if msg.channel_id.get() == bot.debug_channel_id.get() && response_to_all {
                 bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
                 let content = bot.gemini.generate_with_model(response_to_all_model).await;
                 let content = match content {
@@ -369,7 +371,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 }
             }
 
-            if msg.channel_id.get() == bot.channel_ids[4].get() {
+            if msg.channel_id.get() == bot.debug_channel_id.get() {
                 // まなみが自由に応答するコーナー
                 let content = if response_to_all {
                     bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
