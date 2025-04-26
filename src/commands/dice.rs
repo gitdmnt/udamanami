@@ -11,6 +11,30 @@ use serenity::{
 
 use serenity::{http::Http, model::id::ChannelId, utils::MessageBuilder};
 
+use crate::commands::{ManamiPrefixCommand, ManamiSlashCommand};
+
+pub const PREFIX_DICE_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "dice",
+    alias: &[],
+    usage: "![n]d<m>",
+    description: "m面ダイスをn回振るよ！",
+    run: |ctx| Box::pin(run_old(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
+
+pub const SLASH_DICE_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: "dice",
+    usage: "/dice <operation>",
+    description: "サイコロを振るよ！　ex. 2d6 <= 9",
+    register,
+    run: |options, _| {
+        let result = run(options);
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
+
 // slash command
 pub fn register() -> CreateCommand {
     CreateCommand::new("dice")
@@ -46,7 +70,11 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub fn run(options: &[ResolvedOption]) -> String {
+pub fn run(options: Vec<ResolvedOption>) -> String {
+    run_body(parse_options(options))
+}
+
+fn parse_options(options: Vec<ResolvedOption>) -> Result<Dice, &str> {
     // parse options
     let (literal, num, dice, operator, operand) = options.iter().fold(
         (None, None, None, None, None),
@@ -77,13 +105,20 @@ pub fn run(options: &[ResolvedOption]) -> String {
         |s| parse_dice(s).finish().map(|(_, parsed)| parsed),
     );
 
-    let Dice { num, dice, cmp } = match dice {
-        Ok(dice) => dice,
+    match dice {
+        Ok(dice) => Ok(dice),
         Err(Error {
             code: ErrorKind::MapRes,
             ..
-        }) => return "数字がおかしいよ".to_owned(),
-        Err(_) => return "しらないコマンドだよ".to_owned(),
+        }) => Err("数字がおかしいよ"),
+        Err(_) => Err("しらないコマンドだよ"),
+    }
+}
+
+fn run_body(resdice: Result<Dice, &str>) -> String {
+    let (num, dice, cmp) = match resdice {
+        Ok(dice) => (dice.num, dice.dice, dice.cmp),
+        Err(err) => return err.to_owned(),
     };
 
     // roll dice
@@ -117,7 +152,7 @@ pub fn run(options: &[ResolvedOption]) -> String {
 }
 
 // old command
-pub async fn run_old(ctx: &CommandContext<'_>) {
+pub async fn run_old(ctx: CommandContext<'_>) {
     match parse_dice(&ctx.command).finish() {
         Ok((_, parsed)) => {
             dice(ctx.channel_id, ctx.cache_http(), parsed).await;

@@ -2,7 +2,18 @@ use crate::cclemon;
 use crate::commands::CommandContext;
 use serenity::utils::parse_user_mention;
 
-pub async fn run(ctx: &CommandContext<'_>) {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CCLEMON_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "cclemon",
+    alias: &[],
+    usage: "!cclemon <opponent>",
+    description: "CCレモンをするよ！",
+    run: |ctx| Box::pin(run(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
+
+pub async fn run(ctx: CommandContext<'_>) {
     let [opponent_id] = ctx.args()[..] else {
         ctx.channel_id
             .say(ctx.cache_http(), "使い方: `!cclemon <相手>`")
@@ -18,5 +29,5 @@ pub async fn run(ctx: &CommandContext<'_>) {
         return;
     };
 
-    cclemon::cclemon(ctx, (ctx.author_id, &opponent_id)).await;
+    cclemon::cclemon(&ctx, (ctx.author_id, &opponent_id)).await;
 }

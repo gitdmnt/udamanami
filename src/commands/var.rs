@@ -5,9 +5,21 @@ use serenity::model::id::ChannelId;
 use crate::calculator::{self, val_as_str};
 use crate::commands::CommandContext;
 
+use super::ManamiPrefixCommand;
+
+pub const PREFIX_VAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "var",
+    alias: &[],
+    usage: "!var <name>=<expr>",
+    description: "calcで使える変数を定義するよ！",
+    run: |ctx| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
+
 const VAR_DEFAULT: &str = "_";
 
-pub async fn run(ctx: &CommandContext<'_>) {
+pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let bot = ctx.bot;
     let input = ctx.args().join(" ");

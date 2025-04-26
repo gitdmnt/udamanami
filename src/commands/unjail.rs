@@ -9,7 +9,19 @@ use serenity::{
     utils::parse_user_mention,
 };
 
-pub async fn run(ctx: &CommandContext<'_>) {
+use super::ManamiPrefixCommand;
+
+pub const PREFIX_UNJAIL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "unjail",
+    alias: &[],
+    usage: "!unjail <user>",
+    description: "収監を解除するよ！",
+    run: |ctx| Box::pin(run(ctx)),
+    is_dm_command: false,
+    is_guild_command: true,
+};
+
+pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let args = &ctx.args()[..];
     let bot = ctx.bot;

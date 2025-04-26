@@ -68,7 +68,7 @@ impl ReplyToAllModeData {
         self.until = Some(Instant::now() + self.duration);
     }
 
-    pub fn end(&mut self) {
+    const fn end(&mut self) {
         self.until = None;
     }
 
@@ -83,6 +83,8 @@ pub struct Bot {
     pub jail_id: Arc<Mutex<usize>>,
 
     pub channel_ids: Vec<ChannelId>,
+    pub debug_channel_id: ChannelId,
+
     pub guild_id: GuildId,
     pub erogaki_role_id: RoleId,
     pub jail_mark_role_id: RoleId,
@@ -96,9 +98,58 @@ pub struct Bot {
     pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
 
     pub gemini: ai::GeminiAI,
+
+    pub slash_commands: Vec<ManamiSlashCommand>,
+    pub prefix_commands: Vec<ManamiPrefixCommand>,
 }
 
 impl Bot {
+    pub fn new(
+        channel_ids: Vec<ChannelId>,
+        debug_channel_id: ChannelId,
+
+        guild_id: GuildId,
+        erogaki_role_id: RoleId,
+        jail_mark_role_id: RoleId,
+        jail_main_role_id: RoleId,
+
+        gemini: ai::GeminiAI,
+
+        commit_hash: Option<String>,
+        commit_date: Option<String>,
+
+        disabled_commands: &[&str]
+    ) -> Self {
+
+        let userdata = DashMap::new();
+        let variables = DashMap::new();
+        let jail_process = Arc::new(DashMap::new());
+        let jail_id = Arc::new(Mutex::new(0));
+        let reply_to_all_mode = Arc::new(Mutex::new(ReplyToAllModeData::blank()));
+        let prefix_commands = prefix_commands(&disabled_commands);
+        let slash_commands = slash_commands(&disabled_commands);
+
+        Self {
+            userdata,
+            jail_process,
+            jail_id,
+            channel_ids,
+            debug_channel_id,
+            guild_id,
+            erogaki_role_id,
+            jail_mark_role_id,
+            jail_main_role_id,
+            commit_hash,
+            commit_date,
+            variables,
+            reply_to_all_mode,
+            gemini,
+            prefix_commands,
+            slash_commands,
+        }
+    }
+
+
     pub fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
         self.userdata
             .entry(*user_id)
@@ -122,6 +173,40 @@ impl Bot {
             .room_pointer = room_pointer;
         Ok(())
     }
+}
+
+pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
+    [
+        commands::help::SLASH_HELP_COMMAND,
+        commands::ping::SLASH_PING_COMMAND,
+        commands::bf::SLASH_BF_COMMAND,
+        commands::auto::SLASH_AUTO_COMMAND,
+        commands::endauto::SLASH_ENDAUTO_COMMAND,
+        commands::gemini::SLASH_GEMINI_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
+}
+
+pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
+    [
+        commands::help::PREFIX_HELP_COMMAND,
+        commands::dice::PREFIX_DICE_COMMAND,
+        commands::isprime::PREFIX_ISPRIME_COMMAND,
+        commands::channel::PREFIX_CHANNEL_COMMAND,
+        commands::clear::PREFIX_CLEAR_COMMAND,
+        commands::jail::PREFIX_JAIL_COMMAND,
+        commands::unjail::PREFIX_UNJAIL_COMMAND,
+        commands::cclemon::PREFIX_CCLEMON_COMMAND,
+        commands::calc::PREFIX_CALC_COMMAND,
+        commands::calcsay::PREFIX_CALCSAY_COMMAND,
+        commands::var::PREFIX_VAR_COMMAND,
+        commands::varbulk::PREFIX_VARBULK_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
 }
 
 #[async_trait]
@@ -148,7 +233,7 @@ impl EventHandler for Bot {
             _ => "おはようっ！".to_owned(),
         };
 
-        if let Err(why) = self.channel_ids[4].say(&ctx.http, message_hello).await {
+        if let Err(why) = self.debug_channel_id.say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
         };
 
@@ -157,16 +242,22 @@ impl EventHandler for Bot {
             .guild_id
             .set_commands(
                 &ctx.http,
-                vec![gemini::register(), auto::register(), endauto::register()],
+                self.slash_commands
+                    .iter()
+                    .filter(|cmd| cmd.is_local_command)
+                    .map(|cmd| (cmd.register)())
+                    .collect::<Vec<_>>(),
             )
             .await;
 
         // グローバルコマンドの登録
-        let _ = Command::create_global_command(&ctx.http, help::register()).await;
-        let _ = Command::create_global_command(&ctx.http, ping::register()).await;
-
-        let _ = Command::create_global_command(&ctx.http, bf::register()).await;
-        let _ = Command::create_global_command(&ctx.http, dice::register()).await;
+        for command in self
+            .slash_commands
+            .iter()
+            .filter(|cmd| !cmd.is_local_command)
+        {
+            let _ = Command::create_global_command(&ctx.http, (command.register)()).await;
+        }
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;
@@ -178,11 +269,11 @@ impl EventHandler for Bot {
                 let command_context = commands::CommandContext {
                     bot: self,
                     ctx: &ctx,
-                    channel_id: &self.channel_ids[4],
+                    channel_id: &self.debug_channel_id,
                     author_id: &member.user.id,
                     command: "".to_owned(),
                 };
-                unjail::run(&command_context).await;
+                unjail::run(command_context).await;
             }
         }
     }
@@ -196,22 +287,19 @@ impl EventHandler for Bot {
                 &command,
                 &command.data.name,
             );
-            let content = match command.data.name.as_str() {
-                "help" => Some(help::run()),
-                "ping" => Some(ping::run()),
-                "bf" => Some(bf::run(&command.data.options())),
-                "dice" => Some(dice::run(&command.data.options())),
-                "gemini" => Some(gemini::run(&command.data.options(), self).await),
-                "auto" => Some(auto::run(&command.data.options(), self).await),
-                "endauto" => Some(endauto::run(self).await),
-                _ => Some("知らないコマンドだよ！".to_owned()),
+            let content = match self
+                .slash_commands
+                .iter()
+                .find(|cmd| cmd.name == command.data.name)
+            {
+                Some(cmd) => (cmd.run)(command.data.options(), self).await,
+                None => "知らないコマンドだよ！".to_owned(),
             };
-            if let Some(content) = content {
-                let data = CreateInteractionResponseMessage::new().content(content);
-                let builder = CreateInteractionResponse::Message(data);
-                if let Err(why) = command.create_response(&ctx.http, builder).await {
-                    error!("Error sending message: {:?}", why);
-                }
+
+            let data = CreateInteractionResponseMessage::new().content(content);
+            let builder = CreateInteractionResponse::Message(data);
+            if let Err(why) = command.create_response(&ctx.http, builder).await {
+                error!("Error sending message: {:?}", why);
             }
         }
     }
@@ -232,7 +320,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         };
 
         // AIのためにメッセージを保存する
-        if room_pointer.get() == bot.channel_ids[4].get() {
+        if room_pointer.get() == bot.debug_channel_id.get() {
             bot.gemini.add_model_log(&msg.content);
         }
         return;
@@ -244,16 +332,14 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // handle command
     let command_name = &command_context.command_name()[..];
 
-    match command_name {
-        "channel" => channel::run(&command_context).await,
-        "help" | "たすけて" | "助けて" => help::run_old(&command_context).await,
-        "calc" => calc::run(&command_context).await,
-        "var" => var::run(&command_context).await,
-        "varbulk" => varbulk::run(&command_context).await,
-        "calcsay" => calcsay::run(&command_context).await,
-
-        // Unknown command
-        _ => {
+    match bot
+        .prefix_commands
+        .iter()
+        .filter(|cmd| cmd.is_dm_command)
+        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name))
+    {
+        Some(cmd) => (cmd.run)(command_context).await,
+        None => {
             let _ = &msg
                 .channel_id
                 .say(&ctx.http, "しらないコマンドだよ")
@@ -270,7 +356,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.channel_ids[4].get() {
+    if msg.channel_id.get() == bot.debug_channel_id.get() {
         let user_name = msg.author_nick(&ctx.http).await;
         let user_name = user_name
             .as_deref()
@@ -292,7 +378,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         ),
         None => {
             // 全レスモードの場合のみ返答
-            if msg.channel_id.get() == bot.channel_ids[4].get() && response_to_all {
+            if msg.channel_id.get() == bot.debug_channel_id.get() && response_to_all {
                 bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
                 let content = bot.gemini.generate_with_model(response_to_all_model).await;
                 let content = match content {
@@ -312,23 +398,26 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // handle other command
     let command_name = &command_context.command_name()[..];
 
-    match command_name {
-        "help" | "たすけて" | "助けて" => {
-            help::run_old(&command_context).await;
-        }
-        "isprime" => isprime::run(&command_context).await,
-        "calc" => calc::run(&command_context).await,
-        "var" => var::run(&command_context).await,
-        "varbulk" => varbulk::run(&command_context).await,
-        "cclemon" => commands::cclemon::run(&command_context).await,
-        "jail" => jail::run_old(&command_context).await,
-        "unjail" => unjail::run(&command_context).await,
-        "clear" | "全部忘れて" => clear::run(&command_context).await,
-        // Unknown command
-        _ => {
+    match bot
+        .prefix_commands
+        .iter()
+        .filter(|cmd| cmd.is_guild_command)
+        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name))
+    {
+        Some(cmd) => (cmd.run)(command_context).await,
+        None => {
             if msg.content.starts_with("!") {
-                dice::run_old(&command_context).await
-            } else if msg.channel_id.get() == bot.channel_ids[4].get() {
+                if let Some(cmd) = bot
+                    .prefix_commands
+                    .iter()
+                    .filter(|cmd| cmd.is_guild_command)
+                    .find(|cmd| cmd.name == "dice")
+                {
+                    return (cmd.run)(command_context).await;
+                }
+            }
+
+            if msg.channel_id.get() == bot.debug_channel_id.get() {
                 // まなみが自由に応答するコーナー
                 let content = if response_to_all {
                     bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新

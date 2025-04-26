@@ -1,9 +1,23 @@
 use serenity::{
     builder::{CreateCommand, CreateCommandOption},
-    model::application::{CommandOptionType, ResolvedOption, ResolvedValue},
+    model::application::{CommandOptionType, ResolvedValue},
 };
 
-use crate::{ai::GeminiModel, Bot};
+use crate::ai::GeminiModel;
+
+use crate::{commands::ManamiSlashCommand, Bot};
+use serenity::model::application::ResolvedOption;
+pub const SLASH_GEMINI_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: "gemini",
+    usage: "/gemini <model>",
+    description: "Geminiの設定を変更するよ！",
+    register,
+    run: |option, bot| {
+        let opts = parse(option, bot);
+        Box::pin(async move { run_body(opts, bot).await })
+    },
+    is_local_command: true,
+};
 
 pub fn register() -> CreateCommand {
     CreateCommand::new("gemini")
@@ -18,14 +32,20 @@ pub fn register() -> CreateCommand {
         )
 }
 
-pub async fn run(option: &[ResolvedOption<'_>], bot: &Bot) -> String {
-    let model = option
+pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
+    run_body(parse(option, bot), bot).await
+}
+
+fn parse(option: Vec<ResolvedOption<'_>>, _: &Bot) -> Option<GeminiModel> {
+    option
         .iter()
         .fold(None, |model, option| match (option.name, &option.value) {
             ("model", ResolvedValue::String(s)) => Some(GeminiModel::from(*s)),
             _ => model,
-        });
+        })
+}
 
+async fn run_body(model: Option<GeminiModel>, bot: &Bot) -> String {
     if let Some(model) = model {
         let msg = format!("モデルを{}に変更したよ", model);
         bot.gemini.set_model(model);

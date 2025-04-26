@@ -1,6 +1,17 @@
 use crate::commands::CommandContext;
 
-pub async fn run(ctx: &CommandContext<'_>) {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_ISPRIME_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "isprime",
+    alias: &[],
+    usage: "!isprime <n>",
+    description: "nが素数かどうかを判定するよ！",
+    run: |ctx| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
+
+pub async fn run(ctx: CommandContext<'_>) {
     let command_args = ctx.args();
 
     if command_args.len() != 1 {

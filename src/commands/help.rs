@@ -1,62 +1,147 @@
-use crate::commands::CommandContext;
+use crate::{commands::CommandContext, Bot};
 use serenity::{builder::CreateCommand, utils::MessageBuilder};
 
-pub fn register() -> CreateCommand {
-    CreateCommand::new("help").description("まなみの自己紹介だよ！")
-}
+use super::{ManamiPrefixCommand, ManamiSlashCommand};
+
+pub const PREFIX_HELP_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "help",
+    alias: &["たすけて", "助けて"],
+    usage: "!help",
+    description: "まなみの自己紹介だよ！",
+    run: |ctx| Box::pin(run_old(ctx)),
+    is_dm_command: true,
+    is_guild_command: true,
+};
+
+pub const SLASH_HELP_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: "help",
+    usage: "/help",
+    description: "ヘルプを表示するよ！",
+    register,
+    run: |_, bot| {
+        let result = run(bot);
+        Box::pin(async move { result })
+    },
+    is_local_command: false,
+};
 
 const ABOUT_ME: &str = "# まなみの自己紹介だよ！\n";
 const ABOUT_GHOSTWRITE: &str = "## 代筆機能があるよ！\nまなみは代筆ができるよ！　DMに送ってもらったメッセージを`!channel`で指定されたチャンネルに転送するよ！\n";
 const ABOUT_AI: &str = "## おはなしもできるよ！\nまなみの部屋でいっぱい話しかけてね！\n";
-const ABOUT_SLASH: &str = "## まなみはスラッシュコマンドに対応しているよ！
-```
-/help                ヘルプを表示するよ！
-/ping                起きてたらお返事するね！
-/dice                サイコロを振るよ！　ex. 2d6 <= 9
-/bf                  まなみはいんたぷりた？　なんだよ！
-```
-";
 
-const ABOUT_DM: &str = "## まなみはDMでコマンドを受け付けるよ！
-```
-!channel             代筆先のチャンネルを指定するよ！
-!erocheck            あなたがエロガキかどうかを判定するよ！
-!help                ヘルプを表示するよ！
-!calc <expr>         数式を計算するよ！
-!var <name>=<expr>   calcで使える変数を定義するよ！
-!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ！
-!calcsay <expr>      calcの結果を代筆先に送信するよ！
-";
+fn generate_help_rows(usages: &[(&str, &str)], usage_space_minimum: usize) -> String {
+    let usage_space = usages
+        .iter()
+        .map(|(usage, _)| usage.len() + 1)
+        .max()
+        .unwrap_or(0)
+        .max(usage_space_minimum);
 
-const ABOUT_GUILD: &str = "## まなみはグループチャットでコマンドを受け付けるよ！
-```
-![n]d<m>             m面ダイスをn回振るよ！
-!help                ヘルプを表示するよ！
-!isprime <n>         nが素数かどうかを判定するよ！
-!calc <expr>         数式を計算するよ！
-!var <name>=<expr>   calcで使える変数を定義するよ！
-!varbulk <codeblock> ;区切りで複数の変数を一度に定義するよ！
-!jail <user> [sec]   不届き者を収監して 見せます・袋とじ・管理 以外のカテゴリで喋れなくするよ！
-!unjail <user>       収監を解除するよ！
-!cclemon <opponent>  CCレモンをするよ！
-!clear               コマンドを実行したチャンネルのログを忘れるよ！
-```
-";
+    usages
+        .iter()
+        .map(|(usage, description)| {
+            format!("{:<width$}{}", usage, description, width = usage_space)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
 
-pub fn run() -> String {
+const USAGE_SPACE_MINIMUM: usize = 21;
+
+fn generate_slash_help(slash_commands: &[ManamiSlashCommand]) -> String {
+    let help_str = generate_help_rows(
+        &slash_commands
+            .iter()
+            .map(|cmd| (cmd.usage, cmd.description))
+            .collect::<Vec<_>>(),
+        USAGE_SPACE_MINIMUM,
+    );
+    let mut content = MessageBuilder::new();
+    content.push("## まなみはスラッシュコマンドに対応しているよ！\n");
+    content.push("```\n");
+    content.push(help_str);
+    content.push("\n```\n");
+    content.build()
+}
+
+fn generate_dm_help(prefix_commands: &[ManamiPrefixCommand]) -> String {
+    let help_str = generate_help_rows(
+        &prefix_commands
+            .iter()
+            .filter(|cmd| cmd.is_dm_command)
+            .map(|cmd| (cmd.usage, cmd.description))
+            .collect::<Vec<_>>(),
+        USAGE_SPACE_MINIMUM,
+    );
+
+    let mut content = MessageBuilder::new();
+    content.push("## まなみはDMでコマンドを受け付けるよ！\n");
+    content.push("```\n");
+    content.push(help_str);
+    content.push("\n```\n");
+    content.build()
+}
+
+fn generate_guild_help(prefix_commands: &[ManamiPrefixCommand]) -> String {
+    let help_str = generate_help_rows(
+        &prefix_commands
+            .iter()
+            .filter(|cmd| cmd.is_guild_command)
+            .map(|cmd| (cmd.usage, cmd.description))
+            .collect::<Vec<_>>(),
+        USAGE_SPACE_MINIMUM,
+    );
+
+    let mut content = MessageBuilder::new();
+    content.push("## まなみはグループチャットでコマンドを受け付けるよ！\n");
+    content.push("```\n");
+    content.push(help_str);
+    content.push("\n```\n");
+    content.build()
+}
+
+fn generate_help(
+    slash_commands: &[ManamiSlashCommand],
+    prefix_commands: &[ManamiPrefixCommand],
+) -> String {
     let mut content = MessageBuilder::new();
     content
         .push(ABOUT_ME)
         .push(ABOUT_GHOSTWRITE)
         .push(ABOUT_AI)
-        .push(ABOUT_SLASH)
-        .push(ABOUT_DM)
-        .push(ABOUT_GUILD);
-    content.build()
+        .push(generate_slash_help(slash_commands))
+        .push(generate_dm_help(prefix_commands))
+        .push(generate_guild_help(prefix_commands))
+        .build()
 }
 
-pub async fn run_old(ctx: &CommandContext<'_>) {
-    let content = run();
+pub fn register() -> CreateCommand {
+    CreateCommand::new("help").description("まなみの自己紹介だよ！")
+}
+
+pub fn run(bot: &Bot) -> String {
+    generate_help(&bot.slash_commands, &bot.prefix_commands)
+}
+
+pub async fn run_old(ctx: CommandContext<'_>) {
+    let content = run(ctx.bot);
 
     ctx.channel_id.say(ctx.cache_http(), content).await.unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{prefix_commands, slash_commands};
+
+    use super::*;
+
+    #[test]
+    fn test_generate_help() {
+        let slash_commands = slash_commands(&[]);
+        let prefix_commands = prefix_commands(&[]);
+
+        let help = generate_help(&slash_commands, &prefix_commands);
+        println!("{}", help);
+        assert!(help.contains("まなみの自己紹介だよ！"));
+    }
 }

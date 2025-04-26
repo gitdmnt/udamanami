@@ -1,3 +1,8 @@
+use std::pin::Pin;
+
+use crate::Bot;
+use serenity::all::ResolvedOption;
+
 pub mod auto;
 pub mod bf;
 pub mod calc;
@@ -68,4 +73,25 @@ impl<'a> CommandContext<'a> {
     pub fn cache_http(&self) -> &'a serenity::http::Http {
         &self.ctx.http
     }
+}
+
+type BoxedFuture<'x, T> = Pin<Box<dyn std::future::Future<Output = T> + Send + 'x>>;
+
+pub struct ManamiPrefixCommand {
+    pub name: &'static str,
+    pub alias: &'static [&'static str],
+    pub usage: &'static str,
+    pub description: &'static str,
+    pub run: for<'a> fn(CommandContext<'a>) -> BoxedFuture<'a, ()>,
+    pub is_dm_command: bool,
+    pub is_guild_command: bool,
+}
+
+pub struct ManamiSlashCommand {
+    pub name: &'static str,
+    pub usage: &'static str,
+    pub description: &'static str,
+    pub register: fn() -> serenity::builder::CreateCommand,
+    pub run: for<'a> fn(Vec<ResolvedOption<'a>>, &'a Bot) -> BoxedFuture<'a, String>,
+    pub is_local_command: bool,
 }

@@ -1,7 +1,18 @@
 use crate::commands::CommandContext;
 use serenity::utils::MessageBuilder;
 
-pub async fn run(ctx: &CommandContext<'_>) {
+use crate::commands::ManamiPrefixCommand;
+pub const PREFIX_CHANNEL_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+    name: "channel",
+    alias: &[],
+    usage: "!channel",
+    description: "代筆先のチャンネルを指定するよ！",
+    run: |ctx| Box::pin(run(ctx)),
+    is_dm_command: true,
+    is_guild_command: false,
+};
+
+pub async fn run(ctx: CommandContext<'_>) {
     let args = ctx.args();
 
     // 引数なしの場合はチャンネル一覧を表示
