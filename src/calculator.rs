@@ -18,7 +18,7 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExprOp2 {
     Add,
     Sub,
@@ -61,7 +61,7 @@ impl std::fmt::Display for ExprOp2 {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum ExprOp1 {
     Neg,
@@ -79,7 +79,7 @@ impl std::fmt::Display for ExprOp1 {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[allow(dead_code)]
 pub enum Expr {
     IVal(i64),
@@ -564,6 +564,34 @@ pub struct EvalContext {
     hashmap: DashMap<String, EvalResult>,
 }
 
+impl Serialize for EvalContext {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.hashmap
+            .iter()
+            .map(|entry| (entry.key().clone(), entry.value().clone()))
+            .collect::<HashMap<String, EvalResult>>()
+            .serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for EvalContext {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let hashmap = HashMap::<String, EvalResult>::deserialize(deserializer)?;
+        let dashmap = DashMap::new();
+        for (k, v) in hashmap {
+            dashmap.insert(k, v);
+        }
+
+        Ok(Self { hashmap: dashmap })
+    }
+}
+
 impl EvalContext {
     pub fn new() -> Self {
         Self {
@@ -590,7 +618,7 @@ impl Default for EvalContext {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EvalResult {
     IVal(i64),
     FVal(f64),
@@ -2877,6 +2905,30 @@ mod tests_eval {
         match eval_expr(&expr, &context) {
             Ok(EvalResult::SVal(s)) => {
                 assert_eq!(s, "123.456");
+            }
+            _ => {
+                std::panic!();
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_evalresult_serde {
+    use super::*;
+
+    #[test]
+    fn test_evalresult_serde() {
+        let expr = parse_expr("((f,x)=>sin(f(f(x))))").unwrap().1;
+        let global = EvalContext::new();
+        let context = generate_context(&global);
+        match eval_expr(&expr, &context) {
+            Ok(result) => {
+                let serialized = serde_json::to_string(&result).unwrap();
+                let deserialized: EvalResult = serde_json::from_str(&serialized).unwrap();
+                println!("Serialized: {serialized}");
+                println!("Deserialized: {deserialized}");
+                assert_eq!(result, deserialized);
             }
             _ => {
                 std::panic!();
