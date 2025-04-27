@@ -8,7 +8,7 @@ use dashmap::DashMap;
 
 use regex::Regex;
 use serenity::{
-    all::Command,
+    all::{ActivityData, Command},
     async_trait,
     builder::{CreateInteractionResponse, CreateInteractionResponseMessage},
     model::{
@@ -222,12 +222,15 @@ impl EventHandler for Bot {
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
-        let message_hello = match (self.commit_hash.clone(), self.commit_date.clone()) {
-            (Some(commit_hash), Some(commit_date)) => {
-                format!("おはようっ！ ||commit: {commit_hash} ({commit_date})||")
-            }
-            _ => "おはようっ！".to_owned(),
+        if let (Some(commit_hash), Some(commit_date)) =
+            (self.commit_hash.clone(), self.commit_date.clone())
+        {
+            ctx.set_activity(Some(ActivityData::custom(format!(
+                "commit: {commit_hash} ({commit_date})"
+            ))));
         };
+
+        let message_hello = "おはようっ！";
 
         if let Err(why) = self.debug_channel_id.say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
