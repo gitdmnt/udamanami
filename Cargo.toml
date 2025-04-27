@@ -25,7 +25,7 @@ rand_distr = "0.4.3"
 strum = { version = "0.26", features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["json"] }
 serde_json = "1.0.132"
-serde = "1.0.215"
+serde = { version = "1.0.215", features = ["derive"] }
 async-openai = "0.26.0"
 
 [lints.clippy]

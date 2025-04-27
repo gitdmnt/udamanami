@@ -21,7 +21,7 @@ use serenity::{
 };
 use tracing::{error, info};
 
-use calculator::EvalResult;
+use calculator::EvalContext;
 use commands::*;
 
 pub mod commands;
@@ -92,7 +92,7 @@ pub struct Bot {
     pub commit_hash: Option<String>,
     pub commit_date: Option<String>,
 
-    pub variables: DashMap<String, EvalResult>,
+    pub variables: EvalContext,
 
     pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
 
@@ -120,10 +120,11 @@ impl Bot {
         disabled_commands: &[&str],
     ) -> Self {
         let userdata = DashMap::new();
-        let variables = DashMap::new();
+        let variables = EvalContext::new();
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
-        let reply_to_all_mode = Arc::new(Mutex::new(ReplyToAllModeData::blank()));
+        let reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>> =
+            Arc::new(Mutex::new(ReplyToAllModeData::blank()));
         let prefix_commands = prefix_commands(disabled_commands);
         let slash_commands = slash_commands(disabled_commands);
 

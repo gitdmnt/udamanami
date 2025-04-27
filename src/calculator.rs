@@ -16,6 +16,8 @@ use rand::{prelude::Distribution, Rng};
 use rand_distr::StandardNormal;
 use strum::{EnumIter, IntoEnumIterator};
 
+use serde::{Deserialize, Serialize};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprOp2 {
     Add,
@@ -557,7 +559,36 @@ pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
 -----------------------------
 */
 
-type Context = DashMap<String, EvalResult>;
+#[derive(Debug, Clone)]
+pub struct EvalContext {
+    hashmap: DashMap<String, EvalResult>,
+}
+
+impl EvalContext {
+    pub fn new() -> Self {
+        Self {
+            hashmap: DashMap::new(),
+        }
+    }
+
+    pub fn get(&self, key: &String) -> Option<dashmap::mapref::one::Ref<'_, String, EvalResult>> {
+        self.hashmap.get(key)
+    }
+
+    pub fn insert(&self, key: String, value: EvalResult) -> Option<EvalResult> {
+        self.hashmap.insert(key, value)
+    }
+
+    pub fn contains_key(&self, key: &String) -> bool {
+        self.hashmap.contains_key(key)
+    }
+}
+
+impl Default for EvalContext {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum EvalResult {
@@ -567,7 +598,7 @@ pub enum EvalResult {
     SVal(String),
     List(Vec<EvalResult>),
     Object(HashMap<String, Box<EvalResult>>),
-    Closure(Vec<String>, Box<Expr>, Box<Context>),
+    Closure(Vec<String>, Box<Expr>, Box<EvalContext>),
     FuncStdLib(EvalStdLibFun),
     FuncIf,
     FuncLazy,
@@ -591,8 +622,9 @@ impl PartialEq for EvalResult {
     }
 }
 
-fn show_context(ctx: &Context) -> String {
+fn show_context(ctx: &EvalContext) -> String {
     let inner = ctx
+        .hashmap
         .iter()
         .map(|e| format!("{}: {}", e.key(), e.value()))
         .collect::<Vec<String>>()
@@ -826,8 +858,8 @@ fn eval_expr_ctx(
     expr: &Expr,
     step: usize,
     force_eval: bool,
-    global_context: &Context,
-    local_context: &Context,
+    global_context: &EvalContext,
+    local_context: &EvalContext,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)> {
     if step > STEP_LIMIT {
         return Err((EvalError::StepLimitExceeded, expr.clone()));
@@ -1116,7 +1148,7 @@ fn eval_expr_ctx(
         }
         Expr::Lambda(name, body) => {
             let free_vars = list_free_var(body);
-            let captured = DashMap::new();
+            let captured = EvalContext::new();
             for varname in free_vars {
                 if let Some(val) = local_context.get(&varname) {
                     captured.insert(varname, val.clone());
@@ -1188,8 +1220,8 @@ pub fn deep_eq(a: &EvalResult, b: &EvalResult) -> bool {
 pub fn eval_apply(
     expr: &Expr,
     steps: usize,
-    global_context: &Context,
-    local_context: &Context,
+    global_context: &EvalContext,
+    local_context: &EvalContext,
     func: EvalResult,
     args: Vec<EvalResult>,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)> {
@@ -1225,8 +1257,8 @@ pub fn eval_apply(
 pub fn eval_stdlib(
     expr: &Expr,
     step: usize,
-    global_context: &Context,
-    local_context: &Context,
+    global_context: &EvalContext,
+    local_context: &EvalContext,
     func: EvalStdLibFun,
     args: Vec<EvalResult>,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)> {
@@ -2299,7 +2331,7 @@ pub fn stdlib_list() -> Vec<(String, EvalStdLibFun)> {
     libfuns
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, EnumIter)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
 pub enum EvalStdLibFun {
     //Print,
     //Println,
@@ -2359,8 +2391,8 @@ impl std::fmt::Display for EvalStdLibFun {
 type LibFunBody = dyn Fn(
     &Expr,
     usize,
-    &Context,
-    &Context,
+    &EvalContext,
+    &EvalContext,
     Vec<EvalResult>,
 ) -> Result<(EvalResult, usize), (EvalError, Expr)>;
 
@@ -2417,7 +2449,7 @@ fn help_libfun(
     s
 }
 
-fn generate_context(global_context: &Context) -> Context {
+fn generate_context(global_context: &EvalContext) -> EvalContext {
     let new_context = global_context.clone();
     let stdlib = stdlib_list();
     stdlib.into_iter().for_each(|(name, func)| {
@@ -2429,15 +2461,18 @@ fn generate_context(global_context: &Context) -> Context {
     new_context
 }
 
-pub fn eval_expr(expr: &Expr, global_context: &Context) -> Result<EvalResult, (EvalError, Expr)> {
+pub fn eval_expr(
+    expr: &Expr,
+    global_context: &EvalContext,
+) -> Result<EvalResult, (EvalError, Expr)> {
     let libfun_context = generate_context(global_context);
-    match eval_expr_ctx(expr, 0, true, &libfun_context, &DashMap::new()) {
+    match eval_expr_ctx(expr, 0, true, &libfun_context, &EvalContext::new()) {
         Ok((result, _)) => Ok(result),
         Err((e, expr)) => Err((e, expr)),
     }
 }
 
-pub fn eval_from_str(input: &str, global_context: &Context) -> Result<EvalResult, String> {
+pub fn eval_from_str(input: &str, global_context: &EvalContext) -> Result<EvalResult, String> {
     match parse_expr(input) {
         Ok((_, expr)) => match eval_expr(&expr, global_context) {
             Ok(result) => Ok(result),
@@ -2645,7 +2680,7 @@ mod tests_eval {
     #[test]
     fn test_eval_longexpr() {
         let expr = parse_expr("((f,x)=>f(f(x)))((x)=>x*6,100)").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         assert_eq!(
             EvalResult::IVal(100 * 6 * 6),
             eval_expr(&expr, &context).unwrap()
@@ -2655,7 +2690,7 @@ mod tests_eval {
     #[test]
     fn test_eval_dice() {
         let expr = parse_expr("10000d20").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::IVal(i)) => {
                 println!("{i}");
@@ -2668,7 +2703,7 @@ mod tests_eval {
     #[test]
     fn test_eval_dice2() {
         let expr = parse_expr("1d2").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         let result = eval_expr(&expr, &context);
         match result {
             Ok(EvalResult::IVal(i)) => {
@@ -2684,7 +2719,7 @@ mod tests_eval {
     #[test]
     fn test_string() {
         let expr = parse_expr("\"Hello, \\nworld!\\u{1f305}\"").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::SVal(s)) => {
                 println!("{s}");
@@ -2698,7 +2733,7 @@ mod tests_eval {
     #[test]
     fn test_eval_object() {
         let expr = parse_expr("{a: 1, b: {c: 100, d: 200}}.b").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::Object(o)) => {
                 println!("{o:?}");
@@ -2712,7 +2747,7 @@ mod tests_eval {
     #[test]
     fn test_ignore_space() {
         let expr = parse_expr(" ( 1 + 2 * 3 / 2 )").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::FVal(f)) => {
                 println!("{f}");
@@ -2726,7 +2761,7 @@ mod tests_eval {
     #[test]
     fn test_equal_int() {
         let expr = parse_expr("1 == 1").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::BVal(true)) => {
                 //println!("{}", b);
@@ -2740,7 +2775,7 @@ mod tests_eval {
     #[test]
     fn test_equal_float() {
         let expr = parse_expr("1.0 == 1").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::BVal(true)) => {
                 //println!("{}", b);
@@ -2754,7 +2789,7 @@ mod tests_eval {
     #[test]
     fn test_equal_string() {
         let expr = parse_expr("\"abc\" == \"abc\"").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::BVal(true)) => {
                 //println!("{}", b);
@@ -2768,7 +2803,7 @@ mod tests_eval {
     #[test]
     fn test_equal_list() {
         let expr = parse_expr("[1, 2, 3] == [1, 2, 3]").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::BVal(true)) => {
                 //println!("{}", b);
@@ -2782,7 +2817,7 @@ mod tests_eval {
     #[test]
     fn test_equal_object() {
         let expr = parse_expr("{a: 1, b: 2} == {b: 2, a: 1}").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::BVal(true)) => {
                 //println!("{}", b);
@@ -2796,7 +2831,7 @@ mod tests_eval {
     #[test]
     fn test_atof() {
         let expr = parse_expr("atof(\"123.456\")").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::FVal(f)) => {
                 assert_eq!(f, 123.456);
@@ -2810,7 +2845,7 @@ mod tests_eval {
     #[test]
     fn test_atoi() {
         let expr = parse_expr("atoi(\"123456\")").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::IVal(i)) => {
                 assert_eq!(i, 123456);
@@ -2824,7 +2859,7 @@ mod tests_eval {
     #[test]
     fn test_atob() {
         let expr = parse_expr("atob(\"true\")").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(bv) => {
                 assert_eq!(bv, EvalResult::BVal(true));
@@ -2838,7 +2873,7 @@ mod tests_eval {
     #[test]
     fn test_tostr() {
         let expr = parse_expr("tostr(123.456)").unwrap().1;
-        let context = DashMap::new();
+        let context = EvalContext::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::SVal(s)) => {
                 assert_eq!(s, "123.456");
