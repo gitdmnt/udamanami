@@ -224,7 +224,7 @@ impl EventHandler for Bot {
 
         let message_hello = match (self.commit_hash.clone(), self.commit_date.clone()) {
             (Some(commit_hash), Some(commit_date)) => {
-                format!("おはようっ！ ||commit: {} ({})||", commit_hash, commit_date)
+                format!("おはようっ！ ||commit: {commit_hash} ({commit_date})||")
             }
             _ => "おはようっ！".to_owned(),
         };
@@ -380,7 +380,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),
                     Err(e) => {
-                        format!("Error sending message: {:?}", e)
+                        format!("Error sending message: {e:?}")
                     }
                 };
                 let _ = &msg.channel_id.say(&ctx.http, content).await;
@@ -425,7 +425,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),
                     Err(e) => {
-                        format!("Error sending message: {:?}", e)
+                        format!("Error sending message: {e:?}")
                     }
                 };
                 let _ = &msg.channel_id.say(&ctx.http, content).await;

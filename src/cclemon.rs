@@ -207,7 +207,7 @@ pub async fn cclemon(ctx: &CommandContext<'_>, users: (&UserId, &UserId)) {
             let user_id = interaction.user.id;
             let action = interaction.data.custom_id.parse().unwrap();
             let content = match game.action(user_id, action) {
-                Ok(()) => format!("{}を選択したよ", action),
+                Ok(()) => format!("{action}を選択したよ"),
                 Err(ActionError::UnknownUser) => "参加してないでしょ".to_owned(),
                 Err(ActionError::NotEnoughCost) => "コストが足りないよ".to_owned(),
             };

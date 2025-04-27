@@ -39,9 +39,7 @@ fn generate_help_rows(usages: &[(&str, &str)], usage_space_minimum: usize) -> St
 
     usages
         .iter()
-        .map(|(usage, description)| {
-            format!("{:<width$}{}", usage, description, width = usage_space)
-        })
+        .map(|(usage, description)| format!("{usage:<usage_space$}{description}"))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -141,7 +139,7 @@ mod tests {
         let prefix_commands = prefix_commands(&[]);
 
         let help = generate_help(&slash_commands, &prefix_commands);
-        println!("{}", help);
+        println!("{help}");
         assert!(help.contains("まなみの自己紹介だよ！"));
     }
 }

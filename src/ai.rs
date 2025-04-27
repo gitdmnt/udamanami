@@ -144,7 +144,7 @@ impl Default for GeminiConversation {
 impl std::fmt::Display for GeminiConversation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let result = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        write!(f, "{}", result)
+        write!(f, "{result}")
     }
 }
 
@@ -160,7 +160,7 @@ impl GeminiAI {
         let content = GeminiContent {
             role: Some("user".to_owned()),
             parts: vec![Part {
-                text: format!("{}: {}", user, message),
+                text: format!("{user}: {message}"),
             }],
         };
         let mut contents = self.conversation.contents.lock().unwrap();
@@ -250,8 +250,8 @@ mod gemini_tests {
         println!("{}", &ai.conversation);
         let response = ai.generate().await;
         match response {
-            Ok(res) => println!("Response: {}", res),
-            Err(err) => println!("Error: {}", err),
+            Ok(res) => println!("Response: {res}"),
+            Err(err) => println!("Error: {err}"),
         }
     }
 }

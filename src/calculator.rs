@@ -98,9 +98,9 @@ pub enum Expr {
 impl std::fmt::Display for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::IVal(i) => write!(f, "{}", i),
-            Self::FVal(v) => write!(f, "{}", v),
-            Self::BVal(b) => write!(f, "{}", b),
+            Self::IVal(i) => write!(f, "{i}"),
+            Self::FVal(v) => write!(f, "{v}"),
+            Self::BVal(b) => write!(f, "{b}"),
             Self::SVal(s) => write!(f, "\"{}\"", s.escape_debug()),
             Self::List(l) => write!(
                 f,
@@ -110,19 +110,19 @@ impl std::fmt::Display for Expr {
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Self::At(e1, e2) => write!(f, "{}[{}]", e1, e2),
+            Self::At(e1, e2) => write!(f, "{e1}[{e2}]"),
             Self::Object(o) => write!(
                 f,
                 "{{{}}}",
                 o.iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
-            Self::Get(e, k) => write!(f, "{}.{}", e, k),
-            Self::Const(s) => write!(f, "{}", s),
-            Self::Op1(op, e) => write!(f, "{}{}", op, e),
-            Self::Op2(op, e1, e2) => write!(f, "({} {} {})", e1, op, e2),
+            Self::Get(e, k) => write!(f, "{e}.{k}"),
+            Self::Const(s) => write!(f, "{s}"),
+            Self::Op1(op, e) => write!(f, "{op}{e}"),
+            Self::Op2(op, e1, e2) => write!(f, "({e1} {op} {e2})"),
             Self::Apply(name, args) => {
                 write!(
                     f,
@@ -262,7 +262,7 @@ fn parse_int(input: &str) -> IResult<&str, Expr> {
 fn parse_float(input: &str) -> IResult<&str, Expr> {
     map(
         separated_pair(digit1, char('.'), digit1),
-        |(a, b): (&str, &str)| Expr::FVal(format!("{}.{}", a, b).parse().unwrap()),
+        |(a, b): (&str, &str)| Expr::FVal(format!("{a}.{b}").parse().unwrap()),
     )(input)
 }
 
@@ -597,16 +597,16 @@ fn show_context(ctx: &Context) -> String {
         .map(|e| format!("{}: {}", e.key(), e.value()))
         .collect::<Vec<String>>()
         .join(", ");
-    format!("{{{}}}", inner)
+    format!("{{{inner}}}")
 }
 
 impl std::fmt::Display for EvalResult {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Self::IVal(i) => write!(f, "{}", i),
-            Self::FVal(v) => write!(f, "{}", v),
-            Self::BVal(b) => write!(f, "{}", b),
-            Self::SVal(s) => write!(f, "\"{}\"", s),
+            Self::IVal(i) => write!(f, "{i}"),
+            Self::FVal(v) => write!(f, "{v}"),
+            Self::BVal(b) => write!(f, "{b}"),
+            Self::SVal(s) => write!(f, "\"{s}\""),
             Self::List(l) => write!(
                 f,
                 "[{}]",
@@ -619,7 +619,7 @@ impl std::fmt::Display for EvalResult {
                 f,
                 "{{{}}}",
                 o.iter()
-                    .map(|(k, v)| format!("{}: {}", k, v))
+                    .map(|(k, v)| format!("{k}: {v}"))
                     .collect::<Vec<String>>()
                     .join(", ")
             ),
@@ -630,10 +630,10 @@ impl std::fmt::Display for EvalResult {
                 body,
                 show_context(context)
             ),
-            Self::FuncStdLib(fun) => write!(f, "{}", fun),
+            Self::FuncStdLib(fun) => write!(f, "{fun}"),
             Self::FuncIf => write!(f, "if"),
             Self::FuncLazy => write!(f, "lazy"),
-            Self::Lazy(body) => write!(f, "Lazy({})", body),
+            Self::Lazy(body) => write!(f, "Lazy({body})"),
         }
     }
 }
@@ -661,23 +661,23 @@ impl std::fmt::Display for EvalError {
             Self::NegativeDice => write!(f, "Negative dice"),
             Self::InvalidDice => write!(f, "Invalid dice"),
             Self::TooManyDice => write!(f, "Too many dice"),
-            Self::UndefinedVar(s) => write!(f, "Undefined variable: {}", s),
+            Self::UndefinedVar(s) => write!(f, "Undefined variable: {s}"),
             Self::ArgCountMismatch(a, b) => {
-                write!(f, "Argument count mismatch: {} and {}", a, b)
+                write!(f, "Argument count mismatch: {a} and {b}")
             }
             Self::StepLimitExceeded => write!(f, "Step limit exceeded"),
             Self::OutOfRange => write!(f, "Out of range"),
-            Self::NotANumber(e) => write!(f, "{} is not a number", e),
-            Self::NotAFunction(e) => write!(f, "{} is not a function", e),
-            Self::NotAList(e) => write!(f, "{} is not a list", e),
-            Self::NotAnIndex(e) => write!(f, "{} is not an index", e),
-            Self::NotAnObject(e) => write!(f, "{} is not an object", e),
+            Self::NotANumber(e) => write!(f, "{e} is not a number"),
+            Self::NotAFunction(e) => write!(f, "{e} is not a function"),
+            Self::NotAList(e) => write!(f, "{e} is not a list"),
+            Self::NotAnIndex(e) => write!(f, "{e} is not an index"),
+            Self::NotAnObject(e) => write!(f, "{e} is not an object"),
         }
     }
 }
 
 pub fn error_str((e, expr): (EvalError, Expr)) -> String {
-    format!("Error: {} at {}", e, expr)
+    format!("Error: {e} at {expr}")
 }
 
 pub const fn val_as_float(val: &EvalResult) -> Option<f64> {
@@ -769,7 +769,7 @@ fn is_str(s: EvalResult) -> bool {
 pub fn val_as_str(s: &EvalResult) -> String {
     match s {
         EvalResult::SVal(s) => s.clone(),
-        _ => format!("{}", s),
+        _ => format!("{s}"),
     }
 }
 
@@ -784,8 +784,8 @@ fn list_free_var(expr: &Expr) -> HashSet<String> {
             .map(list_free_var)
             .fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
         Expr::Object(o) => o
-            .iter()
-            .map(|(_, v)| list_free_var(v))
+            .values()
+            .map(|v| list_free_var(v))
             .fold(HashSet::new(), |acc, x| acc.union(&x).cloned().collect()),
         Expr::Get(e, _) => list_free_var(e),
         Expr::At(e1, e2) => list_free_var(e1)
@@ -949,14 +949,14 @@ fn eval_expr_ctx(
                     if is_str(val1.clone()) || is_str(val2.clone()) {
                         let str1 = match val1.clone() {
                             EvalResult::SVal(s) => s,
-                            _ => format!("{}", val1),
+                            _ => format!("{val1}"),
                         };
                         let str2 = match val2.clone() {
                             EvalResult::SVal(s) => s,
-                            _ => format!("{}", val2),
+                            _ => format!("{val2}"),
                         };
                         Some(Ok((
-                            EvalResult::SVal(format!("{}{}", str1, str2)),
+                            EvalResult::SVal(format!("{str1}{str2}")),
                             next_step + 1,
                         )))
                     } else {
@@ -2189,7 +2189,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                     help.push_str(
                         &stdlib_list()
                             .iter()
-                            .map(|(name, _)| format!("`{}`", name))
+                            .map(|(name, _)| format!("`{name}`"))
                             .collect::<Vec<String>>()
                             .join(", "),
                     );
@@ -2400,16 +2400,16 @@ fn help_libfun(
         alias, usage, note, ..
     }: &LibFun,
 ) -> String {
-    let mut s = format!("### {}\n", usage);
+    let mut s = format!("### {usage}\n");
     if !note.is_empty() {
-        s.push_str(&format!("{}\n", note));
+        s.push_str(&format!("{note}\n"));
     }
     if !alias.is_empty() {
         s.push_str(&format!(
             "alias: {}\n",
             alias
                 .iter()
-                .map(|a| format!("`{}`", a))
+                .map(|a| format!("`{a}`"))
                 .collect::<Vec<String>>()
                 .join(", ")
         ));
@@ -2443,7 +2443,7 @@ pub fn eval_from_str(input: &str, global_context: &Context) -> Result<EvalResult
             Ok(result) => Ok(result),
             Err((e, expr)) => Err(error_str((e, expr))),
         },
-        Err(e) => Err(format!("Parse error: {:?}", e)),
+        Err(e) => Err(format!("Parse error: {e:?}")),
     }
 }
 
@@ -2573,8 +2573,8 @@ mod tests_parse {
     #[test]
     fn test_parse_longexpr() {
         match parse_expr("1*2+3/4 - 5 % 6 ^ 7 ^ 8 * 9 + 0") {
-            Ok((_, expr)) => println!("{}", expr),
-            Err(e) => println!("{:?}", e),
+            Ok((_, expr)) => println!("{expr}"),
+            Err(e) => println!("{e:?}"),
         }
     }
 
@@ -2658,7 +2658,7 @@ mod tests_eval {
         let context = DashMap::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::IVal(i)) => {
-                println!("{}", i);
+                println!("{i}");
                 assert!((50000..=150000).contains(&i));
             }
             _ => std::panic!(),
@@ -2672,10 +2672,10 @@ mod tests_eval {
         let result = eval_expr(&expr, &context);
         match result {
             Ok(EvalResult::IVal(i)) => {
-                println!("{}", i);
+                println!("{i}");
             }
             _ => {
-                println!("{:?}", result);
+                println!("{result:?}");
                 std::panic!();
             }
         }
@@ -2687,7 +2687,7 @@ mod tests_eval {
         let context = DashMap::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::SVal(s)) => {
-                println!("{}", s);
+                println!("{s}");
             }
             _ => {
                 std::panic!();
@@ -2701,7 +2701,7 @@ mod tests_eval {
         let context = DashMap::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::Object(o)) => {
-                println!("{:?}", o);
+                println!("{o:?}");
             }
             _ => {
                 std::panic!();
@@ -2715,7 +2715,7 @@ mod tests_eval {
         let context = DashMap::new();
         match eval_expr(&expr, &context) {
             Ok(EvalResult::FVal(f)) => {
-                println!("{}", f);
+                println!("{f}");
             }
             _ => {
                 std::panic!();
