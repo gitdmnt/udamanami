@@ -48,7 +48,7 @@ pub async fn var_main(
         }
         Err(e) => {
             reply
-                .say(&cache_http, format!("{} ……だってさ。", e))
+                .say(&cache_http, format!("{e} ……だってさ。"))
                 .await
                 .unwrap();
         }

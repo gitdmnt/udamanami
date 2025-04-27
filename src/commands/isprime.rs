@@ -73,7 +73,7 @@ pub async fn run(ctx: CommandContext<'_>) {
         } else if factor.is_empty() {
             "素数じゃないよ。あたりまえでしょ？".to_owned()
         } else {
-            format!("素数じゃないよ。素因数は{:?}だよ", factor)
+            format!("素数じゃないよ。素因数は{factor:?}だよ")
         }
     );
     ctx.channel_id

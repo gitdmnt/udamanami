@@ -131,7 +131,7 @@ fn run_body(resdice: Result<Dice, &str>) -> String {
     }
 
     // format dice roll result
-    let mut result = format!("{}D{} -> {}", num, dice, sum);
+    let mut result = format!("{num}D{dice} -> {sum}");
     if num > 1 {
         result.push_str(&format!(" ({})", res.join(", ")));
     }
@@ -197,7 +197,7 @@ async fn dice(reply: &ChannelId, http: &Http, parsed: Dice) {
         sum += u128::from(r);
     }
     // 結果
-    let roll_result = format!("{}D{} -> {}", num, dice, sum);
+    let roll_result = format!("{num}D{dice} -> {sum}");
     // 内訳
     let roll_items = format!(" ({})", vec.join(", "));
 
@@ -205,7 +205,7 @@ async fn dice(reply: &ChannelId, http: &Http, parsed: Dice) {
     let operation_result = cmp.map(|(operator, operand)| {
         let is_ok = operator.cmp(sum, operand);
         let is_ok = if is_ok { "OK" } else { "NG" };
-        format!(" {} {} -> {}", operator, operand, is_ok)
+        format!(" {operator} {operand} -> {is_ok}")
     });
 
     // メッセージの生成と送信

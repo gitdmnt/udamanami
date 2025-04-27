@@ -108,7 +108,7 @@ fn run_body(parsed: Result<(Vec<BrainfuckCommand>, &str), &str>) -> String {
                     output.len() - 1960
                 )
             } else {
-                format!("```\n{}\n```", output)
+                format!("```\n{output}\n```")
             }
         }
         Err(err) => err,
