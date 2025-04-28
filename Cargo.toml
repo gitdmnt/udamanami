@@ -34,7 +34,8 @@ sea-orm = { version = "1.1.10", features = [
   "with-chrono",
   "with-json",
 ] }
-
+sea-orm-migration = "1.1.10"
+chrono = { version = "0.4.40", features = ["serde"] }
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }

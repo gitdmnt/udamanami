@@ -23,12 +23,14 @@ use tracing::{error, info};
 
 use calculator::EvalContext;
 use commands::*;
+use db::BotDatabase;
 
 pub mod commands;
 
 pub mod ai;
 pub mod calculator;
 pub mod cclemon;
+pub mod db;
 pub mod parser;
 
 #[derive(Clone)]
@@ -100,6 +102,8 @@ pub struct Bot {
 
     pub slash_commands: Vec<ManamiSlashCommand>,
     pub prefix_commands: Vec<ManamiPrefixCommand>,
+
+    pub database: BotDatabase,
 }
 
 impl Bot {
@@ -118,6 +122,8 @@ impl Bot {
         commit_date: Option<String>,
 
         disabled_commands: &[&str],
+
+        database: BotDatabase,
     ) -> Self {
         let userdata = DashMap::new();
         let variables = EvalContext::new();
@@ -144,6 +150,7 @@ impl Bot {
             gemini,
             prefix_commands,
             slash_commands,
+            database,
         }
     }
 
