@@ -5,5 +5,4 @@ pub mod prelude;
 pub mod calc_var;
 pub mod channel;
 pub mod message;
-pub mod relations;
 pub mod user;

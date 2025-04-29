@@ -17,7 +17,7 @@ pub const PREFIX_VAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     is_guild_command: true,
 };
 
-const VAR_DEFAULT: &str = "_";
+pub const VAR_DEFAULT: &str = "_";
 
 pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;

@@ -10,6 +10,7 @@ use serenity::model::{
     id::{ChannelId, UserId},
 };
 
+use crate::calculator::EvalResult;
 use crate::db::entity::*;
 
 pub mod entity;
@@ -138,27 +139,53 @@ impl BotDatabase {
             .collect()
     }
 
-    /*
-    pub async fn fetch_log_by_duration(&self, channel_id: i64, duration: Duration) -> anyhow::Result<Vec<MessageModel>> {
+    pub async fn fetch_log_by_duration(
+        &self,
+        channel_id: i64,
+        duration: chrono::Duration,
+    ) -> anyhow::Result<Vec<(MessageId, String, DateTime<Utc>, UserId, String)>> {
         let since = Utc::now() - duration;
 
-        message::Entity::find()
-            .filter(Column::ChannelId.eq(channel_id))
-            .filter(Column::Timestamp.gte(since))
-            .order_by_asc(Column::Timestamp)
+        let messages: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
+            .filter(message::Column::ChannelId.eq(channel_id))
+            .filter(message::Column::Timestamp.gte(since))
+            .order_by_asc(message::Column::Timestamp)
+            .find_also_related(user::Entity)
             .all(&self.db)
-            .await
+            .await?;
+
+        messages
+            .iter()
+            .map(|(message, user)| {
+                let message_id = MessageId::from(message.message_id as u64);
+                let content = message.content.clone();
+                let timestamp = message.timestamp;
+                let user_id = UserId::from(user.as_ref().map_or(0, |u| u.user_id) as u64);
+                let user_name = user
+                    .as_ref()
+                    .map_or("Unknown".to_owned(), |u| u.username.clone());
+                Ok((message_id, content, timestamp, user_id, user_name))
+            })
+            .collect()
     }
 
-    pub async fn upsert_var<T>(&self, varname: &str, expr: T) -> anyhow::Result<()>
-    where
-        T: Serialize,
-    {
-        let value = serde_json::to_value(expr)?;
+    /*
+    pub async fn upsert_var(&self, varname: &str, x: EvalResult) -> anyhow::Result<()> {
+        let value = serde_json::to_value(x)?;
 
-        // UPSERTのクエリ
-        CalcvarEntity::insert(...)
-            .on_conflict(...)
+        let var_model = calc_var::ActiveModel {
+            id: 0,
+            name: ActiveValue::Set(varname.to_owned()),
+            value: ActiveValue::Set(value.to_string()),
+
+        };
+
+        calc_var::Entity::insert(var_model)
+            .on_conflict(
+                OnConflict::columns([calc_var::Column::VarName])
+                    .update_columns([calc_var::Column::VarValue])
+                    .to_owned(),
+            )
             .exec(&self.db)
             .await?;
 

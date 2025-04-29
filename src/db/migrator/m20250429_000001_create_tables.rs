@@ -65,14 +65,11 @@ impl MigrationTrait for Migration {
                 Table::create()
                     .table(CalcVar::Table)
                     .col(
-                        ColumnDef::new(CalcVar::Id)
-                            .integer()
+                        ColumnDef::new(CalcVar::VarName)
+                            .string()
                             .not_null()
-                            .auto_increment()
                             .primary_key(),
                     )
-                    .col(ColumnDef::new(CalcVar::UserId).big_integer().not_null())
-                    .col(ColumnDef::new(CalcVar::VarName).string().not_null())
                     .col(ColumnDef::new(CalcVar::VarValue).string().not_null())
                     .to_owned(),
             )
@@ -127,8 +124,6 @@ pub enum User {
 #[derive(Iden)]
 pub enum CalcVar {
     Table,
-    Id,
-    UserId,
     VarName,
     VarValue,
 }
