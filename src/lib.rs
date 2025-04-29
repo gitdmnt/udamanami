@@ -325,11 +325,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
-
-        // AIのためにメッセージを保存する
-        if room_pointer.get() == bot.debug_channel_id.get() {
-            bot.gemini.add_model_log(&msg.content);
-        }
         return;
     }
 
