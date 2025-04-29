@@ -1,9 +1,18 @@
 use crate::db::migrator::Migrator;
-use sea_orm::prelude::*;
-use sea_orm::Database;
+use chrono::DateTime;
+use chrono::Utc;
+use sea_orm::{prelude::*, sea_query::OnConflict, ActiveValue, Database, QueryOrder, QuerySelect};
 use sea_orm_migration::migrator::MigratorTrait;
-//use sea_orm_migration::SchemaManager;
+use serenity::all::MessageId;
+use serenity::all::User;
+use serenity::model::{
+    channel::Message,
+    id::{ChannelId, UserId},
+};
 
+use crate::db::entity::*;
+
+pub mod entity;
 pub mod migrator;
 
 pub struct BotDatabase {
@@ -19,55 +28,121 @@ impl BotDatabase {
         Ok(Self { db })
     }
 
-    /*
-    pub async fn new_guild_message(&self, message: &MessageCreateEvent) -> anyhow::Result<()> {
-        self.upsert_user(&message.author).await?;
-        self.upsert_channel(&message.channel).await?;
-
-        /*
-        MessageEntity::insert(???)
-            .exec(&self.db)
+    pub async fn add_guild_message(
+        &self,
+        message: &Message,
+        user_name: &str,
+        channel_name: &str,
+    ) -> anyhow::Result<()> {
+        self.upsert_user(&message.author, user_name).await?;
+        self.upsert_channel(&message.channel_id, channel_name, message.thread.is_some())
             .await?;
-        */
 
+        let message_model = message::ActiveModel {
+            message_id: ActiveValue::Set(message.id.get() as i64),
+            channel_id: ActiveValue::Set(message.channel_id.get() as i64),
+            user_id: ActiveValue::Set(message.author.id.get() as i64),
+            timestamp: ActiveValue::Set(message.timestamp.to_utc()),
+            content: ActiveValue::Set(message.content.clone()),
+        };
+
+        message_model.insert(&self.db).await?;
         Ok(())
     }
 
-    pub async fn update_guild_message(&self, edited_message: &MessageUpdateEvent) -> anyhow::Result<()> {
+    pub async fn update_guild_message(&self, edited_message: &Message) -> anyhow::Result<()> {
+        let message_model = message::ActiveModel {
+            message_id: ActiveValue::Set(edited_message.id.get() as i64),
+            content: ActiveValue::Set(edited_message.content.clone()),
+            ..Default::default()
+        };
 
-            /*
-            message::Entity::update(???)
-            .filter(Column::MessageId.eq(edited_message.id))
-            .exec(&self.db)
-            .await?;
-            */
-
+        message_model.update(&self.db).await?;
         Ok(())
     }
 
-    pub async fn delete_guild_message(&self, message_id: i64) -> anyhow::Result<()> {
-            /* */
-            MessageEntity::delete(...)
-            .filter(Column::MessageId.eq(message_id))
-            .exec(&self.db)
-            .await?;
-
+    pub async fn delete_guild_message(&self, message_id: &MessageId) -> anyhow::Result<()> {
+        let message_model = message::ActiveModel {
+            message_id: ActiveValue::Set(message_id.get() as i64),
+            ..Default::default()
+        };
+        message_model.delete(&self.db).await?;
         Ok(())
     }
 
-    pub async fn fetch_log_by_count(&self, channel_id: i64, n: usize) -> anyhow::Result<Vec<MessageModel>> {
-        MessageEntity::find()
-            .filter(Column::ChannelId.eq(channel_id))
-            .order_by_desc(Column::Timestamp)
+    pub async fn upsert_user(&self, user: &User, user_name: &str) -> anyhow::Result<()> {
+        let user_model = user::ActiveModel {
+            user_id: ActiveValue::Set(user.id.get() as i64),
+            username: ActiveValue::Set(user_name.to_owned()),
+        };
+
+        user::Entity::insert(user_model)
+            .on_conflict(
+                OnConflict::columns([user::Column::UserId])
+                    .update_columns([user::Column::Username])
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn upsert_channel(
+        &self,
+        channel_id: &ChannelId,
+        channel_name: &str,
+        is_thread: bool,
+    ) -> anyhow::Result<()> {
+        let channel_model = channel::ActiveModel {
+            channel_id: ActiveValue::Set(channel_id.get() as i64),
+            is_thread: ActiveValue::Set(is_thread),
+            name: ActiveValue::Set(channel_name.to_owned()),
+        };
+
+        channel::Entity::insert(channel_model)
+            .on_conflict(
+                OnConflict::columns([channel::Column::ChannelId])
+                    .update_columns([channel::Column::Name, channel::Column::IsThread])
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_log_by_count(
+        &self,
+        channel_id: i64,
+        n: usize,
+    ) -> anyhow::Result<Vec<(MessageId, String, DateTime<Utc>, UserId, String)>> {
+        let messages: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
+            .filter(message::Column::ChannelId.eq(channel_id))
+            .order_by_desc(message::Column::Timestamp)
             .limit(n as u64)
+            .find_also_related(user::Entity)
             .all(&self.db)
-            .await
+            .await?;
+
+        messages
+            .iter()
+            .map(|(message, user)| {
+                let message_id = MessageId::from(message.message_id as u64);
+                let content = message.content.clone();
+                let timestamp = message.timestamp;
+                let user_id = UserId::from(user.as_ref().map_or(0, |u| u.user_id) as u64);
+                let user_name = user
+                    .as_ref()
+                    .map_or("Unknown".to_owned(), |u| u.username.clone());
+                Ok((message_id, content, timestamp, user_id, user_name))
+            })
+            .collect()
     }
 
+    /*
     pub async fn fetch_log_by_duration(&self, channel_id: i64, duration: Duration) -> anyhow::Result<Vec<MessageModel>> {
         let since = Utc::now() - duration;
 
-        MessageEntity::find()
+        message::Entity::find()
             .filter(Column::ChannelId.eq(channel_id))
             .filter(Column::Timestamp.gte(since))
             .order_by_asc(Column::Timestamp)

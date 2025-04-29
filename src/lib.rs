@@ -7,6 +7,7 @@ use std::{
 use dashmap::DashMap;
 
 use regex::Regex;
+use serenity::all::{MessageId, MessageUpdateEvent};
 use serenity::{
     all::{ActivityData, Command},
     async_trait,
@@ -227,6 +228,36 @@ impl EventHandler for Bot {
         }
     }
 
+    async fn message_update(
+        &self,
+        _: Context,
+        _: Option<Message>,
+        new: Option<Message>,
+        _: MessageUpdateEvent,
+    ) {
+        if let Some(new) = new {
+            if let Err(e) = self.database.update_guild_message(&new).await {
+                error!("Error updating message: {e:?}");
+            }
+        }
+    }
+
+    async fn message_delete(
+        &self,
+        _: Context,
+        _: ChannelId,
+        deleted_message_id: MessageId,
+        _: Option<GuildId>,
+    ) {
+        if let Err(e) = self
+            .database
+            .delete_guild_message(&deleted_message_id)
+            .await
+        {
+            error!("Error deleting message: {e:?}");
+        }
+    }
+
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
@@ -351,19 +382,34 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    // 反応すべきメッセージかどうか確認
-    if !has_privilege(bot, ctx, msg).await {
-        return;
+async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    let user_name = msg.author_nick(&ctx.http).await;
+    let user_name = user_name
+        .as_deref()
+        .unwrap_or_else(|| msg.author.display_name());
+    let channel_name = msg.channel_id.name(&ctx.http).await;
+    let channel_name = channel_name.as_deref().unwrap_or("");
+
+    if let Err(e) = bot
+        .database
+        .add_guild_message(msg, user_name, channel_name)
+        .await
+    {
+        error!("Error adding message: {e:?}");
     }
 
     // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.debug_channel_id.get() {
-        let user_name = msg.author_nick(&ctx.http).await;
-        let user_name = user_name
-            .as_deref()
-            .unwrap_or_else(|| msg.author.display_name());
+    if msg.channel_id.get() == bot.debug_channel_id.get() && !msg.author.bot {
         bot.gemini.add_user_log(user_name, &msg.content);
+    }
+}
+
+async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    save_guild_message(bot, ctx, msg).await;
+
+    // 反応すべきメッセージかどうか確認
+    if !has_privilege(bot, ctx, msg).await {
+        return;
     }
 
     // 全レスモード中？
