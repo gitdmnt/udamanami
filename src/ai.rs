@@ -175,7 +175,7 @@ impl GeminiAI {
             conversation: GeminiConversation::new(),
         }
     }
-    pub fn set_system_instruction(&self, instruction: &str) {
+    pub fn set_system_instruction(&mut self, instruction: &str) {
         let content = GeminiContent {
             role: None,
             parts: vec![Part {
