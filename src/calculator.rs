@@ -599,6 +599,10 @@ impl EvalContext {
         }
     }
 
+    pub const fn from_dashmap(hashmap: DashMap<String, EvalResult>) -> Self {
+        Self { hashmap }
+    }
+
     pub fn get(&self, key: &String) -> Option<dashmap::mapref::one::Ref<'_, String, EvalResult>> {
         self.hashmap.get(key)
     }

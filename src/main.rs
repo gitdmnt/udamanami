@@ -89,19 +89,22 @@ async fn serenity(
 
     let database = BotDatabase::new("./db.sqlite").await?;
 
+    let bot = Bot::new(
+        channel_ids,
+        debug_channel_id,
+        guild_id,
+        jail_mark_role_id,
+        jail_main_role_id,
+        gemini,
+        commit_hash,
+        commit_date,
+        &disabled_commands,
+        database,
+    )
+    .await;
+
     let client = Client::builder(&token, intents)
-        .event_handler(Bot::new(
-            channel_ids,
-            debug_channel_id,
-            guild_id,
-            jail_mark_role_id,
-            jail_main_role_id,
-            gemini,
-            commit_hash,
-            commit_date,
-            &disabled_commands,
-            database,
-        ))
+        .event_handler(bot)
         .await
         .expect("Err creating client");
 

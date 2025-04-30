@@ -1,6 +1,9 @@
+use crate::calculator::EvalContext;
 use crate::db::migrator::Migrator;
 use chrono::DateTime;
 use chrono::Utc;
+use dashmap::DashMap;
+use sea_orm::ConnectOptions;
 use sea_orm::{prelude::*, sea_query::OnConflict, ActiveValue, Database, QueryOrder, QuerySelect};
 use sea_orm_migration::migrator::MigratorTrait;
 use serenity::all::MessageId;
@@ -22,9 +25,10 @@ pub struct BotDatabase {
 
 impl BotDatabase {
     pub async fn new(path: &str) -> anyhow::Result<Self> {
-        let db = Database::connect(format!("sqlite://{path}?mode=rwc")).await?;
-        //let schema_manager = SchemaManager::new(&db);
-        Migrator::refresh(&db).await?;
+        let mut opt: ConnectOptions = format!("sqlite://{path}?mode=rwc").into();
+        opt.sqlx_logging(false);
+        let db = Database::connect(opt).await?;
+        Migrator::up(&db, None).await?;
 
         Ok(Self { db })
     }
@@ -169,15 +173,12 @@ impl BotDatabase {
             .collect()
     }
 
-    /*
     pub async fn upsert_var(&self, varname: &str, x: EvalResult) -> anyhow::Result<()> {
         let value = serde_json::to_value(x)?;
 
         let var_model = calc_var::ActiveModel {
-            id: 0,
-            name: ActiveValue::Set(varname.to_owned()),
-            value: ActiveValue::Set(value.to_string()),
-
+            var_name: ActiveValue::Set(varname.to_owned()),
+            var_value: ActiveValue::Set(value.to_string()),
         };
 
         calc_var::Entity::insert(var_model)
@@ -191,5 +192,56 @@ impl BotDatabase {
 
         Ok(())
     }
-    */
+
+    pub async fn retrieve_eval_context(&self) -> EvalContext {
+        (calc_var::Entity::find().all(&self.db).await).map_or(EvalContext::new(), |models| {
+            EvalContext::from_dashmap({
+                let dashmap = DashMap::new();
+                models.into_iter().for_each(|model| {
+                    if let Ok(value) = serde_json::from_str::<EvalResult>(&model.var_value) {
+                        dashmap.insert(model.var_name, value);
+                    }
+                });
+                dashmap
+            })
+        })
+    }
+
+    pub async fn delete_var(&self, varname: &str) -> anyhow::Result<()> {
+        let var_model = calc_var::ActiveModel {
+            var_name: ActiveValue::Set(varname.to_owned()),
+            ..Default::default()
+        };
+
+        var_model.delete(&self.db).await?;
+        Ok(())
+    }
+}
+
+/// message.user_id -> user.id
+impl Related<user::Entity> for message::Entity {
+    fn to() -> RelationDef {
+        Self::belongs_to(user::Entity)
+            .from(message::Column::UserId)
+            .to(user::Column::UserId)
+            .into()
+    }
+
+    fn via() -> Option<RelationDef> {
+        None
+    }
+}
+
+/// message.channel_id -> channel.id
+impl Related<channel::Entity> for message::Entity {
+    fn to() -> RelationDef {
+        Self::belongs_to(channel::Entity)
+            .from(message::Column::ChannelId)
+            .to(channel::Column::ChannelId)
+            .into()
+    }
+
+    fn via() -> Option<RelationDef> {
+        None
+    }
 }

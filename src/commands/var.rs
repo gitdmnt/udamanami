@@ -1,4 +1,5 @@
 use crate::Bot;
+use regex::Regex;
 use serenity::http::Http;
 use serenity::model::id::ChannelId;
 
@@ -23,14 +24,26 @@ pub async fn run(ctx: CommandContext<'_>) {
     let reply = ctx.channel_id;
     let bot = ctx.bot;
     let input = ctx.args().join(" ");
+    var(reply, ctx.cache_http(), input, bot).await;
+}
 
-    let split: Vec<&str> = input.split('=').collect();
-    let (var, expression) = if split.len() < 2 {
-        (VAR_DEFAULT.to_owned(), input)
-    } else {
-        (split[0].trim().to_owned(), split[1..].join("="))
+pub async fn var(reply: &ChannelId, cache_http: &Http, input: String, bot: &Bot) {
+    let var_pattern = Regex::new(r"([a-zA-Z0-9]+)\s*=\s*(.*)").unwrap();
+
+    let (var, expression) = match var_pattern.captures(&input) {
+        Some(caps) => {
+            if caps.len() == 3 {
+                (
+                    caps.get(1).unwrap().as_str().to_owned(),
+                    caps.get(2).unwrap().as_str().to_owned(),
+                )
+            } else {
+                (VAR_DEFAULT.to_owned(), input)
+            }
+        }
+        None => (VAR_DEFAULT.to_owned(), input),
     };
-    var_main(reply, ctx.cache_http(), var, expression, bot).await;
+    var_main(reply, cache_http, var, expression, bot).await;
 }
 
 pub async fn var_main(
@@ -43,6 +56,9 @@ pub async fn var_main(
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
         Ok(result) => {
+            if var != VAR_DEFAULT {
+                bot.database.upsert_var(&var, result.clone()).await.ok();
+            }
             bot.variables.insert(var, result.clone());
             reply.say(&cache_http, val_as_str(&result)).await.unwrap();
         }

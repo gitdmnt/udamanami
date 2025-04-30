@@ -109,7 +109,7 @@ pub struct Bot {
 
 impl Bot {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub async fn new(
         channel_ids: Vec<ChannelId>,
         debug_channel_id: ChannelId,
 
@@ -127,7 +127,7 @@ impl Bot {
         database: BotDatabase,
     ) -> Self {
         let userdata = DashMap::new();
-        let variables = EvalContext::new();
+        let variables = database.retrieve_eval_context().await;
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
         let reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>> =
