@@ -30,6 +30,13 @@ pub async fn run(ctx: CommandContext<'_>) {
         if s.trim().is_empty() {
             continue;
         }
-        var::var(ctx.channel_id, ctx.cache_http(), s.to_owned(), ctx.bot).await;
+        var::var(
+            ctx.channel_id,
+            ctx.cache_http(),
+            s.to_owned(),
+            ctx.bot,
+            ctx.author_id,
+        )
+        .await;
     }
 }

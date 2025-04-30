@@ -614,6 +614,10 @@ impl EvalContext {
     pub fn contains_key(&self, key: &String) -> bool {
         self.hashmap.contains_key(key)
     }
+
+    pub fn remove(&self, key: &String) -> Option<(String, EvalResult)> {
+        self.hashmap.remove(key)
+    }
 }
 
 impl Default for EvalContext {

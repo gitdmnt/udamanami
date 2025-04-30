@@ -71,6 +71,7 @@ impl MigrationTrait for Migration {
                             .primary_key(),
                     )
                     .col(ColumnDef::new(CalcVar::VarValue).string().not_null())
+                    .col(ColumnDef::new(CalcVar::UserId).big_integer().not_null())
                     .to_owned(),
             )
             .await
@@ -126,4 +127,5 @@ pub enum CalcVar {
     Table,
     VarName,
     VarValue,
+    UserId,
 }

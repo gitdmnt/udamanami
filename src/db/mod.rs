@@ -173,12 +173,18 @@ impl BotDatabase {
             .collect()
     }
 
-    pub async fn upsert_var(&self, varname: &str, x: EvalResult) -> anyhow::Result<()> {
+    pub async fn upsert_var(
+        &self,
+        varname: &str,
+        x: EvalResult,
+        author_id: &UserId,
+    ) -> anyhow::Result<()> {
         let value = serde_json::to_value(x)?;
 
         let var_model = calc_var::ActiveModel {
             var_name: ActiveValue::Set(varname.to_owned()),
             var_value: ActiveValue::Set(value.to_string()),
+            user_id: ActiveValue::Set(author_id.get() as i64),
         };
 
         calc_var::Entity::insert(var_model)
@@ -216,6 +222,24 @@ impl BotDatabase {
         var_model.delete(&self.db).await?;
         Ok(())
     }
+
+    pub async fn list_var(&self) -> anyhow::Result<Vec<(String, String)>> {
+        let vars = calc_var::Entity::find()
+            .find_also_related(user::Entity)
+            .order_by_asc(user::Column::Username)
+            .all(&self.db)
+            .await?;
+
+        Ok(vars
+            .into_iter()
+            .map(|(var, user)| {
+                (
+                    var.var_name,
+                    user.map_or("[不明]".to_owned(), |u| u.username),
+                )
+            })
+            .collect())
+    }
 }
 
 /// message.user_id -> user.id
@@ -238,6 +262,19 @@ impl Related<channel::Entity> for message::Entity {
         Self::belongs_to(channel::Entity)
             .from(message::Column::ChannelId)
             .to(channel::Column::ChannelId)
+            .into()
+    }
+
+    fn via() -> Option<RelationDef> {
+        None
+    }
+}
+
+impl Related<user::Entity> for calc_var::Entity {
+    fn to() -> RelationDef {
+        Self::belongs_to(user::Entity)
+            .from(calc_var::Column::UserId)
+            .to(user::Column::UserId)
             .into()
     }
 

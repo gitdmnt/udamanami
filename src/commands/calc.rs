@@ -23,6 +23,7 @@ pub async fn run(ctx: CommandContext<'_>) {
         VAR_DEFAULT.to_owned(),
         expression,
         bot,
+        ctx.author_id,
     )
     .await;
 }
