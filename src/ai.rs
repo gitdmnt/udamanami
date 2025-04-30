@@ -88,6 +88,12 @@ impl From<&str> for GeminiModel {
     }
 }
 
+impl Default for GeminiModel {
+    fn default() -> Self {
+        Self::Gemini20FlashLite
+    }
+}
+
 pub struct GeminiAI {
     model: Mutex<GeminiModel>,
     api_key: String,
@@ -138,7 +144,13 @@ impl GeminiConversation {
 
 impl Default for GeminiConversation {
     fn default() -> Self {
-        Self::new()
+        Self {
+            system_instruction: GeminiContent {
+                role: None,
+                parts: vec![],
+            },
+            contents: Mutex::new(VecDeque::new()),
+        }
     }
 }
 impl std::fmt::Display for GeminiConversation {
@@ -153,8 +165,24 @@ impl GeminiAI {
         Self {
             model: Mutex::new(GeminiModel::Gemini20FlashLite),
             api_key: api_key.to_owned(),
+            conversation: GeminiConversation::default(),
+        }
+    }
+    pub fn manami(api_key: &str) -> Self {
+        Self {
+            model: Mutex::new(GeminiModel::Gemini20FlashLite),
+            api_key: api_key.to_owned(),
             conversation: GeminiConversation::new(),
         }
+    }
+    pub fn set_system_instruction(&self, instruction: &str) {
+        let content = GeminiContent {
+            role: None,
+            parts: vec![Part {
+                text: instruction.to_owned(),
+            }],
+        };
+        self.conversation.system_instruction = content;
     }
     pub fn add_user_log(&self, user: &str, message: &str) {
         let content = GeminiContent {
@@ -182,6 +210,28 @@ impl GeminiAI {
             contents.pop_front();
         }
     }
+
+    pub fn add_log_bulk(&self, messages: Vec<(String, &str)>) {
+        let mut contents = self.conversation.contents.lock().unwrap();
+        for (user, message) in messages {
+            let role = if user == "model" { "model" } else { "user" };
+            let text = if user == "model" {
+                message.to_owned()
+            } else {
+                format!("{}: {}", user, message)
+            };
+            let content = GeminiContent {
+                role: Some(role.to_owned()),
+                parts: vec![Part { text }],
+            };
+            contents.push_back(content);
+        }
+        let length = contents.len();
+        if length > 500 {
+            contents.drain(0..(length - 500));
+        }
+    }
+
     pub fn clear(&self) {
         self.conversation.contents.lock().unwrap().clear();
     }

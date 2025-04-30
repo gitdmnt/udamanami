@@ -69,7 +69,7 @@ async fn serenity(
 
     let variables = DashMap::new();
 
-    let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
+    let gemini = ai::GeminiAI::manami(&secrets.get("GEMINI_API_KEY").unwrap());
 
     let jail_process = Arc::new(DashMap::new());
 
