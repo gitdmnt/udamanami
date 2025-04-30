@@ -9,6 +9,7 @@ use serenity::{
 use shuttle_runtime::SecretStore;
 
 use udamanami::ai;
+use udamanami::db::BotDatabase;
 use udamanami::Bot;
 
 #[shuttle_runtime::main]
@@ -86,18 +87,24 @@ async fn serenity(
 
     let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
 
+    let database = BotDatabase::new("./db.sqlite").await?;
+
+    let bot = Bot::new(
+        channel_ids,
+        debug_channel_id,
+        guild_id,
+        jail_mark_role_id,
+        jail_main_role_id,
+        gemini,
+        commit_hash,
+        commit_date,
+        &disabled_commands,
+        database,
+    )
+    .await;
+
     let client = Client::builder(&token, intents)
-        .event_handler(Bot::new(
-            channel_ids,
-            debug_channel_id,
-            guild_id,
-            jail_mark_role_id,
-            jail_main_role_id,
-            gemini,
-            commit_hash,
-            commit_date,
-            &disabled_commands,
-        ))
+        .event_handler(bot)
         .await
         .expect("Err creating client");
 

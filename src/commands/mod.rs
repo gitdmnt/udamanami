@@ -10,16 +10,54 @@ pub mod calcsay;
 pub mod cclemon;
 pub mod channel;
 pub mod clear;
+pub mod deletevar;
 pub mod dice;
 pub mod endauto;
 pub mod gemini;
 pub mod help;
 pub mod isprime;
 pub mod jail;
+pub mod listvar;
 pub mod ping;
 pub mod unjail;
 pub mod var;
 pub mod varbulk;
+
+pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
+    [
+        help::SLASH_HELP_COMMAND,
+        ping::SLASH_PING_COMMAND,
+        bf::SLASH_BF_COMMAND,
+        auto::SLASH_AUTO_COMMAND,
+        endauto::SLASH_ENDAUTO_COMMAND,
+        gemini::SLASH_GEMINI_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
+}
+
+pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
+    [
+        help::PREFIX_HELP_COMMAND,
+        dice::PREFIX_DICE_COMMAND,
+        isprime::PREFIX_ISPRIME_COMMAND,
+        channel::PREFIX_CHANNEL_COMMAND,
+        clear::PREFIX_CLEAR_COMMAND,
+        deletevar::PREFIX_DELETEVAR_COMMAND,
+        jail::PREFIX_JAIL_COMMAND,
+        listvar::PREFIX_LISTVAR_COMMAND,
+        unjail::PREFIX_UNJAIL_COMMAND,
+        cclemon::PREFIX_CCLEMON_COMMAND,
+        calc::PREFIX_CALC_COMMAND,
+        calcsay::PREFIX_CALCSAY_COMMAND,
+        var::PREFIX_VAR_COMMAND,
+        varbulk::PREFIX_VARBULK_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
+}
 
 #[derive(Clone)]
 pub struct CommandContext<'a> {

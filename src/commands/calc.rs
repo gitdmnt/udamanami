@@ -1,4 +1,4 @@
-use crate::commands::var::var_main;
+use crate::commands::var::{var_main, VAR_DEFAULT};
 use crate::commands::CommandContext;
 
 use crate::commands::ManamiPrefixCommand;
@@ -17,5 +17,13 @@ pub async fn run(ctx: CommandContext<'_>) {
     let bot = ctx.bot;
     let expression = ctx.args().join(" ");
 
-    var_main(reply, ctx.cache_http(), "_".to_owned(), expression, bot).await;
+    var_main(
+        reply,
+        ctx.cache_http(),
+        VAR_DEFAULT.to_owned(),
+        expression,
+        bot,
+        ctx.author_id,
+    )
+    .await;
 }

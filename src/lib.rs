@@ -7,6 +7,7 @@ use std::{
 use dashmap::DashMap;
 
 use regex::Regex;
+use serenity::all::{MessageId, MessageUpdateEvent};
 use serenity::{
     all::{ActivityData, Command},
     async_trait,
@@ -21,14 +22,16 @@ use serenity::{
 };
 use tracing::{error, info};
 
-use calculator::EvalResult;
+use calculator::EvalContext;
 use commands::*;
+use db::BotDatabase;
 
 pub mod commands;
 
 pub mod ai;
 pub mod calculator;
 pub mod cclemon;
+pub mod db;
 pub mod parser;
 
 #[derive(Clone)]
@@ -92,7 +95,7 @@ pub struct Bot {
     pub commit_hash: Option<String>,
     pub commit_date: Option<String>,
 
-    pub variables: DashMap<String, EvalResult>,
+    pub variables: EvalContext,
 
     pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
 
@@ -100,11 +103,13 @@ pub struct Bot {
 
     pub slash_commands: Vec<ManamiSlashCommand>,
     pub prefix_commands: Vec<ManamiPrefixCommand>,
+
+    pub database: BotDatabase,
 }
 
 impl Bot {
     #[allow(clippy::too_many_arguments)]
-    pub fn new(
+    pub async fn new(
         channel_ids: Vec<ChannelId>,
         debug_channel_id: ChannelId,
 
@@ -118,12 +123,15 @@ impl Bot {
         commit_date: Option<String>,
 
         disabled_commands: &[&str],
+
+        database: BotDatabase,
     ) -> Self {
         let userdata = DashMap::new();
-        let variables = DashMap::new();
+        let variables = database.retrieve_eval_context().await;
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
-        let reply_to_all_mode = Arc::new(Mutex::new(ReplyToAllModeData::blank()));
+        let reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>> =
+            Arc::new(Mutex::new(ReplyToAllModeData::blank()));
         let prefix_commands = prefix_commands(disabled_commands);
         let slash_commands = slash_commands(disabled_commands);
 
@@ -143,6 +151,7 @@ impl Bot {
             gemini,
             prefix_commands,
             slash_commands,
+            database,
         }
     }
 
@@ -171,40 +180,6 @@ impl Bot {
     }
 }
 
-pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
-    [
-        commands::help::SLASH_HELP_COMMAND,
-        commands::ping::SLASH_PING_COMMAND,
-        commands::bf::SLASH_BF_COMMAND,
-        commands::auto::SLASH_AUTO_COMMAND,
-        commands::endauto::SLASH_ENDAUTO_COMMAND,
-        commands::gemini::SLASH_GEMINI_COMMAND,
-    ]
-    .into_iter()
-    .filter(|command| !disabled_commands.contains(&command.name))
-    .collect::<Vec<_>>()
-}
-
-pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
-    [
-        commands::help::PREFIX_HELP_COMMAND,
-        commands::dice::PREFIX_DICE_COMMAND,
-        commands::isprime::PREFIX_ISPRIME_COMMAND,
-        commands::channel::PREFIX_CHANNEL_COMMAND,
-        commands::clear::PREFIX_CLEAR_COMMAND,
-        commands::jail::PREFIX_JAIL_COMMAND,
-        commands::unjail::PREFIX_UNJAIL_COMMAND,
-        commands::cclemon::PREFIX_CCLEMON_COMMAND,
-        commands::calc::PREFIX_CALC_COMMAND,
-        commands::calcsay::PREFIX_CALCSAY_COMMAND,
-        commands::var::PREFIX_VAR_COMMAND,
-        commands::varbulk::PREFIX_VARBULK_COMMAND,
-    ]
-    .into_iter()
-    .filter(|command| !disabled_commands.contains(&command.name))
-    .collect::<Vec<_>>()
-}
-
 #[async_trait]
 impl EventHandler for Bot {
     async fn message(&self, ctx: Context, msg: Message) {
@@ -216,6 +191,36 @@ impl EventHandler for Bot {
             None => {
                 direct_message(self, &ctx, &msg).await;
             }
+        }
+    }
+
+    async fn message_update(
+        &self,
+        _: Context,
+        _: Option<Message>,
+        new: Option<Message>,
+        _: MessageUpdateEvent,
+    ) {
+        if let Some(new) = new {
+            if let Err(e) = self.database.update_guild_message(&new).await {
+                error!("Error updating message: {e:?}");
+            }
+        }
+    }
+
+    async fn message_delete(
+        &self,
+        _: Context,
+        _: ChannelId,
+        deleted_message_id: MessageId,
+        _: Option<GuildId>,
+    ) {
+        if let Err(e) = self
+            .database
+            .delete_guild_message(&deleted_message_id)
+            .await
+        {
+            error!("Error deleting message: {e:?}");
         }
     }
 
@@ -317,11 +322,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
-
-        // AIのためにメッセージを保存する
-        if room_pointer.get() == bot.debug_channel_id.get() {
-            bot.gemini.add_model_log(&msg.content);
-        }
         return;
     }
 
@@ -348,19 +348,34 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
-    // 反応すべきメッセージかどうか確認
-    if !has_privilege(bot, ctx, msg).await {
-        return;
+async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    let user_name = msg.author_nick(&ctx.http).await;
+    let user_name = user_name
+        .as_deref()
+        .unwrap_or_else(|| msg.author.display_name());
+    let channel_name = msg.channel_id.name(&ctx.http).await;
+    let channel_name = channel_name.as_deref().unwrap_or("");
+
+    if let Err(e) = bot
+        .database
+        .add_guild_message(msg, user_name, channel_name)
+        .await
+    {
+        error!("Error adding message: {e:?}");
     }
 
     // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.debug_channel_id.get() {
-        let user_name = msg.author_nick(&ctx.http).await;
-        let user_name = user_name
-            .as_deref()
-            .unwrap_or_else(|| msg.author.display_name());
+    if msg.channel_id.get() == bot.debug_channel_id.get() && !msg.author.bot {
         bot.gemini.add_user_log(user_name, &msg.content);
+    }
+}
+
+async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
+    save_guild_message(bot, ctx, msg).await;
+
+    // 反応すべきメッセージかどうか確認
+    if !has_privilege(bot, ctx, msg).await {
+        return;
     }
 
     // 全レスモード中？

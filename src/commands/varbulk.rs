@@ -30,8 +30,13 @@ pub async fn run(ctx: CommandContext<'_>) {
         if s.trim().is_empty() {
             continue;
         }
-        let mut ctx2 = ctx.clone();
-        ctx2.command = s.to_owned();
-        var::run(ctx2).await;
+        var::var(
+            ctx.channel_id,
+            ctx.cache_http(),
+            s.to_owned(),
+            ctx.bot,
+            ctx.author_id,
+        )
+        .await;
     }
 }

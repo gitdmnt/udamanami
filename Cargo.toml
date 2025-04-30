@@ -16,6 +16,7 @@ serenity = { version = "0.12.0", default-features = false, features = [
   "gateway",
   "rustls_backend",
   "model",
+  "chrono",
 ] }
 shuttle-runtime = "0.48.0"
 shuttle-serenity = "0.48.0"
@@ -25,8 +26,17 @@ rand_distr = "0.4.3"
 strum = { version = "0.26", features = ["derive"] }
 reqwest = { version = "0.12.9", features = ["json"] }
 serde_json = "1.0.132"
-serde = "1.0.215"
+serde = { version = "1.0.215", features = ["derive"] }
 async-openai = "0.26.0"
+sea-orm = { version = "1.1.10", features = [
+  "sqlx-sqlite",
+  "runtime-tokio-native-tls",
+  "macros",
+  "with-chrono",
+  "with-json",
+] }
+sea-orm-migration = "1.1.10"
+chrono = { version = "0.4.40", features = ["serde"] }
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }
