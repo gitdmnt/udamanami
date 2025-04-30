@@ -101,13 +101,33 @@ struct GeminiConversation {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-struct GeminiContent {
+pub struct GeminiContent {
     role: Option<String>,
     parts: Vec<Part>,
 }
 
+impl GeminiContent {
+    pub fn user(user_name: &str, message: &str) -> Self {
+        Self {
+            role: Some(user_name.to_owned()),
+            parts: vec![Part {
+                text: format!("{user_name}: {message}"),
+            }],
+        }
+    }
+
+    pub fn model(message: &str) -> Self {
+        Self {
+            role: Some("model".to_owned()),
+            parts: vec![Part {
+                text: message.to_owned(),
+            }],
+        }
+    }
+}
+
 #[derive(Deserialize, Serialize, Debug)]
-struct Part {
+pub struct Part {
     text: String,
 }
 

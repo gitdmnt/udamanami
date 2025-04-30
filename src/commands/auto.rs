@@ -8,8 +8,6 @@ use std::time::Duration;
 use crate::{commands::ManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 
-pub struct SlashCommand;
-
 const COMMAND_NAME: &str = "auto";
 
 pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
@@ -38,7 +36,7 @@ pub fn register() -> CreateCommand {
         .add_option(
             CreateCommandOption::new(CommandOptionType::Integer, "sec", "秒数")
                 .required(false)
-                .max_int_value(0)
+                .min_int_value(0)
                 .max_int_value(600),
         )
 }

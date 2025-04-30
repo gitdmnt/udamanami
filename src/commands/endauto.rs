@@ -1,7 +1,6 @@
 use serenity::builder::CreateCommand;
 
 use crate::{commands::ManamiSlashCommand, Bot};
-pub struct SlashCommand;
 
 const COMMAND_NAME: &str = "endauto";
 
