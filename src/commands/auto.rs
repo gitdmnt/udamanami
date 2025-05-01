@@ -15,9 +15,9 @@ pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     usage: "/auto [model] [sec]",
     description: "呼びかけられなくてもお返事するよ！",
     register,
-    run: |option, bot| {
-        let opts = parse_options(option, bot);
-        Box::pin(async move { run_body(opts, bot).await })
+    run: |option, ctx| {
+        let opts = parse_options(option, ctx.bot);
+        Box::pin(async move { run_body(opts, ctx.bot).await })
     },
     is_local_command: true,
 };

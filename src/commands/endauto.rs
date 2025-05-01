@@ -9,7 +9,7 @@ pub const SLASH_ENDAUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     usage: "/endauto",
     description: "自動返信を止めるよ！",
     register,
-    run: |_, bot| Box::pin(run(bot)),
+    run: |_, ctx| Box::pin(run(ctx.bot)),
     is_local_command: true,
 };
 

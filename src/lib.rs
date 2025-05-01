@@ -297,7 +297,7 @@ impl EventHandler for Bot {
                 .iter()
                 .find(|cmd| cmd.name == command.data.name)
             {
-                Some(cmd) => (cmd.run)(command.data.options(), self).await,
+                Some(cmd) => (cmd.run)(command.data.options(), command_context).await,
                 None => "知らないコマンドだよ！".to_owned(),
             };
 

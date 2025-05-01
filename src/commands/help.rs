@@ -18,8 +18,8 @@ pub const SLASH_HELP_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     usage: "/help",
     description: "ヘルプを表示するよ！",
     register,
-    run: |_, bot| {
-        let result = run(bot);
+    run: |_, ctx| {
+        let result = run(ctx.bot);
         Box::pin(async move { result })
     },
     is_local_command: false,

@@ -39,8 +39,6 @@ pub async fn run(ctx: CommandContext<'_>) {
     let mut remaining = count;
     let mut log = Vec::new();
     while remaining > 0 {
-        println!("remaining: {}, oldest: {:?}", remaining, oldest);
-
         let mut messages = ctx
             .channel_id
             .messages(

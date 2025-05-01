@@ -1,6 +1,5 @@
 use std::pin::Pin;
 
-use crate::Bot;
 use serenity::all::ResolvedOption;
 
 pub mod auto;
@@ -135,6 +134,6 @@ pub struct ManamiSlashCommand {
     pub usage: &'static str,
     pub description: &'static str,
     pub register: fn() -> serenity::builder::CreateCommand,
-    pub run: for<'a> fn(Vec<ResolvedOption<'a>>, &'a Bot) -> BoxedFuture<'a, String>,
+    pub run: for<'a> fn(Vec<ResolvedOption<'a>>, CommandContext<'a>) -> BoxedFuture<'a, String>,
     pub is_local_command: bool,
 }

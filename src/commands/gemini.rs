@@ -12,9 +12,9 @@ pub const SLASH_GEMINI_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     usage: "/gemini <model>",
     description: "Geminiの設定を変更するよ！",
     register,
-    run: |option, bot| {
-        let opts = parse(option, bot);
-        Box::pin(async move { run_body(opts, bot).await })
+    run: |option, ctx| {
+        let opts = parse(option, ctx.bot);
+        Box::pin(async move { run_body(opts, ctx.bot).await })
     },
     is_local_command: true,
 };
