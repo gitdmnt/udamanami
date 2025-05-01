@@ -54,7 +54,5 @@ pub async fn run(
     let gemini = crate::ai::GeminiAI::new(api_key);
     gemini.add_log_bulk(log_str);
 
-    let content = gemini.generate().await.unwrap();
-
-    unimplemented!();
+    gemini.generate().await.unwrap()
 }
