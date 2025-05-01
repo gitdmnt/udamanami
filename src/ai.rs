@@ -367,6 +367,7 @@ async fn generate(
         "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     );
     let prompt = conversation.to_string();
+    println!("Prompt: {prompt}");
     let client = reqwest::Client::new();
     let response = client
         .post(&url)
@@ -376,6 +377,7 @@ async fn generate(
         .await?;
     let status = response.status();
     let response = response.text().await?;
+    println!("Response: {response}");
     let response = serde_json::from_str::<GeminiResponse>(&response)
         .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
     let response = response
