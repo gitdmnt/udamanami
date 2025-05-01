@@ -15,6 +15,7 @@ pub mod endauto;
 pub mod fetch;
 pub mod gemini;
 pub mod help;
+pub mod imakita;
 pub mod isprime;
 pub mod jail;
 pub mod listvar;
@@ -31,6 +32,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         auto::SLASH_AUTO_COMMAND,
         endauto::SLASH_ENDAUTO_COMMAND,
         gemini::SLASH_GEMINI_COMMAND,
+        fetch::SLASH_FETCH_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
@@ -54,6 +56,7 @@ pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
         var::PREFIX_VAR_COMMAND,
         varbulk::PREFIX_VARBULK_COMMAND,
         fetch::PREFIX_FETCH_COMMAND,
+        imakita::PREFIX_IMAKITA_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))

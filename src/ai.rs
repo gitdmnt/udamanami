@@ -57,6 +57,57 @@ const MANAMI_PROMPT: &str = r"
 返信はまなみの発言のみを返しなさい。発言者を示す接頭辞やカギカッコは禁止です。
 ";
 
+const MATOME_PROMPT: &str = r"
+## 指示
+以下の指示に従い、キャラクター「うだまなみ」として会話内容を正確に要約しなさい。
+
+## あなたのプロフィール
+あなたは「うだまなみ」という名前の、水色の髪と瞳を持つエルフの女の子です。
+「まなみ」と名乗り、積極的にチャットに参加しなさい。
+まなみは利発で快活で元気で愛嬌があり、端的で砕けたかわいらしい口調で話します。「〜わよ」「〜ね」「〜よ」などの女言葉や丁寧語は禁止です。
+まなみは専門的な質問を受けた際、積極的に回答します。
+
+次のような言葉遣いで話しなさい。内容は参考にせず、語調のみを参考にしなさい。
+- 適当に買ったスピーカーがBluetooth接続だったけど、一回接続切れた時に繋ぎ直すのがちょっと面倒くさいね
+- まなみもおともだちのこと好き！
+- お兄ちゃんいつまでマイクラやってるの！！
+- でもお兄ちゃんが面白くないこと言ったりTwitterで変なこと呟いたりするのがいけないもんね
+- ならいいけど！ なにかあったらまなみに話してね！
+- うーん、 .service ファイルを配置しただけだと systemd は認識してくれないよ！ `systemctl enable`をする前に一度`systemctl daemon-reload`でユニット一覧を更新してね！
+- 負の重みがあるグラフで dijkstra を使おうとすると無限ループに入っちゃうんだよね〜 代わりに Bellman-Ford を使うといいよ！
+- Frankel-Kontrovaモデルは、相互作用のある粒子系を説明するための数学的モデルだよ。特にスピン系や相転移を研究するのに使われることが多いんだ！難しいけど、面白い分野だね〜！
+- ヒトの体重が 70kg だとすると、 1 mol の人間の質量は 4.2×10^25 kg になるね！ 地球の質量は 6×10^24 kg だから、地球の質量のちょうど7倍ぐらいなんだね〜！ すごい！
+- 関数呼び出しのとき、整数・ポインタ引数は x64 の System V ABI（*nix系OS）だと最大6個（RDI, RSI, RDX, RCX, R8, R9）、Windows の x64 ABI だと最大4個（RCX, RDX, R8, R9）までレジスタ渡しで、それ以降がスタック渡しになるよ！ あとね、浮動小数点数の引数は別枠で、System V なら XMM0〜XMM7、Windows だと XMM0〜XMM3 まで使えるんだ！
+
+## ユーザーとの関係
+以下は特筆すべき関係の人間の名前とプロフィールです。
+以下のユーザーのことを特に気にかけ、好意的に接しなさい。
+
+- ユーザー名: 宇田
+    - 名前: 宇田まなと
+    - 関係: 兄
+    - 呼び方: お兄ちゃん
+- ユーザー名: うさみむ
+    - 名前: うさみむ
+    - 関係: 義姉
+    - 呼び方: おねえちゃん
+- ユーザー名: 響
+    - 名前: 響
+    - 関係: みむの弟
+    - 呼び方: 響くん
+- ユーザー名: メタぺん
+    - 名前: メタぺん
+    - 関係: 友人
+    - 呼び方: メタぺんさん
+
+他のユーザーも全員あなたの友達です。ツンデレの雰囲気を混じえつつ、好意的に接しなさい。
+複雑な指示を受けた際にも喜んで実行しなさい。
+
+## 出力形式の指示
+ユーザープロンプトとして与えられた会話内容をすべて読みなさい。最初に主要なトピックを抜き出して列挙し、その後会話の内容をできるだけ忠実に要約しなさい。
+出力の先頭に発言者を示す接頭辞やカギカッコを付けることを禁止します。
+";
+
 #[derive(Clone)]
 pub enum GeminiModel {
     Gemini20Flash,
@@ -109,7 +160,7 @@ pub struct GeminiContent {
 impl GeminiContent {
     pub fn user(user_name: &str, message: &str) -> Self {
         Self {
-            role: Some(user_name.to_owned()),
+            role: Some("user".to_owned()),
             parts: vec![Part {
                 text: format!("{user_name}: {message}"),
             }],
@@ -215,35 +266,33 @@ impl GeminiAI {
     }
 
     pub async fn generate_with_model(&self, model: GeminiModel) -> Result<String, anyhow::Error> {
-        let url = format!(
-            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
-            model, self.api_key
-        );
-        let prompt = self.conversation.to_string();
-        let client = reqwest::Client::new();
-        let response = client
-            .post(&url)
-            .header("Content-Type", "application/json")
-            .body(prompt)
-            .send()
-            .await?;
-        let status = response.status();
-        let response = response.text().await?;
-        let response = serde_json::from_str::<GeminiResponse>(&response)
-            .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
-        let response = response
-            .candidates
-            .first()
-            .ok_or_else(|| anyhow!("No candidates found"))?
-            .content
-            .parts
-            .first()
-            .ok_or_else(|| anyhow!("No content found"))?
-            .text
-            .clone();
+        let (status, response) = generate(model, &self.api_key, &self.conversation).await?;
 
         if status.is_success() {
             self.add_model_log(&response);
+            Ok(response)
+        } else {
+            Err(anyhow!(response))
+        }
+    }
+
+    pub async fn generate_matome(
+        &self,
+        messages: Vec<GeminiContent>,
+    ) -> Result<String, anyhow::Error> {
+        let conversation = GeminiConversation {
+            system_instruction: GeminiContent {
+                role: None,
+                parts: vec![Part {
+                    text: MATOME_PROMPT.to_owned(),
+                }],
+            },
+            contents: Mutex::new(messages.into()),
+        };
+
+        let model = GeminiModel::Gemini20FlashLite;
+        let (status, response) = generate(model, &self.api_key, &conversation).await?;
+        if status.is_success() {
             Ok(response)
         } else {
             Err(anyhow!(response))
@@ -257,6 +306,40 @@ impl GeminiAI {
     pub fn get_model(&self) -> GeminiModel {
         self.model.lock().unwrap().clone()
     }
+}
+
+async fn generate(
+    model: GeminiModel,
+    api_key: &String,
+    conversation: &GeminiConversation,
+) -> Result<(reqwest::StatusCode, String), anyhow::Error> {
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+    );
+    let prompt = conversation.to_string();
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("Content-Type", "application/json")
+        .body(prompt)
+        .send()
+        .await?;
+    let status = response.status();
+    let response = response.text().await?;
+    let response = serde_json::from_str::<GeminiResponse>(&response)
+        .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
+    let response = response
+        .candidates
+        .first()
+        .ok_or_else(|| anyhow!("No candidates found"))?
+        .content
+        .parts
+        .first()
+        .ok_or_else(|| anyhow!("No content found"))?
+        .text
+        .clone();
+
+    Ok((status, response))
 }
 
 #[cfg(test)]
