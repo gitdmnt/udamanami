@@ -15,6 +15,7 @@ pub mod dice;
 pub mod endauto;
 pub mod gemini;
 pub mod help;
+pub mod imakita;
 pub mod isprime;
 pub mod jail;
 pub mod listvar;
