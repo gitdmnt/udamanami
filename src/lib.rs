@@ -34,11 +34,13 @@ pub mod cclemon;
 pub mod db;
 pub mod parser;
 
+// 代筆用のデータ
 #[derive(Clone)]
 pub struct UserData {
     pub room_pointer: ChannelId,
 }
 
+// 全レスモード用のデータ?
 #[derive(Clone)]
 pub struct ReplyToAllModeData {
     pub until: Option<Instant>,
@@ -81,30 +83,45 @@ impl ReplyToAllModeData {
 }
 
 pub struct Bot {
-    pub userdata: DashMap<UserId, UserData>,
-    pub jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
-    pub jail_id: Arc<Mutex<usize>>,
+    // Discordサーバーの情報
+    // サーバーID
+    pub guild_id: GuildId,
 
+    // チャンネルのID
     pub channel_ids: Vec<ChannelId>,
     pub debug_channel_id: ChannelId,
 
-    pub guild_id: GuildId,
-    pub jail_mark_role_id: RoleId,
-    pub jail_main_role_id: RoleId,
-
+    // まなみの情報
+    // まなみのバージョン情報
     pub commit_hash: Option<String>,
     pub commit_date: Option<String>,
 
-    pub variables: EvalContext,
+    // 代筆用のデータ
+    pub userdata: DashMap<UserId, UserData>,
 
-    pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
-
+    // まなみの雑談用のAI
     pub gemini: ai::GeminiAI,
 
+    // コマンド用のデータ
+    // ログなどを保存するDB
+    pub database: BotDatabase,
+
+    // 全レスモードのデータ
+    pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
+
+    // 有効なコマンドのデータ
     pub slash_commands: Vec<ManamiSlashCommand>,
     pub prefix_commands: Vec<ManamiPrefixCommand>,
 
-    pub database: BotDatabase,
+    // jailコマンドのデータ
+    pub jail_process: Arc<DashMap<UserId, (usize, Instant)>>,
+    pub jail_id: Arc<Mutex<usize>>,
+    // Jail用のRoleのID
+    pub jail_mark_role_id: RoleId,
+    pub jail_main_role_id: RoleId,
+
+    // var, calcコマンドのデータ
+    pub variables: EvalContext,
 }
 
 impl Bot {
@@ -182,48 +199,6 @@ impl Bot {
 
 #[async_trait]
 impl EventHandler for Bot {
-    async fn message(&self, ctx: Context, msg: Message) {
-        // Check if the message is from direct message
-        match msg.guild_id {
-            Some(_) => {
-                guild_message(self, &ctx, &msg).await;
-            }
-            None => {
-                direct_message(self, &ctx, &msg).await;
-            }
-        }
-    }
-
-    async fn message_update(
-        &self,
-        _: Context,
-        _: Option<Message>,
-        new: Option<Message>,
-        _: MessageUpdateEvent,
-    ) {
-        if let Some(new) = new {
-            if let Err(e) = self.database.update_guild_message(&new).await {
-                error!("Error updating message: {e:?}");
-            }
-        }
-    }
-
-    async fn message_delete(
-        &self,
-        _: Context,
-        _: ChannelId,
-        deleted_message_id: MessageId,
-        _: Option<GuildId>,
-    ) {
-        if let Err(e) = self
-            .database
-            .delete_guild_message(&deleted_message_id)
-            .await
-        {
-            error!("Error deleting message: {e:?}");
-        }
-    }
-
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
 
@@ -280,6 +255,48 @@ impl EventHandler for Bot {
                 };
                 unjail::run(command_context).await;
             }
+        }
+    }
+
+    async fn message(&self, ctx: Context, msg: Message) {
+        // Check if the message is from direct message
+        match msg.guild_id {
+            Some(_) => {
+                guild_message(self, &ctx, &msg).await;
+            }
+            None => {
+                direct_message(self, &ctx, &msg).await;
+            }
+        }
+    }
+
+    async fn message_update(
+        &self,
+        _: Context,
+        _: Option<Message>,
+        new: Option<Message>,
+        _: MessageUpdateEvent,
+    ) {
+        if let Some(new) = new {
+            if let Err(e) = self.database.update_guild_message(&new).await {
+                error!("Error updating message: {e:?}");
+            }
+        }
+    }
+
+    async fn message_delete(
+        &self,
+        _: Context,
+        _: ChannelId,
+        deleted_message_id: MessageId,
+        _: Option<GuildId>,
+    ) {
+        if let Err(e) = self
+            .database
+            .delete_guild_message(&deleted_message_id)
+            .await
+        {
+            error!("Error deleting message: {e:?}");
         }
     }
 
