@@ -1,3 +1,5 @@
+/// まなみのメインモジュール
+/// メッセージ・コマンドのハンドリングを担当
 use std::{
     sync::{Arc, Mutex},
     time::Instant,
