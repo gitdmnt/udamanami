@@ -171,6 +171,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
     .collect::<Vec<_>>()
 }
 
+// 最終的にdice以外はslash commandに移行したい
 pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
     [
         help::PREFIX_HELP_COMMAND,
