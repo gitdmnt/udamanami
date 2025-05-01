@@ -163,6 +163,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         channel::SLASH_CHANNEL_COMMAND,
         fetch::SLASH_FETCH_COMMAND,
         gemini::SLASH_GEMINI_COMMAND,
+        isprime::SLASH_ISPRIME_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
