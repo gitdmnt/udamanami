@@ -90,7 +90,7 @@ async fn serenity(
 
     let commit_date = secrets.get("COMMIT_DATE");
 
-    let gemini = ai::GeminiAI::new(&secrets.get("GEMINI_API_KEY").unwrap());
+    let gemini = ai::GeminiAI::manami(&secrets.get("GEMINI_API_KEY").unwrap());
 
     let database = BotDatabase::new("./db.sqlite").await?;
 
