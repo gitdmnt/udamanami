@@ -1,0 +1,35 @@
+name: Discord Notification on Pull Request
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  discord_notification:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord notification
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          WEBHOOK_URL="$DISCORD_WEBHOOK_URL"
+          EVENT_TYPE="${{ github.event.action }}"
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_URL="${{ github.event.pull_request.html_url }}"
+          USER_LOGIN="${{ github.event.sender.login }}"
+
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "Discord Webhook URL is not set."
+            exit 1
+          fi
+
+          if [ "$EVENT_TYPE" = "opened" ]; then
+            MESSAGE="🚀 @udamana New Pull Request: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
+          elif [ "$EVENT_TYPE" = "synchronize" ]; then
+            MESSAGE="🔄 @udamana Pull Request Updated: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
+          else
+            echo "Unsupported event type: $EVENT_TYPE"
+            exit 1
+          fi
+
+          curl -H "Content-Type: application/json" -X POST -d "{\"content\":\"$MESSAGE\"}" "$WEBHOOK_URL"
