@@ -167,6 +167,7 @@ impl EventHandler for Bot {
 
         let _ = Command::create_global_command(&ctx.http, bf::register()).await;
         let _ = Command::create_global_command(&ctx.http, dice::register()).await;
+        let _ = Command::create_global_command(&ctx.http, imakita::register()).await;
 
         // roles のいずれかが付いているユーザーを恩赦
         let guild = self.guild_id;
@@ -202,6 +203,7 @@ impl EventHandler for Bot {
                 "bf" => Some(bf::run(&command.data.options())),
                 "dice" => Some(dice::run(&command.data.options())),
                 "gemini" => Some(gemini::run(&command.data.options(), self).await),
+                "imakita" => Some(imakita::run(&command_context).await),
                 "auto" => Some(auto::run(&command.data.options(), self).await),
                 "endauto" => Some(endauto::run(self).await),
                 _ => Some("知らないコマンドだよ！".to_owned()),

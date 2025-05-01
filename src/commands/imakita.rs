@@ -2,15 +2,13 @@ use core::time::Duration;
 
 use serenity::{all::Message, builder::GetMessages};
 
+use super::CommandContext;
+
 pub fn register() -> serenity::builder::CreateCommand {
     serenity::builder::CreateCommand::new("imakita").description("今北産業")
 }
 
-pub async fn run(
-    channel_id: &serenity::model::id::ChannelId,
-    ctx: &serenity::client::Context,
-    api_key: &str,
-) -> String {
+pub async fn run(ctx: &CommandContext<'_>) -> String {
     // fetch logs
     let mut log: Vec<Message> = Vec::new();
     'outer: loop {
@@ -18,8 +16,9 @@ pub async fn run(
         if !log.is_empty() {
             let _ = builder.before(log.last().unwrap().id);
         }
-        let mut messages = channel_id
-            .messages(&ctx.http, GetMessages::new().limit(100))
+        let mut messages = ctx
+            .channel_id
+            .messages(ctx.cache_http(), GetMessages::new().limit(100))
             .await
             .unwrap();
         messages.reverse();
@@ -43,7 +42,7 @@ pub async fn run(
             "model".to_owned()
         } else {
             message
-                .author_nick(&ctx.http)
+                .author_nick(&ctx.cache_http())
                 .await
                 .unwrap_or_else(|| message.author.name.clone())
         };
@@ -51,7 +50,7 @@ pub async fn run(
     }
 
     // summerize by gemini
-    let gemini = crate::ai::GeminiAI::new(api_key);
+    let gemini = &ctx.bot.gemini;
     gemini.add_log_bulk(log_str);
 
     gemini.generate().await.unwrap()
