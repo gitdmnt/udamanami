@@ -14,7 +14,7 @@ pub const PREFIX_CALCSAY_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
 
 pub async fn run(ctx: CommandContext<'_>) {
     let bot = ctx.bot;
-    let reply = bot.get_user_room_pointer(ctx.author_id);
+    let reply = bot.get_user_room_pointer(&ctx.author_id);
     let expression = ctx.args().join(" ");
 
     let result = eval_from_str(&expression, &bot.variables);

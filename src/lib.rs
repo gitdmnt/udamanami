@@ -273,8 +273,9 @@ impl EventHandler for Bot {
                 let command_context = commands::CommandContext {
                     bot: self,
                     ctx: &ctx,
-                    channel_id: &self.debug_channel_id,
-                    author_id: &member.user.id,
+                    channel_id: self.debug_channel_id,
+                    author_id: member.user.id,
+                    guild_id: Some(guild),
                     command: "".to_owned(),
                 };
                 unjail::run(command_context).await;
@@ -358,7 +359,7 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     if let Err(e) = bot
         .database
-        .add_guild_message(msg, user_name, channel_name)
+        .insert_guild_message(msg, user_name, channel_name)
         .await
     {
         error!("Error adding message: {e:?}");

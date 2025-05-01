@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::ai::GeminiContent;
 use crate::calculator::EvalContext;
 use crate::db::migrator::Migrator;
@@ -8,7 +10,6 @@ use sea_orm::ConnectOptions;
 use sea_orm::{prelude::*, sea_query::OnConflict, ActiveValue, Database, QueryOrder, QuerySelect};
 use sea_orm_migration::migrator::MigratorTrait;
 use serenity::all::MessageId;
-use serenity::all::User;
 use serenity::model::{
     channel::Message,
     id::{ChannelId, UserId},
@@ -34,13 +35,13 @@ impl BotDatabase {
         Ok(Self { db })
     }
 
-    pub async fn add_guild_message(
+    pub async fn insert_guild_message(
         &self,
         message: &Message,
         user_name: &str,
         channel_name: &str,
     ) -> anyhow::Result<()> {
-        self.upsert_user(&message.author, user_name).await?;
+        self.upsert_user(&message.author.id, user_name).await?;
         self.upsert_channel(&message.channel_id, channel_name, message.thread.is_some())
             .await?;
 
@@ -53,6 +54,45 @@ impl BotDatabase {
         };
 
         message_model.insert(&self.db).await?;
+        Ok(())
+    }
+
+    pub async fn insert_many_guild_messages(
+        &self,
+        messages: &[Message],
+        unique_users: HashMap<UserId, String>,
+        channel_info: (ChannelId, String),
+    ) -> anyhow::Result<()> {
+        let channel_id = channel_info.0;
+        let channel_name = channel_info.1;
+
+        self.upsert_channel(&channel_id, &channel_name, false)
+            .await?;
+
+        for (user_id, user_name) in unique_users {
+            self.upsert_user(&user_id, &user_name).await?;
+        }
+
+        let message_models: Vec<message::ActiveModel> = messages
+            .iter()
+            .map(|message| message::ActiveModel {
+                message_id: ActiveValue::Set(message.id.get() as i64),
+                channel_id: ActiveValue::Set(channel_id.get() as i64),
+                user_id: ActiveValue::Set(message.author.id.get() as i64),
+                timestamp: ActiveValue::Set(message.timestamp.to_utc()),
+                content: ActiveValue::Set(message.content.clone()),
+            })
+            .collect();
+
+        message::Entity::insert_many(message_models)
+            .on_conflict(
+                OnConflict::columns([message::Column::MessageId])
+                    .update_columns([message::Column::Content])
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+
         Ok(())
     }
 
@@ -76,9 +116,9 @@ impl BotDatabase {
         Ok(())
     }
 
-    pub async fn upsert_user(&self, user: &User, user_name: &str) -> anyhow::Result<()> {
+    pub async fn upsert_user(&self, user_id: &UserId, user_name: &str) -> anyhow::Result<()> {
         let user_model = user::ActiveModel {
-            user_id: ActiveValue::Set(user.id.get() as i64),
+            user_id: ActiveValue::Set(user_id.get() as i64),
             username: ActiveValue::Set(user_name.to_owned()),
         };
 
@@ -241,7 +281,7 @@ impl BotDatabase {
         &self,
         varname: &str,
         x: EvalResult,
-        author_id: &UserId,
+        author_id: UserId,
     ) -> anyhow::Result<()> {
         let value = serde_json::to_value(x)?;
 

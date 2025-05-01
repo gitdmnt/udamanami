@@ -19,7 +19,7 @@ pub async fn run(ctx: CommandContext<'_>) {
     if args.is_empty() {
         let mut res = MessageBuilder::new();
         res.push("今は")
-            .channel(ctx.bot.get_user_room_pointer(ctx.author_id))
+            .channel(ctx.bot.get_user_room_pointer(&ctx.author_id))
             .push("で代筆してるよ\n")
             .push("```チャンネル一覧だよ\n");
         for (i, ch) in ctx.bot.channel_ids.iter().enumerate() {
@@ -50,7 +50,7 @@ pub async fn run(ctx: CommandContext<'_>) {
     };
 
     ctx.bot
-        .change_room_pointer(ctx.author_id, next_pointer)
+        .change_room_pointer(&ctx.author_id, next_pointer)
         .unwrap();
     ctx.channel_id
         .say(
