@@ -1,6 +1,5 @@
 use std::pin::Pin;
 
-use crate::Bot;
 use serenity::all::ResolvedOption;
 
 pub mod auto;
@@ -13,6 +12,7 @@ pub mod clear;
 pub mod deletevar;
 pub mod dice;
 pub mod endauto;
+pub mod fetch;
 pub mod gemini;
 pub mod help;
 pub mod imakita;
@@ -32,7 +32,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         auto::SLASH_AUTO_COMMAND,
         endauto::SLASH_ENDAUTO_COMMAND,
         gemini::SLASH_GEMINI_COMMAND,
-        imakita::SLASH_IMAKITA_COMMAND,
+        fetch::SLASH_FETCH_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
@@ -55,6 +55,8 @@ pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
         calcsay::PREFIX_CALCSAY_COMMAND,
         var::PREFIX_VAR_COMMAND,
         varbulk::PREFIX_VARBULK_COMMAND,
+        fetch::PREFIX_FETCH_COMMAND,
+        imakita::PREFIX_IMAKITA_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
@@ -65,9 +67,10 @@ pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
     pub ctx: &'a serenity::client::Context,
-    pub channel_id: &'a serenity::model::id::ChannelId,
-    pub author_id: &'a serenity::model::id::UserId,
+    pub channel_id: serenity::model::id::ChannelId,
+    pub author_id: serenity::model::id::UserId,
     pub command: String,
+    pub guild_id: Option<serenity::model::id::GuildId>,
 }
 
 impl<'a> CommandContext<'a> {
@@ -80,9 +83,10 @@ impl<'a> CommandContext<'a> {
         Self {
             bot,
             ctx,
-            channel_id: &msg.channel_id,
-            author_id: &msg.author.id,
+            channel_id: msg.channel_id,
+            author_id: msg.author.id,
             command,
+            guild_id: msg.guild_id,
         }
     }
 
@@ -95,9 +99,10 @@ impl<'a> CommandContext<'a> {
         Self {
             bot,
             ctx,
-            channel_id: &interaction.channel_id,
-            author_id: &interaction.user.id,
+            channel_id: interaction.channel_id,
+            author_id: interaction.user.id,
             command: command.to_owned(),
+            guild_id: interaction.guild_id,
         }
     }
 
@@ -132,6 +137,6 @@ pub struct ManamiSlashCommand {
     pub usage: &'static str,
     pub description: &'static str,
     pub register: fn() -> serenity::builder::CreateCommand,
-    pub run: for<'a> fn(Vec<ResolvedOption<'a>>, &'a Bot) -> BoxedFuture<'a, String>,
+    pub run: for<'a> fn(Vec<ResolvedOption<'a>>, CommandContext<'a>) -> BoxedFuture<'a, String>,
     pub is_local_command: bool,
 }

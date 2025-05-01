@@ -29,5 +29,5 @@ pub async fn run(ctx: CommandContext<'_>) {
         return;
     };
 
-    cclemon::cclemon(&ctx, (ctx.author_id, &opponent_id)).await;
+    cclemon::cclemon(&ctx, (&ctx.author_id, &opponent_id)).await;
 }

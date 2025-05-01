@@ -18,6 +18,6 @@ pub async fn run(ctx: CommandContext<'_>) {
         if s.trim().is_empty() {
             return;
         }
-        var::delete_var(ctx.channel_id, ctx.cache_http(), &s.to_owned(), ctx.bot).await;
+        var::delete_var(&ctx.channel_id, ctx.cache_http(), &s.to_owned(), ctx.bot).await;
     }
 }

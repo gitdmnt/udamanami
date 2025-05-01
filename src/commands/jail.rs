@@ -103,15 +103,15 @@ pub async fn run(options: Vec<ResolvedOption<'_>>, ctx: &CommandContext<'_>) -> 
     bot.jail_process.insert(user, (newid, jail_term_end));
 
     // 非同期で刑期後の解除処理をスケジュール
-    let reply = *ctx.channel_id;
+    let reply = ctx.channel_id;
     let ctx_clone = ctx.ctx.clone();
     let process = bot.jail_process.clone();
     spawn(async move {
         sleep(jailterm).await;
         unjail::unjail(
-            &reply,
+            reply,
             &ctx_clone,
-            &user,
+            user,
             &guild,
             &roles,
             Some(newid),
@@ -182,10 +182,10 @@ pub async fn run_old(ctx: CommandContext<'_>) {
             return;
         }
     };
-    jail(reply, ctx, &user, jailterm, bot).await;
+    jail(reply, ctx, user, jailterm, bot).await;
 }
 
-async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duration, bot: &Bot) {
+async fn jail(reply: ChannelId, ctx: &Context, user: UserId, jailterm: Duration, bot: &Bot) {
     let guild = bot.guild_id;
     let roles = vec![bot.jail_mark_role_id, bot.jail_main_role_id];
 
@@ -196,7 +196,7 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duratio
     }
 
     let jail_term_end = Instant::now() + jailterm;
-    if let Some((_, end)) = bot.jail_process.get(user).map(|r| *r.value()) {
+    if let Some((_, end)) = bot.jail_process.get(&user).map(|r| *r.value()) {
         if end > jail_term_end {
             let content = format!(
                 "{}はすでに収監中だよ（残り刑期：{}秒）",
@@ -233,15 +233,13 @@ async fn jail(reply: &ChannelId, ctx: &Context, user: &UserId, jailterm: Duratio
         return;
     };
 
-    let reply = *reply;
     let ctx = ctx.clone();
-    let user = *user;
     let roles = roles.to_vec();
     bot.jail_process.insert(user, (newid, jail_term_end));
     let process = bot.jail_process.clone();
     spawn(async move {
         sleep(jailterm).await;
-        unjail::unjail(&reply, &ctx, &user, &guild, &roles, Some(newid), &process).await;
+        unjail::unjail(reply, &ctx, user, &guild, &roles, Some(newid), &process).await;
         drop(process);
     });
 }

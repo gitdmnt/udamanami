@@ -155,7 +155,7 @@ fn run_body(resdice: Result<Dice, &str>) -> String {
 pub async fn run_old(ctx: CommandContext<'_>) {
     match parse_dice(&ctx.command).finish() {
         Ok((_, parsed)) => {
-            dice(ctx.channel_id, ctx.cache_http(), parsed).await;
+            dice(&ctx.channel_id, ctx.cache_http(), parsed).await;
         }
         Err(Error {
             code: ErrorKind::MapRes,

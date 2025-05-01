@@ -8,8 +8,6 @@ use std::time::Duration;
 use crate::{commands::ManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 
-pub struct SlashCommand;
-
 const COMMAND_NAME: &str = "auto";
 
 pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
@@ -17,9 +15,9 @@ pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     usage: "/auto [model] [sec]",
     description: "呼びかけられなくてもお返事するよ！",
     register,
-    run: |option, bot| {
-        let opts = parse_options(option, bot);
-        Box::pin(async move { run_body(opts, bot).await })
+    run: |option, ctx| {
+        let opts = parse_options(option, ctx.bot);
+        Box::pin(async move { run_body(opts, ctx.bot).await })
     },
     is_local_command: true,
 };
@@ -38,7 +36,7 @@ pub fn register() -> CreateCommand {
         .add_option(
             CreateCommandOption::new(CommandOptionType::Integer, "sec", "秒数")
                 .required(false)
-                .max_int_value(0)
+                .min_int_value(0)
                 .max_int_value(600),
         )
 }

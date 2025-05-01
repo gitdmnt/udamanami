@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+
+use crate::ai::GeminiContent;
 use crate::calculator::EvalContext;
 use crate::db::migrator::Migrator;
 use chrono::DateTime;
@@ -7,7 +10,6 @@ use sea_orm::ConnectOptions;
 use sea_orm::{prelude::*, sea_query::OnConflict, ActiveValue, Database, QueryOrder, QuerySelect};
 use sea_orm_migration::migrator::MigratorTrait;
 use serenity::all::MessageId;
-use serenity::all::User;
 use serenity::model::{
     channel::Message,
     id::{ChannelId, UserId},
@@ -33,13 +35,13 @@ impl BotDatabase {
         Ok(Self { db })
     }
 
-    pub async fn add_guild_message(
+    pub async fn insert_guild_message(
         &self,
         message: &Message,
         user_name: &str,
         channel_name: &str,
     ) -> anyhow::Result<()> {
-        self.upsert_user(&message.author, user_name).await?;
+        self.upsert_user(&message.author.id, user_name).await?;
         self.upsert_channel(&message.channel_id, channel_name, message.thread.is_some())
             .await?;
 
@@ -52,6 +54,45 @@ impl BotDatabase {
         };
 
         message_model.insert(&self.db).await?;
+        Ok(())
+    }
+
+    pub async fn insert_many_guild_messages(
+        &self,
+        messages: &[Message],
+        unique_users: HashMap<UserId, String>,
+        channel_info: (ChannelId, String),
+    ) -> anyhow::Result<()> {
+        let channel_id = channel_info.0;
+        let channel_name = channel_info.1;
+
+        self.upsert_channel(&channel_id, &channel_name, false)
+            .await?;
+
+        for (user_id, user_name) in unique_users {
+            self.upsert_user(&user_id, &user_name).await?;
+        }
+
+        let message_models: Vec<message::ActiveModel> = messages
+            .iter()
+            .map(|message| message::ActiveModel {
+                message_id: ActiveValue::Set(message.id.get() as i64),
+                channel_id: ActiveValue::Set(channel_id.get() as i64),
+                user_id: ActiveValue::Set(message.author.id.get() as i64),
+                timestamp: ActiveValue::Set(message.timestamp.to_utc()),
+                content: ActiveValue::Set(message.content.clone()),
+            })
+            .collect();
+
+        message::Entity::insert_many(message_models)
+            .on_conflict(
+                OnConflict::columns([message::Column::MessageId])
+                    .update_columns([message::Column::Content])
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+
         Ok(())
     }
 
@@ -75,9 +116,9 @@ impl BotDatabase {
         Ok(())
     }
 
-    pub async fn upsert_user(&self, user: &User, user_name: &str) -> anyhow::Result<()> {
+    pub async fn upsert_user(&self, user_id: &UserId, user_name: &str) -> anyhow::Result<()> {
         let user_model = user::ActiveModel {
-            user_id: ActiveValue::Set(user.id.get() as i64),
+            user_id: ActiveValue::Set(user_id.get() as i64),
             username: ActiveValue::Set(user_name.to_owned()),
         };
 
@@ -115,51 +156,108 @@ impl BotDatabase {
         Ok(())
     }
 
+    pub async fn fetch_oldest_message(
+        &self,
+        channel_id: &ChannelId,
+    ) -> anyhow::Result<Option<MessageInfo>> {
+        let messages: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
+            .filter(message::Column::ChannelId.eq(channel_id.get() as i64))
+            .order_by_asc(message::Column::Timestamp)
+            .limit(1)
+            .find_also_related(user::Entity)
+            .all(&self.db)
+            .await?;
+
+        if messages.is_empty() {
+            return Ok(None);
+        }
+
+        let message = Self::query_result_to_message(messages)[0].clone();
+        Ok(Some(message))
+    }
+
     pub async fn fetch_log_by_count(
         &self,
-        channel_id: i64,
+        channel_id: &ChannelId,
         n: usize,
-    ) -> anyhow::Result<Vec<(MessageId, String, DateTime<Utc>, UserId, String)>> {
+    ) -> anyhow::Result<Vec<MessageInfo>> {
         let messages: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
-            .filter(message::Column::ChannelId.eq(channel_id))
+            .filter(message::Column::ChannelId.eq(channel_id.get() as i64))
             .order_by_desc(message::Column::Timestamp)
             .limit(n as u64)
             .find_also_related(user::Entity)
             .all(&self.db)
             .await?;
 
-        messages
-            .iter()
-            .map(|(message, user)| {
-                let message_id = MessageId::from(message.message_id as u64);
-                let content = message.content.clone();
-                let timestamp = message.timestamp;
-                let user_id = UserId::from(user.as_ref().map_or(0, |u| u.user_id) as u64);
-                let user_name = user
-                    .as_ref()
-                    .map_or("Unknown".to_owned(), |u| u.username.clone());
-                Ok((message_id, content, timestamp, user_id, user_name))
-            })
-            .collect()
+        Ok(Self::query_result_to_message(messages)
+            .into_iter()
+            .rev()
+            .collect())
     }
 
     pub async fn fetch_log_by_duration(
         &self,
-        channel_id: i64,
+        channel_id: &ChannelId,
         duration: chrono::Duration,
-    ) -> anyhow::Result<Vec<(MessageId, String, DateTime<Utc>, UserId, String)>> {
+    ) -> anyhow::Result<Vec<MessageInfo>> {
         let since = Utc::now() - duration;
 
         let messages: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
-            .filter(message::Column::ChannelId.eq(channel_id))
+            .filter(message::Column::ChannelId.eq(channel_id.get() as i64))
             .filter(message::Column::Timestamp.gte(since))
             .order_by_asc(message::Column::Timestamp)
             .find_also_related(user::Entity)
             .all(&self.db)
             .await?;
 
+        Ok(Self::query_result_to_message(messages)
+            .into_iter()
+            .collect())
+    }
+
+    pub async fn fetch_log_until_gap(
+        &self,
+        channel_id: &ChannelId,
+        gap: chrono::Duration,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        /*
+        0. 「遡行開始点」を現在時刻に設定
+        1. 「遡行開始点」から gap 分のメッセージを取得、result に追加
+        2. 取得したメッセージが空でなければ、最初のメッセージの timestamp を「遡行開始点」に設定し1に戻る、さもなくば終了
+        */
+
+        // newer-first
+        let mut messages = vec![];
+
+        let mut since = Utc::now();
+        loop {
+            let mut chunk: Vec<(message::Model, Option<user::Model>)> = message::Entity::find()
+                .filter(message::Column::ChannelId.eq(channel_id.get() as i64))
+                .filter(message::Column::Timestamp.lt(since - gap))
+                .order_by_desc(message::Column::Timestamp)
+                .find_also_related(user::Entity)
+                .all(&self.db)
+                .await?;
+
+            if chunk.is_empty() {
+                break;
+            }
+
+            messages.append(&mut chunk);
+            since = messages.last().unwrap().0.timestamp;
+        }
+
+        Ok(Self::query_result_to_message(messages)
+            .into_iter()
+            .rev()
+            .collect())
+    }
+
+    fn query_result_to_message(
+        messages: Vec<(message::Model, Option<user::Model>)>,
+    ) -> Vec<MessageInfo> {
         messages
-            .iter()
+            .into_iter()
             .map(|(message, user)| {
                 let message_id = MessageId::from(message.message_id as u64);
                 let content = message.content.clone();
@@ -168,7 +266,13 @@ impl BotDatabase {
                 let user_name = user
                     .as_ref()
                     .map_or("Unknown".to_owned(), |u| u.username.clone());
-                Ok((message_id, content, timestamp, user_id, user_name))
+                MessageInfo {
+                    message_id,
+                    user_id,
+                    user_name,
+                    timestamp,
+                    content,
+                }
             })
             .collect()
     }
@@ -177,7 +281,7 @@ impl BotDatabase {
         &self,
         varname: &str,
         x: EvalResult,
-        author_id: &UserId,
+        author_id: UserId,
     ) -> anyhow::Result<()> {
         let value = serde_json::to_value(x)?;
 
@@ -239,6 +343,25 @@ impl BotDatabase {
                 )
             })
             .collect())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MessageInfo {
+    pub message_id: MessageId,
+    pub user_id: UserId,
+    pub user_name: String,
+    pub timestamp: DateTime<Utc>,
+    pub content: String,
+}
+
+impl MessageInfo {
+    pub fn gemini_content(&self, my_userid: &UserId) -> GeminiContent {
+        if self.user_id == *my_userid {
+            GeminiContent::model(&self.content)
+        } else {
+            GeminiContent::user(&self.user_name, &self.content)
+        }
     }
 }
 

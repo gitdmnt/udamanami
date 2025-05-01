@@ -28,13 +28,7 @@ pub async fn run(ctx: CommandContext<'_>) {
     var(reply, ctx.cache_http(), input, bot, ctx.author_id).await;
 }
 
-pub async fn var(
-    reply: &ChannelId,
-    cache_http: &Http,
-    input: String,
-    bot: &Bot,
-    author_id: &UserId,
-) {
+pub async fn var(reply: ChannelId, cache_http: &Http, input: String, bot: &Bot, author_id: UserId) {
     let var_pattern = Regex::new(r"([a-zA-Z0-9]+)\s*=\s*(.*)").unwrap();
 
     let (var, expression) = match var_pattern.captures(&input) {
@@ -54,12 +48,12 @@ pub async fn var(
 }
 
 pub async fn var_main(
-    reply: &ChannelId,
+    reply: ChannelId,
     cache_http: &Http,
     var: String,
     expression: String,
     bot: &Bot,
-    author_id: &UserId,
+    author_id: UserId,
 ) {
     let result = calculator::eval_from_str(&expression, &bot.variables);
     match result {
@@ -91,7 +85,7 @@ pub async fn delete_var(reply: &ChannelId, cache_http: &Http, var: &String, bot:
         .unwrap();
 }
 
-pub async fn list_var(reply: &ChannelId, cache_http: &Http, bot: &Bot) {
+pub async fn list_var(reply: ChannelId, cache_http: &Http, bot: &Bot) {
     match bot.database.list_var().await {
         Ok(vars) => {
             let mut result = String::new();
