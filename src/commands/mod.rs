@@ -161,6 +161,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         endauto::SLASH_ENDAUTO_COMMAND,
         bf::SLASH_BF_COMMAND,
         channel::SLASH_CHANNEL_COMMAND,
+        dice::SLASH_DICE_COMMAND,
         fetch::SLASH_FETCH_COMMAND,
         gemini::SLASH_GEMINI_COMMAND,
         isprime::SLASH_ISPRIME_COMMAND,
