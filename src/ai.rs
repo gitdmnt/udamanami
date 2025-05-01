@@ -289,7 +289,7 @@ impl GeminiAI {
             let text = if user == "model" {
                 message.to_owned()
             } else {
-                format!("{}: {}", user, message)
+                format!("{user}: {message}")
             };
             let content = GeminiContent {
                 role: Some(role.to_owned()),
