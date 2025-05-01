@@ -74,6 +74,7 @@ impl ReplyToAllModeData {
     }
 }
 
+// これ以上この構造体に依存するコマンドが増える前にリファクタしたい
 #[derive(Clone)]
 pub struct CommandContext<'a> {
     pub bot: &'a crate::Bot,
@@ -156,11 +157,12 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
     [
         help::SLASH_HELP_COMMAND,
         ping::SLASH_PING_COMMAND,
-        bf::SLASH_BF_COMMAND,
         auto::SLASH_AUTO_COMMAND,
         endauto::SLASH_ENDAUTO_COMMAND,
-        gemini::SLASH_GEMINI_COMMAND,
+        bf::SLASH_BF_COMMAND,
+        channel::SLASH_CHANNEL_COMMAND,
         fetch::SLASH_FETCH_COMMAND,
+        gemini::SLASH_GEMINI_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
@@ -172,7 +174,6 @@ pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
         help::PREFIX_HELP_COMMAND,
         dice::PREFIX_DICE_COMMAND,
         isprime::PREFIX_ISPRIME_COMMAND,
-        channel::PREFIX_CHANNEL_COMMAND,
         clear::PREFIX_CLEAR_COMMAND,
         deletevar::PREFIX_DELETEVAR_COMMAND,
         jail::PREFIX_JAIL_COMMAND,
