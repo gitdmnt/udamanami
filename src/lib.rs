@@ -5,6 +5,9 @@ use std::{
     time::Instant,
 };
 
+use rand::seq::SliceRandom;
+use rand::thread_rng;
+
 use dashmap::DashMap;
 
 use regex::Regex;
@@ -169,7 +172,20 @@ impl EventHandler for Bot {
             ))));
         };
 
-        let message_hello = "おはようっ！";
+        let message_hello_list = [
+            "おはようっ！",
+            "やっほー！",
+            "ふわぁ、今日もがんばるよー！",
+            "あれっ？　寝ちゃってた？",
+            "おすし買ってきたよー！",
+            "たーだいまーっ！",
+            "まなみちゃん、参上！",
+            "おはよう、みんな！",
+            "だれかいるー？",
+            "まなみは元気ですっ！",
+        ];
+
+        let message_hello = *message_hello_list.choose(&mut thread_rng()).unwrap();
 
         if let Err(why) = self.debug_channel_id.say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
