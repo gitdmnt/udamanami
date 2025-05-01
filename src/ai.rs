@@ -377,7 +377,7 @@ async fn generate(
     let status = response.status();
     let response = response.text().await?;
     let response = serde_json::from_str::<GeminiResponse>(&response)
-        .map_err(|e| anyhow!("Failed to parse response: {}", e))?;
+        .map_err(|e| anyhow!("Failed to parse response: {}\n {}", e, response))?;
     let response = response
         .candidates
         .first()
