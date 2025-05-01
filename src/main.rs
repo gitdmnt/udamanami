@@ -26,26 +26,31 @@ async fn serenity(
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
 
-    let channel_ids = secrets.get("ROOMS_ID").map_or_else(
-        || {
-            vec![
-                secrets.get("FREETALK1_ROOM_ID"),
-                secrets.get("FREETALK2_ROOM_ID"),
-                secrets.get("MADSISTERS_ROOM_ID"),
-                secrets.get("SHYBOYS_ROOM_ID"),
-                secrets.get("DEBUG_ROOM_ID"),
-            ]
-            .into_iter()
-            .map(|id| ChannelId::from_str(&id.unwrap()).unwrap())
+    let channel_ids_new = secrets.get("ROOMS_ID").map_or(vec![], |rooms| {
+        rooms
+            .split(',')
+            .filter_map(|id| ChannelId::from_str(id.trim()).ok())
             .collect()
-        },
-        |rooms| {
-            rooms
-                .split(',')
-                .map(|id| ChannelId::from_str(id.trim()).unwrap())
-                .collect()
-        },
-    );
+    });
+
+    // ↓ここからのコードは将来的に取り除きたい
+    let channel_ids_old: Vec<ChannelId> = vec![
+        secrets.get("FREETALK1_ROOM_ID"),
+        secrets.get("FREETALK2_ROOM_ID"),
+        secrets.get("MADSISTERS_ROOM_ID"),
+        secrets.get("SHYBOYS_ROOM_ID"),
+        secrets.get("DEBUG_ROOM_ID"),
+    ]
+    .into_iter()
+    .filter_map(|id| id.and_then(|id| ChannelId::from_str(&id).ok()))
+    .collect();
+
+    let channel_ids = if channel_ids_old.len() > 1 {
+        channel_ids_old
+    } else {
+        channel_ids_new
+    };
+    // ↑ここまで
 
     let debug_channel_id = secrets
         .get("DEBUG_ROOM_ID")
