@@ -1,8 +1,19 @@
-use core::time::Duration;
+use chrono::Duration;
 
 use serenity::{all::Message, builder::GetMessages};
 
 use super::CommandContext;
+
+const COMMAND_NAME: &str = "imakita";
+
+pub const SLASH_IMAKITA_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: COMMAND_NAME,
+    usage: "/imakita",
+    description: "直近のメッセージを3行にまとめるよ！",
+    register,
+    run: |_, bot| Box::pin(run(bot)),
+    is_local_command: false,
+};
 
 pub fn register() -> serenity::builder::CreateCommand {
     serenity::builder::CreateCommand::new("imakita").description("今北産業")
@@ -26,7 +37,7 @@ pub async fn run(ctx: &CommandContext<'_>) -> String {
         let mut timestamp = messages.first().unwrap().timestamp;
         for message in messages {
             // 1時間以上間隔が開いたら打ち切り
-            if timestamp.to_utc() - message.timestamp.to_utc() > Duration::from_secs(3600) {
+            if timestamp.to_utc() - message.timestamp.to_utc() > Duration::hours(1) {
                 break 'outer;
             }
             timestamp = message.timestamp;

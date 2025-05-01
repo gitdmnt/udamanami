@@ -32,6 +32,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         auto::SLASH_AUTO_COMMAND,
         endauto::SLASH_ENDAUTO_COMMAND,
         gemini::SLASH_GEMINI_COMMAND,
+        imakita::SLASH_IMAKITA_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
