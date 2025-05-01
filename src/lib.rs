@@ -1,4 +1,3 @@
-use std::time::Duration;
 use std::{
     sync::{Arc, Mutex},
     time::Instant,
@@ -38,48 +37,6 @@ pub mod parser;
 #[derive(Clone)]
 pub struct UserData {
     pub room_pointer: ChannelId,
-}
-
-// 全レスモード用のデータ?
-#[derive(Clone)]
-pub struct ReplyToAllModeData {
-    pub until: Option<Instant>,
-    pub model: ai::GeminiModel,
-    pub duration: Duration,
-}
-
-impl Default for ReplyToAllModeData {
-    fn default() -> Self {
-        Self::blank()
-    }
-}
-
-impl ReplyToAllModeData {
-    pub const fn blank() -> Self {
-        Self {
-            until: None,
-            model: ai::GeminiModel::Gemini20FlashLite,
-            duration: Duration::from_secs(0),
-        }
-    }
-
-    pub fn set(&mut self, model: ai::GeminiModel, duration: Duration) {
-        self.until = Instant::now().checked_add(duration);
-        self.model = model;
-        self.duration = duration;
-    }
-
-    pub fn renew(&mut self) {
-        self.until = Some(Instant::now() + self.duration);
-    }
-
-    const fn end(&mut self) {
-        self.until = None;
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.until.is_some_and(|until| until > Instant::now())
-    }
 }
 
 pub struct Bot {

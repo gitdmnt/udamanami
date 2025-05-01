@@ -1,5 +1,10 @@
 use std::pin::Pin;
 
+use std::time::Instant;
+
+use crate::ai::GeminiModel;
+use std::time::Duration;
+
 use serenity::all::ResolvedOption;
 
 pub mod auto;
@@ -24,43 +29,46 @@ pub mod unjail;
 pub mod var;
 pub mod varbulk;
 
-pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
-    [
-        help::SLASH_HELP_COMMAND,
-        ping::SLASH_PING_COMMAND,
-        bf::SLASH_BF_COMMAND,
-        auto::SLASH_AUTO_COMMAND,
-        endauto::SLASH_ENDAUTO_COMMAND,
-        gemini::SLASH_GEMINI_COMMAND,
-        fetch::SLASH_FETCH_COMMAND,
-    ]
-    .into_iter()
-    .filter(|command| !disabled_commands.contains(&command.name))
-    .collect::<Vec<_>>()
+// 全レスモード用のデータ?
+#[derive(Clone)]
+pub struct ReplyToAllModeData {
+    pub until: Option<Instant>,
+    pub model: GeminiModel,
+    pub duration: Duration,
 }
 
-pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
-    [
-        help::PREFIX_HELP_COMMAND,
-        dice::PREFIX_DICE_COMMAND,
-        isprime::PREFIX_ISPRIME_COMMAND,
-        channel::PREFIX_CHANNEL_COMMAND,
-        clear::PREFIX_CLEAR_COMMAND,
-        deletevar::PREFIX_DELETEVAR_COMMAND,
-        jail::PREFIX_JAIL_COMMAND,
-        listvar::PREFIX_LISTVAR_COMMAND,
-        unjail::PREFIX_UNJAIL_COMMAND,
-        cclemon::PREFIX_CCLEMON_COMMAND,
-        calc::PREFIX_CALC_COMMAND,
-        calcsay::PREFIX_CALCSAY_COMMAND,
-        var::PREFIX_VAR_COMMAND,
-        varbulk::PREFIX_VARBULK_COMMAND,
-        fetch::PREFIX_FETCH_COMMAND,
-        imakita::PREFIX_IMAKITA_COMMAND,
-    ]
-    .into_iter()
-    .filter(|command| !disabled_commands.contains(&command.name))
-    .collect::<Vec<_>>()
+impl Default for ReplyToAllModeData {
+    fn default() -> Self {
+        Self::blank()
+    }
+}
+
+impl ReplyToAllModeData {
+    pub const fn blank() -> Self {
+        Self {
+            until: None,
+            model: GeminiModel::Gemini20FlashLite,
+            duration: Duration::from_secs(0),
+        }
+    }
+
+    pub fn set(&mut self, model: GeminiModel, duration: Duration) {
+        self.until = Instant::now().checked_add(duration);
+        self.model = model;
+        self.duration = duration;
+    }
+
+    pub fn renew(&mut self) {
+        self.until = Some(Instant::now() + self.duration);
+    }
+
+    const fn end(&mut self) {
+        self.until = None;
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.until.is_some_and(|until| until > Instant::now())
+    }
 }
 
 #[derive(Clone)]
@@ -139,4 +147,43 @@ pub struct ManamiSlashCommand {
     pub register: fn() -> serenity::builder::CreateCommand,
     pub run: for<'a> fn(Vec<ResolvedOption<'a>>, CommandContext<'a>) -> BoxedFuture<'a, String>,
     pub is_local_command: bool,
+}
+
+pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
+    [
+        help::SLASH_HELP_COMMAND,
+        ping::SLASH_PING_COMMAND,
+        bf::SLASH_BF_COMMAND,
+        auto::SLASH_AUTO_COMMAND,
+        endauto::SLASH_ENDAUTO_COMMAND,
+        gemini::SLASH_GEMINI_COMMAND,
+        fetch::SLASH_FETCH_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
+}
+
+pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
+    [
+        help::PREFIX_HELP_COMMAND,
+        dice::PREFIX_DICE_COMMAND,
+        isprime::PREFIX_ISPRIME_COMMAND,
+        channel::PREFIX_CHANNEL_COMMAND,
+        clear::PREFIX_CLEAR_COMMAND,
+        deletevar::PREFIX_DELETEVAR_COMMAND,
+        jail::PREFIX_JAIL_COMMAND,
+        listvar::PREFIX_LISTVAR_COMMAND,
+        unjail::PREFIX_UNJAIL_COMMAND,
+        cclemon::PREFIX_CCLEMON_COMMAND,
+        calc::PREFIX_CALC_COMMAND,
+        calcsay::PREFIX_CALCSAY_COMMAND,
+        var::PREFIX_VAR_COMMAND,
+        varbulk::PREFIX_VARBULK_COMMAND,
+        fetch::PREFIX_FETCH_COMMAND,
+        imakita::PREFIX_IMAKITA_COMMAND,
+    ]
+    .into_iter()
+    .filter(|command| !disabled_commands.contains(&command.name))
+    .collect::<Vec<_>>()
 }
