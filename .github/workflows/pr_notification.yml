@@ -12,13 +12,12 @@ jobs:
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: |
-          WEBHOOK_URL= ${{ env.DISCORD_WEBHOOK_URL }}
           EVENT_TYPE="${{ github.event.action }}"
           PR_TITLE="${{ github.event.pull_request.title }}"
           PR_URL="${{ github.event.pull_request.html_url }}"
           USER_LOGIN="${{ github.event.sender.login }}"
 
-          if [ -z "$WEBHOOK_URL" ]; then
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
             echo "Discord Webhook URL is not set."
             exit 1
           fi
@@ -32,5 +31,5 @@ jobs:
             exit 1
           fi
 
-          curl -H "Content-Type: application/json" -X POST -d "{\"content\":\"$MESSAGE\"}" "$WEBHOOK_URL"
+          curl -H "Content-Type: application/json" -X POST -d "{\"content\":\"$MESSAGE\"}" "$DISCORD_WEBHOOK_URL"
 
