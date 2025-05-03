@@ -178,6 +178,7 @@ pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
         dice::PREFIX_DICE_COMMAND,
         isprime::PREFIX_ISPRIME_COMMAND,
         clear::PREFIX_CLEAR_COMMAND,
+        channel::PREFIX_CHANNEL_COMMAND,
         deletevar::PREFIX_DELETEVAR_COMMAND,
         jail::PREFIX_JAIL_COMMAND,
         listvar::PREFIX_LISTVAR_COMMAND,
