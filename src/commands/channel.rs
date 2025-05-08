@@ -8,7 +8,7 @@ pub const SLASH_CHANNEL_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     description: "代筆先のチャンネルを指定するよ！",
     register,
     run: |options, ctx| Box::pin(async move { run(options, ctx) }),
-    is_local_command: true,
+    is_local_command: false,
 };
 
 pub fn register() -> serenity::builder::CreateCommand {
