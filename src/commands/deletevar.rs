@@ -6,7 +6,7 @@ use crate::commands::ManamiPrefixCommand;
 pub const PREFIX_DELETEVAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     name: "deletevar",
     alias: &[],
-    usage: "!deletevar varname1 [varname2 varname3 ...]",
+    usage: "!deletevar var1 [...]",
     description: "定義した変数を消去するよ！",
     run: |ctx| Box::pin(run(ctx)),
     is_dm_command: true,
