@@ -5,8 +5,8 @@ use std::{
     time::Instant,
 };
 
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::prelude::IndexedRandom;
+use rand::rng;
 
 use dashmap::DashMap;
 
@@ -171,7 +171,7 @@ impl EventHandler for Bot {
             "まなみは元気ですっ！",
         ];
 
-        let message_hello = *message_hello_list.choose(&mut thread_rng()).unwrap();
+        let message_hello = *message_hello_list.choose(&mut rng()).unwrap();
 
         if let Err(why) = self.debug_channel_id.say(&ctx.http, message_hello).await {
             error!("Error sending message: {:?}", why);
