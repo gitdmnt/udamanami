@@ -120,6 +120,7 @@ impl BotDatabase {
         let user_model = user::ActiveModel {
             user_id: ActiveValue::Set(user_id.get() as i64),
             username: ActiveValue::Set(user_name.to_owned()),
+            ..Default::default()
         };
 
         user::Entity::insert(user_model)
@@ -131,6 +132,45 @@ impl BotDatabase {
             .exec(&self.db)
             .await?;
         Ok(())
+    }
+
+    pub async fn set_user_room_pointer(
+        &self,
+        user_id: &UserId,
+        username: &str,
+        room_pointer: Option<ChannelId>,
+    ) -> anyhow::Result<()> {
+        let user_model = user::ActiveModel {
+            user_id: ActiveValue::Set(user_id.get() as i64),
+            room_pointer: ActiveValue::Set(room_pointer.map(|c| c.get() as i64)),
+            username: ActiveValue::Set(username.to_owned()),
+        };
+
+        user::Entity::insert(user_model)
+            .on_conflict(
+                OnConflict::columns([user::Column::UserId])
+                    .update_columns([user::Column::RoomPointer])
+                    .to_owned(),
+            )
+            .exec(&self.db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn fetch_user_room_pointer(
+        &self,
+        user_id: &UserId,
+        default_pointer: ChannelId,
+    ) -> anyhow::Result<ChannelId> {
+        let user_model = user::Entity::find()
+            .filter(user::Column::UserId.eq(user_id.get() as i64))
+            .one(&self.db)
+            .await?;
+
+        let room_pointer = user_model
+            .and_then(|u| u.room_pointer)
+            .map_or(default_pointer, |p| ChannelId::from(p as u64));
+        Ok(room_pointer)
     }
 
     pub async fn upsert_channel(
