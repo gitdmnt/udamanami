@@ -38,12 +38,6 @@ pub mod cclemon;
 pub mod db;
 pub mod parser;
 
-// 代筆用のデータ
-#[derive(Clone)]
-pub struct UserData {
-    pub room_pointer: ChannelId,
-}
-
 pub struct Bot {
     // Discordサーバーの情報
     // サーバーID
@@ -57,9 +51,6 @@ pub struct Bot {
     // まなみのバージョン情報
     pub commit_hash: Option<String>,
     pub commit_date: Option<String>,
-
-    // 代筆用のデータ
-    pub userdata: DashMap<UserId, UserData>,
 
     // まなみの雑談用のAI
     pub gemini: ai::GeminiAI,
@@ -105,7 +96,6 @@ impl Bot {
 
         database: BotDatabase,
     ) -> Self {
-        let userdata = DashMap::new();
         let variables = database.retrieve_eval_context().await;
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
@@ -115,7 +105,6 @@ impl Bot {
         let slash_commands = slash_commands(disabled_commands);
 
         Self {
-            userdata,
             jail_process,
             jail_id,
             channel_ids,
@@ -134,27 +123,24 @@ impl Bot {
         }
     }
 
-    pub fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
-        self.userdata
-            .entry(*user_id)
-            .or_insert(UserData {
-                room_pointer: self.channel_ids[0],
-            })
-            .clone()
-            .room_pointer
+    pub async fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
+        let default_channel_id = self.channel_ids[0];
+        self.database
+            .fetch_user_room_pointer(user_id, default_channel_id)
+            .await
+            .unwrap_or(default_channel_id)
     }
 
-    pub fn change_room_pointer(
+    pub async fn change_room_pointer(
         &self,
         userid: &UserId,
+        username: &str,
         room_pointer: ChannelId,
     ) -> Result<(), anyhow::Error> {
-        self.userdata
-            .entry(*userid)
-            .or_insert(UserData {
-                room_pointer: self.channel_ids[0],
-            })
-            .room_pointer = room_pointer;
+        self.database
+            .set_user_room_pointer(userid, username, Some(room_pointer))
+            .await
+            .unwrap();
         Ok(())
     }
 }
@@ -311,7 +297,7 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // if message is not command, forward to the room
     if !msg.content.starts_with('!') {
         // 代筆先のチャンネルにメッセージを転送する
-        let room_pointer = bot.get_user_room_pointer(&msg.author.id);
+        let room_pointer = bot.get_user_room_pointer(&msg.author.id).await;
         if let Err(why) = room_pointer.say(&ctx.http, &msg.content).await {
             error!("Error sending message: {:?}", why);
         };
