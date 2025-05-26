@@ -89,7 +89,7 @@ pub enum GeminiModel {
     Gemini20Flash,
     Gemini20FlashLite,
     Gemini25FlashPreview,
-    Gemini25ProExp,
+    Gemini25ProPreview,
 }
 
 impl std::fmt::Display for GeminiModel {
@@ -97,8 +97,8 @@ impl std::fmt::Display for GeminiModel {
         match self {
             Self::Gemini20Flash => write!(f, "gemini-2.0-flash"),
             Self::Gemini20FlashLite => write!(f, "gemini-2.0-flash-lite"),
-            Self::Gemini25FlashPreview => write!(f, "gemini-2.5-flash-preview-04-17"),
-            Self::Gemini25ProExp => write!(f, "gemini-2.5-pro-exp-03-25"),
+            Self::Gemini25FlashPreview => write!(f, "gemini-2.5-flash-preview-05-20"),
+            Self::Gemini25ProPreview => write!(f, "gemini-2.5-pro-preview-05-06"),
         }
     }
 }
@@ -108,8 +108,8 @@ impl From<&str> for GeminiModel {
         match model {
             "gemini-2.0-flash" => Self::Gemini20Flash,
             "gemini-2.0-flash-lite" => Self::Gemini20FlashLite,
-            "gemini-2.5-flash-preview-04-17" => Self::Gemini25FlashPreview,
-            "gemini-2.5-pro-exp-03-25" => Self::Gemini25ProExp,
+            "gemini-2.5-flash-preview-05-20" => Self::Gemini25FlashPreview,
+            "gemini-2.5-pro-preview-05-06" => Self::Gemini25ProPreview,
             _ => Self::Gemini20FlashLite,
         }
     }
