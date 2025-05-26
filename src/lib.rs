@@ -5,8 +5,8 @@ use std::{
     time::Instant,
 };
 
-use rand::prelude::IndexedRandom;
 use rand::rng;
+use rand::{prelude::IndexedRandom, Rng};
 
 use dashmap::DashMap;
 
@@ -370,8 +370,11 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             caps.get(2).unwrap().as_str().to_owned(),
         ),
         None => {
-            // 全レスモードの場合のみ返答
-            if msg.channel_id.get() == bot.debug_channel_id.get() && response_to_all {
+            // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答
+
+            if msg.channel_id.get() == bot.debug_channel_id.get()
+                && (response_to_all || rng().random::<f32>() < 0.3)
+            {
                 bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
                 let content = bot.gemini.generate_with_model(response_to_all_model).await;
                 let content = match content {
