@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{tag, tag_no_case},
     character::complete::{digit1, space0},
     combinator::{map_res, opt, value},
-    sequence::{separated_pair, tuple},
+    sequence::separated_pair,
     IResult, Parser as _,
 };
 
@@ -89,27 +89,28 @@ fn parse_cmp_operator(input: &str) -> IResult<&str, CmpOperator> {
         value(CmpOperator::LessEqual, tag("<=")),
         value(CmpOperator::LessThan, tag("<")),
         value(CmpOperator::NotEqual, tag("!=")),
-    ))(input)
+    ))
+    .parse(input)
 }
 
 pub fn parse_dice(input: &str) -> IResult<&str, Dice> {
-    tuple((
+    (
         separated_pair(
             map_res(digit1, str::parse),
             tag_no_case("d"),
             map_res(digit1, str::parse),
         ),
-        opt(tuple((
+        opt((
             space0,
             parse_cmp_operator,
             space0,
             map_res(digit1, str::parse),
-        ))),
-    ))
-    .map(|((num, dice), cmp)| Dice {
-        num,
-        dice,
-        cmp: cmp.map(|(_, op, _, operand)| (op, operand)),
-    })
-    .parse(input)
+        )),
+    )
+        .map(|((num, dice), cmp)| Dice {
+            num,
+            dice,
+            cmp: cmp.map(|(_, op, _, operand)| (op, operand)),
+        })
+        .parse(input)
 }

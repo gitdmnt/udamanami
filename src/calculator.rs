@@ -9,8 +9,8 @@ use nom::{
     },
     combinator::{map, recognize, value},
     multi::{fold_many0, many0, many0_count, many1_count, separated_list0},
-    sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
-    IResult,
+    sequence::{delimited, pair, preceded, separated_pair, terminated},
+    IResult, Parser,
 };
 use rand::{prelude::Distribution, Rng};
 use rand_distr::StandardNormal;
@@ -162,7 +162,8 @@ fn parse_binop_left(
             pair(preceded(multispace0, op_parser), next_parser),
             move || init.clone(),
             |acc, (op, val)| Expr::Op2(op, Box::new(acc), Box::new(val)),
-        )(input)
+        )
+        .parse(input)
     }
 }
 
@@ -180,7 +181,8 @@ fn parse_binop_right(
                 ops.push(op);
                 (exprs, ops)
             },
-        )(input)?;
+        )
+        .parse(input)?;
 
         let last = exprs.pop().unwrap();
 
@@ -203,9 +205,10 @@ fn parse_binop_none(
 ) -> impl Fn(&str) -> IResult<&str, Expr> {
     move |input: &str| {
         map(
-            tuple((next_parser, preceded(multispace0, op_parser), next_parser)),
+            (next_parser, preceded(multispace0, op_parser), next_parser),
             |(e1, op, e2)| Expr::Op2(op, Box::new(e1), Box::new(e2)),
-        )(input)
+        )
+        .parse(input)
     }
 }
 
@@ -217,7 +220,8 @@ fn parse_term_l(
         preceded(
             multispace0,
             alt((parse_binop_left(op_parser, next_parser), next_parser)),
-        )(input)
+        )
+        .parse(input)
     }
 }
 
@@ -229,7 +233,8 @@ fn parse_term_r(
         preceded(
             multispace0,
             alt((parse_binop_right(op_parser, next_parser), next_parser)),
-        )(input)
+        )
+        .parse(input)
     }
 }
 
@@ -241,7 +246,8 @@ fn parse_term_n(
         preceded(
             multispace0,
             alt((parse_binop_none(op_parser, next_parser), next_parser)),
-        )(input)
+        )
+        .parse(input)
     }
 }
 
@@ -253,24 +259,26 @@ fn parse_identifier(input: &str) -> IResult<&str, &str> {
             alt((alpha1, tag("_"))),
             many0_count(alt((alphanumeric1, tag("_")))),
         )),
-    )(input)
+    )
+    .parse(input)
 }
 
 // 0: 関数呼び出し・定数・括弧・ラムダ式
 fn parse_int(input: &str) -> IResult<&str, Expr> {
-    map(digit1, |s: &str| Expr::IVal(s.parse().unwrap()))(input)
+    map(digit1, |s: &str| Expr::IVal(s.parse().unwrap())).parse(input)
 }
 
 fn parse_float(input: &str) -> IResult<&str, Expr> {
     map(
         separated_pair(digit1, char('.'), digit1),
         |(a, b): (&str, &str)| Expr::FVal(format!("{a}.{b}").parse().unwrap()),
-    )(input)
+    )
+    .parse(input)
 }
 
 // "e"とか"pi"とか。存在チェックは計算時にやる
 fn parse_named_const(input: &str) -> IResult<&str, Expr> {
-    map(parse_identifier, |s: &str| Expr::Const(s.to_owned()))(input)
+    map(parse_identifier, |s: &str| Expr::Const(s.to_owned())).parse(input)
 }
 
 // (x, y, z) => x + y + z
@@ -286,7 +294,8 @@ fn parse_lambda(input: &str) -> IResult<&str, Expr> {
             preceded(multispace0, preceded(tag("=>"), parse_expr)),
         ),
         |(args, body)| Expr::Lambda(args.into_iter().map(String::from).collect(), Box::new(body)),
-    )(input)
+    )
+    .parse(input)
 }
 
 // x => x + 1
@@ -297,11 +306,12 @@ fn parse_lambda_one(input: &str) -> IResult<&str, Expr> {
             preceded(multispace0, preceded(tag("=>"), parse_expr)),
         ),
         |(arg, body)| Expr::Lambda(vec![arg.to_owned()], Box::new(body)),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_paren(input: &str) -> IResult<&str, Expr> {
-    delimited(char('('), parse_expr, char(')'))(input)
+    delimited(char('('), parse_expr, char(')')).parse(input)
 }
 
 // \n -> CR, \t -> TAB, \u{1234} -> Unicode
@@ -323,11 +333,12 @@ fn parse_special_escape(input: &str) -> IResult<&str, char> {
                 },
             ),
         )),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_escaped_char(input: &str) -> IResult<&str, char> {
-    preceded(char('\\'), anychar)(input)
+    preceded(char('\\'), anychar).parse(input)
 }
 
 fn parse_string_content(input: &str) -> IResult<&str, String> {
@@ -338,21 +349,24 @@ fn parse_string_content(input: &str) -> IResult<&str, String> {
             none_of("\""),
         ))),
         |chars| chars.into_iter().collect(),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_string_literal(input: &str) -> IResult<&str, Expr> {
     map(
         delimited(char('\"'), parse_string_content, char('\"')),
         Expr::SVal,
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_list_literal(input: &str) -> IResult<&str, Expr> {
     map(
         delimited(char('['), separated_list0(char(','), parse_expr), char(']')),
         |exprs| Expr::List(exprs.into_iter().collect()),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_object_literal(input: &str) -> IResult<&str, Expr> {
@@ -377,7 +391,8 @@ fn parse_object_literal(input: &str) -> IResult<&str, Expr> {
                     .collect(),
             )
         },
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
@@ -394,7 +409,8 @@ fn parse_term_before_postfix(input: &str) -> IResult<&str, Expr> {
             parse_list_literal,
             parse_object_literal,
         )),
-    )(input)
+    )
+    .parse(input)
 }
 
 #[derive(Debug, Clone)]
@@ -412,7 +428,8 @@ fn parse_apply(input: &str) -> IResult<&str, PostfixExprPart> {
             preceded(multispace0, char(')')),
         ),
         |args| PostfixExprPart::Apply(args.into_iter().collect()),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_list_at(input: &str) -> IResult<&str, PostfixExprPart> {
@@ -423,14 +440,16 @@ fn parse_list_at(input: &str) -> IResult<&str, PostfixExprPart> {
             preceded(multispace0, char(']')),
         ),
         |ix| PostfixExprPart::ListAt(Box::new(ix)),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn parse_object_get(input: &str) -> IResult<&str, PostfixExprPart> {
     map(
         preceded(preceded(multispace0, char('.')), parse_identifier),
         |k| PostfixExprPart::Get(k.to_owned()),
-    )(input)
+    )
+    .parse(input)
 }
 
 fn postfix(expr: Expr, postfix: PostfixExprPart) -> Expr {
@@ -449,46 +468,56 @@ fn parse_term0(input: &str) -> IResult<&str, Expr> {
         alt((parse_apply, parse_list_at, parse_object_get)),
         move || init.clone(),
         postfix,
-    )(input)
+    )
+    .parse(input)
 }
 
 // 1: 単項演算子
 fn parse_neg(input: &str) -> IResult<&str, Expr> {
     map(pair(char('-'), parse_term0), |(_, e)| {
         Expr::Op1(ExprOp1::Neg, Box::new(e))
-    })(input)
+    })
+    .parse(input)
 }
 
 fn parse_one_dice(input: &str) -> IResult<&str, Expr> {
     map(pair(one_of("dD"), parse_term0), |(_, e)| {
         Expr::Op1(ExprOp1::OneDice, Box::new(e))
-    })(input)
+    })
+    .parse(input)
 }
 
 fn parse_not(input: &str) -> IResult<&str, Expr> {
     map(pair(char('!'), parse_term0), |(_, e)| {
         Expr::Op1(ExprOp1::NotL, Box::new(e))
-    })(input)
+    })
+    .parse(input)
 }
 
 fn parse_term1(input: &str) -> IResult<&str, Expr> {
     preceded(
         multispace0,
         alt((parse_neg, parse_one_dice, parse_not, parse_term0)),
-    )(input)
+    )
+    .parse(input)
 }
 
 // 2: D 左結合
 fn parse_term2(input: &str) -> IResult<&str, Expr> {
-    parse_term_l(|op| map(one_of("dD"), |_| ExprOp2::Dice)(op), parse_term1)(input)
+    parse_term_l(
+        |op| map(one_of("dD"), |_| ExprOp2::Dice).parse(op),
+        parse_term1,
+    )
+    .parse(input)
 }
 
 // 3: ^ ** (←同義) 右結合
 fn parse_term3(input: &str) -> IResult<&str, Expr> {
     parse_term_r(
-        |op| map(alt((tag("^"), tag("**"))), |_| ExprOp2::Pow)(op),
+        |op| map(alt((tag("^"), tag("**"))), |_| ExprOp2::Pow).parse(op),
         parse_term2,
-    )(input)
+    )
+    .parse(input)
 }
 
 // 4: * / % 左結合
@@ -499,10 +528,12 @@ fn parse_term4(input: &str) -> IResult<&str, Expr> {
                 map(char('*'), |_| ExprOp2::Mul),
                 map(char('/'), |_| ExprOp2::Div),
                 map(char('%'), |_| ExprOp2::Mod),
-            ))(op)
+            ))
+            .parse(op)
         },
         parse_term3,
-    )(input)
+    )
+    .parse(input)
 }
 
 // 5: + - 左結合
@@ -512,10 +543,12 @@ fn parse_term5(input: &str) -> IResult<&str, Expr> {
             alt((
                 map(char('+'), |_| ExprOp2::Add),
                 map(char('-'), |_| ExprOp2::Sub),
-            ))(op)
+            ))
+            .parse(op)
         },
         parse_term4,
-    )(input)
+    )
+    .parse(input)
 }
 
 // 6: > >= < <= == != 無結合
@@ -529,10 +562,12 @@ fn parse_term6(input: &str) -> IResult<&str, Expr> {
                 map(tag("!="), |_| ExprOp2::Ne),
                 map(char('>'), |_| ExprOp2::Gt),
                 map(char('<'), |_| ExprOp2::Lt),
-            ))(op)
+            ))
+            .parse(op)
         },
         parse_term5,
-    )(input)
+    )
+    .parse(input)
 }
 
 // 7: && || ^^ 左結合
@@ -543,14 +578,16 @@ fn parse_term7(input: &str) -> IResult<&str, Expr> {
                 map(tag("&&"), |_| ExprOp2::AndL),
                 map(tag("||"), |_| ExprOp2::OrL),
                 map(tag("^^"), |_| ExprOp2::XorL),
-            ))(op)
+            ))
+            .parse(op)
         },
         parse_term6,
-    )(input)
+    )
+    .parse(input)
 }
 
 pub fn parse_expr(input: &str) -> IResult<&str, Expr> {
-    terminated(parse_term7, multispace0)(input)
+    terminated(parse_term7, multispace0).parse(input)
 }
 
 /*
@@ -992,7 +1029,7 @@ fn eval_expr_ctx(
                     if i < 1 {
                         return Err((EvalError::InvalidDice, expr.clone()));
                     }
-                    let r = rand::thread_rng().gen_range(1..=i);
+                    let r = rand::rng().random_range(1..=i);
                     Ok((EvalResult::IVal(r), next_step + 1))
                 }
                 ExprOp1::NotL => {
@@ -1108,7 +1145,7 @@ fn eval_expr_ctx(
                             }
                             let mut sum = 0;
                             for _ in 0..num {
-                                sum += rand::thread_rng().gen_range(1..=size);
+                                sum += rand::rng().random_range(1..=size);
                             }
                             Ok((EvalResult::IVal(sum), next_step + 1))
                         }
@@ -1467,7 +1504,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
             body: Box::new(|expr, step, _, _, args| {
                 if args.is_empty() {
                     Ok((
-                        EvalResult::FVal(rand::thread_rng().gen_range(0.0..1.0)),
+                        EvalResult::FVal(rand::rng().random_range(0.0..1.0)),
                         step + 1,
                     ))
                 } else {
@@ -1483,7 +1520,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
             body: Box::new(|expr, step, _, _, args| {
                 if args.is_empty() {
                     Ok((
-                        EvalResult::FVal(StandardNormal.sample(&mut rand::thread_rng())),
+                        EvalResult::FVal(StandardNormal.sample(&mut rand::rng())),
                         step + 1,
                     ))
                 } else {
@@ -2186,7 +2223,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                         if l.is_empty() {
                             return Err((EvalError::OutOfRange, expr.clone()));
                         }
-                        let i = rand::thread_rng().gen_range(0..l.len());
+                        let i = rand::rng().random_range(0..l.len());
                         Ok((l[i].clone(), step + 1))
                     }
                     _ => Err((EvalError::NotAList(args[0].clone()), expr.clone())),
@@ -2202,7 +2239,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                 if args.is_empty() {
                     return Err((EvalError::ArgCountMismatch(args.len(), 1), expr.clone()));
                 }
-                let i = rand::thread_rng().gen_range(0..args.len());
+                let i = rand::rng().random_range(0..args.len());
                 Ok((args[i].clone(), step + 1))
             }),
         },
@@ -2220,7 +2257,7 @@ pub fn get_libfun(func: EvalStdLibFun) -> LibFun {
                     |mut l| {
                         let mut shuffled = Vec::new();
                         while !l.is_empty() {
-                            let i = rand::thread_rng().gen_range(0..l.len());
+                            let i = rand::rng().random_range(0..l.len());
                             shuffled.push(l.remove(i));
                         }
                         Ok((EvalResult::List(shuffled), step + 1))
