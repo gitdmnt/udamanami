@@ -50,7 +50,7 @@ impl ReplyToAllModeData {
     pub const fn blank() -> Self {
         Self {
             until: None,
-            model: GeminiModel::Gemini20FlashLite,
+            model: GeminiModel::Gemini25FlashLite,
             duration: Duration::from_secs(0),
         }
     }
