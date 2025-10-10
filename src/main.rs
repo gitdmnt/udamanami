@@ -40,6 +40,7 @@ async fn serenity(
         secrets.get("MADSISTERS_ROOM_ID"),
         secrets.get("SHYBOYS_ROOM_ID"),
         secrets.get("DEBUG_ROOM_ID"),
+        secrets.get("HOSPITAL_ROOM_ID"),
     ]
     .into_iter()
     .filter_map(|id| id.and_then(|id| ChannelId::from_str(&id).ok()))
