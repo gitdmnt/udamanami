@@ -25,10 +25,9 @@ pub fn register() -> CreateCommand {
         .add_option(
             CreateCommandOption::new(CommandOptionType::String, "model", "モデル")
                 .required(false)
-                .add_string_choice("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite")
-                .add_string_choice("Gemini 2.0 Flash", "gemini-2.0-flash")
-                .add_string_choice("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-05-20")
-                .add_string_choice("Gemini 2.5 Pro Preview", "gemini-2.5-pro-preview-05-06"),
+                .add_string_choice("Gemini 2.5 Flash Lite", "gemini-2.5-flash-lite")
+                .add_string_choice("Gemini 2.5 Flash", "gemini-2.5-flash")
+                .add_string_choice("Gemini 2.5 Pro", "gemini-2.5-pro"),
         )
 }
 
