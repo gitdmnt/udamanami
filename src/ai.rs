@@ -94,19 +94,17 @@ const MATOME_PROMPT: &str = r"
 
 #[derive(Clone)]
 pub enum GeminiModel {
-    Gemini20Flash,
-    Gemini20FlashLite,
-    Gemini25FlashPreview,
-    Gemini25ProPreview,
+    Gemini25Flash,
+    Gemini25FlashLite,
+    Gemini25Pro,
 }
 
 impl std::fmt::Display for GeminiModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Gemini20Flash => write!(f, "gemini-2.0-flash"),
-            Self::Gemini20FlashLite => write!(f, "gemini-2.0-flash-lite"),
-            Self::Gemini25FlashPreview => write!(f, "gemini-2.5-flash-preview-05-20"),
-            Self::Gemini25ProPreview => write!(f, "gemini-2.5-pro-preview-05-06"),
+            Self::Gemini25Flash => write!(f, "gemini-2.5-flash"),
+            Self::Gemini25FlashLite => write!(f, "gemini-2.5-flash-lite"),
+            Self::Gemini25Pro => write!(f, "gemini-2.5-pro"),
         }
     }
 }
@@ -114,18 +112,17 @@ impl std::fmt::Display for GeminiModel {
 impl From<&str> for GeminiModel {
     fn from(model: &str) -> Self {
         match model {
-            "gemini-2.0-flash" => Self::Gemini20Flash,
-            "gemini-2.0-flash-lite" => Self::Gemini20FlashLite,
-            "gemini-2.5-flash-preview-05-20" => Self::Gemini25FlashPreview,
-            "gemini-2.5-pro-preview-05-06" => Self::Gemini25ProPreview,
-            _ => Self::Gemini20FlashLite,
+            "gemini-2.5-flash" => Self::Gemini25Flash,
+            "gemini-2.5-flash-lite" => Self::Gemini25FlashLite,
+            "gemini-2.5-pro" => Self::Gemini25Pro,
+            _ => Self::Gemini25FlashLite,
         }
     }
 }
 
 impl Default for GeminiModel {
     fn default() -> Self {
-        Self::Gemini20FlashLite
+        Self::Gemini25FlashLite
     }
 }
 
@@ -218,14 +215,14 @@ impl std::fmt::Display for GeminiConversation {
 impl GeminiAI {
     pub fn new(api_key: &str) -> Self {
         Self {
-            model: Mutex::new(GeminiModel::Gemini20FlashLite),
+            model: Mutex::new(GeminiModel::Gemini25FlashLite),
             api_key: api_key.to_owned(),
             conversation: GeminiConversation::default(),
         }
     }
     pub fn manami(api_key: &str) -> Self {
         Self {
-            model: Mutex::new(GeminiModel::Gemini20FlashLite),
+            model: Mutex::new(GeminiModel::Gemini25FlashLite),
             api_key: api_key.to_owned(),
             conversation: GeminiConversation::new(),
         }
@@ -324,7 +321,7 @@ impl GeminiAI {
             contents: Mutex::new(messages.into()),
         };
 
-        let model = GeminiModel::Gemini20FlashLite;
+        let model = GeminiModel::Gemini25FlashLite;
         let (status, response) = generate(model, &self.api_key, &conversation).await?;
         if status.is_success() {
             Ok(response)
