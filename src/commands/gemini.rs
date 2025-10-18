@@ -45,16 +45,13 @@ fn parse(option: Vec<ResolvedOption<'_>>, _: &Bot) -> Option<GeminiModel> {
 }
 
 async fn run_body(model: Option<GeminiModel>, bot: &Bot) -> String {
-    if let Some(model) = model {
+    model.map_or_else(|| {
+        let current_model = bot.gemini.get_model();
+        let msg = format!("モデルを{current_model}に変更したよ");
+        msg
+    }, |model| {
         let msg = format!("モデルを{model}に変更したよ");
         bot.gemini.set_model(model);
         msg
-    } else {
-        match bot.gemini.generate().await {
-            Ok(content) => content.replace("うだまなみ: ", ""),
-            Err(e) => {
-                format!("Error sending message: {e:?}")
-            }
-        }
-    }
+    })
 }
