@@ -23,9 +23,9 @@ jobs:
           fi
 
           if [ "$EVENT_TYPE" = "opened" ]; then
-            MESSAGE="🚀 @udamana New Pull Request: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
+            MESSAGE="🚀 <@324551085320830986> New Pull Request: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
           elif [ "$EVENT_TYPE" = "synchronize" ]; then
-            MESSAGE="🔄 @udamana Pull Request Updated: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
+            MESSAGE="🔄 <@324551085320830986> Pull Request Updated: [$PR_TITLE]($PR_URL) by $USER_LOGIN"
           else
             echo "Unsupported event type: $EVENT_TYPE"
             exit 1
