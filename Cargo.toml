@@ -18,9 +18,7 @@ serenity = { version = "0.12.4", default-features = false, features = [
   "model",
   "chrono",
 ] }
-shuttle-runtime = "0.55.0"
-shuttle-serenity = "0.55.0"
-tokio = "1.45.1"
+tokio = { version = "1.45.1", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1.41"
 rand_distr = "0.5.1"
 strum = { version = "0.27.1", features = ["derive"] }
