@@ -79,11 +79,11 @@ async fn main() -> anyhow::Result<()> {
 
     let jail_mark_role_id = env_var("JAIL_MARK_ROLE_ID")
         .map(|id| RoleId::from_str(&id).unwrap())
-        .unwrap();
+        .unwrap_or_default();
 
     let jail_main_role_id = env_var("JAIL_MAIN_ROLE_ID")
         .map(|id| RoleId::from_str(&id).unwrap())
-        .unwrap();
+        .unwrap_or_default();
 
     let commit_hash = env_var("COMMIT_HASH");
 
