@@ -20,7 +20,7 @@ set -euo pipefail
 
 PROJECT_ID="${PROJECT_ID:?set PROJECT_ID to your GCP project id}"
 GITHUB_REPO="${GITHUB_REPO:-gitdmnt/udamanami}" # owner/repo
-REGION="${REGION:-asia-northeast1}"
+REGION="${REGION:-us-central1}"
 AR_REPO="${AR_REPO:-udamanami}"
 POOL_ID="${POOL_ID:-github}"
 PROVIDER_ID="${PROVIDER_ID:-github}"

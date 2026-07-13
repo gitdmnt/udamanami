@@ -53,7 +53,7 @@ pub struct Bot {
     pub commit_date: Option<String>,
 
     // まなみの雑談用のAI
-    pub gemini: ai::GeminiAI,
+    pub ai: ai::ManamiAi,
 
     // コマンド用のデータ
     // ログなどを保存するDB
@@ -87,7 +87,7 @@ impl Bot {
         jail_mark_role_id: RoleId,
         jail_main_role_id: RoleId,
 
-        gemini: ai::GeminiAI,
+        ai: ai::ManamiAi,
 
         commit_hash: Option<String>,
         commit_date: Option<String>,
@@ -116,7 +116,7 @@ impl Bot {
             commit_date,
             variables,
             reply_to_all_mode,
-            gemini,
+            ai,
             prefix_commands,
             slash_commands,
             database,
@@ -345,7 +345,7 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
     // AIのためにメッセージを保存する
     if msg.channel_id.get() == bot.debug_channel_id.get() && !msg.author.bot {
-        bot.gemini.add_user_log(user_name, &msg.content);
+        bot.ai.add_user_log(user_name, &msg.content);
     }
 }
 
@@ -376,7 +376,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 && (response_to_all || rng().random::<f32>() < 0.3)
             {
                 bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
-                let content = bot.gemini.generate_with_model(response_to_all_model).await;
+                let content = bot.ai.generate_with_model(&response_to_all_model).await;
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),
                     Err(e) => {
@@ -418,9 +418,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 let content = if response_to_all {
                     bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
                                                                    // ↓全レスモードなら全レス用のモデルを使用
-                    bot.gemini.generate_with_model(response_to_all_model).await
+                    bot.ai.generate_with_model(&response_to_all_model).await
                 } else {
-                    bot.gemini.generate().await
+                    bot.ai.generate().await
                 };
                 let content = match content {
                     Ok(content) => content.replace("うだまなみ: ", ""),

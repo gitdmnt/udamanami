@@ -1,15 +1,13 @@
-# Deploying udamanami to GCP Compute Engine
+# udamanami の GCP Compute Engine デプロイ
 
-udamanami runs as a single container on a **Container-Optimized OS (COS)**
-Compute Engine VM, started by a **systemd** service (see `cloud-init.yaml`).
-GitHub Actions builds the image, pushes it to **Artifact Registry**, and rolls it
-out. Secrets live in **Secret Manager**; the SQLite database lives on the VM's
-persistent boot disk.
+udamanami は Container-Optimized OS（COS）の Compute Engine VM 上で、1 つのコンテナとして動きます。
+起動は systemd サービスが担います（`cloud-init.yaml` を参照）。
+GitHub Actions がイメージをビルドし、Artifact Registry へ push して、VM へロールアウトします。
+秘密情報は Secret Manager に置き、SQLite データベースは VM の永続ブートディスクに置きます。
 
-We deliberately do **not** use gcloud's `create-with-container` /
-`update-container`: that "container on a VM" convenience is deprecated by Google.
-Running the container ourselves via COS + systemd is the supported path and keeps
-us off another dead-end service.
+gcloud の `create-with-container` と `update-container`（コンテナを VM に載せる簡便機能）は使いません。
+これらは Google が非推奨としているためです。
+COS と systemd で自前でコンテナを動かす方法が公式に支持された経路であり、行き止まりのサービスに再び乗らずに済みます。
 
 ```
 GitHub push to main
@@ -26,154 +24,136 @@ Compute Engine VM (COS) ── systemd udamanami.service ──▶ container
                                  Secret Manager (udamanami-env)
 ```
 
-The bot process listens on no ports and makes only **outbound** connections (to
-Discord and the Gemini API), and this deployment adds no inbound firewall rules of
-its own. Note, though, that the VM gets an ephemeral **public IP** for outbound
-traffic, and on GCP's `default` network the built-in `default-allow-ssh` rule
-leaves tcp:22 reachable from the internet (still gated by SSH keys / OS Login).
-See [Notes and alternatives](#notes-and-alternatives) to lock that down.
+ボットのプロセスはどのポートも listen せず、外向きの接続だけを行います（Discord と LLM API）。
+このデプロイ自体は受信ファイアウォールルールを一切追加しません。
+ただし VM は外向き通信のためにエフェメラルな公開 IP を持ち、GCP の `default` ネットワークでは組み込みの `default-allow-ssh` ルールによって tcp:22 がインターネットから到達可能です（アクセスには SSH 鍵や OS Login が必要）。
+締め出す方法は「補足と代替案」を参照してください。
 
-## What gets created
+## 作成されるリソース
 
-| Resource | Name (default) | Purpose |
+| リソース | 名前（既定） | 役割 |
 | --- | --- | --- |
-| Artifact Registry repo | `udamanami` (asia-northeast1) | stores bot images |
-| Runtime service account | `udamanami-vm@<project>` | identity the VM runs as |
-| Secret | `udamanami-env` | the bot's `.env`, read at container start |
-| CI service account | `udamanami-ci@<project>` | identity GitHub Actions deploys as |
-| Workload Identity Pool | `github` | keyless GitHub → GCP trust |
-| Compute Engine VM | `udamanami-bot` (asia-northeast1-b, `e2-small`, COS) | runs the bot |
+| Artifact Registry リポジトリ | `udamanami`（us-central1） | ボットのイメージを保管 |
+| ランタイム用サービスアカウント | `udamanami-vm@<project>` | VM が名乗る ID |
+| シークレット | `udamanami-env` | ボットの `.env`。コンテナ起動時に読む |
+| CI 用サービスアカウント | `udamanami-ci@<project>` | GitHub Actions が名乗る ID |
+| Workload Identity プール | `github` | GitHub から GCP へのキーレス信頼 |
+| Compute Engine VM | `udamanami-bot`（us-central1-a, `e2-micro`, COS） | ボットを実行 |
 
-## How a deploy works
+## デプロイの流れ
 
-1. GitHub Actions builds `…/udamanami:<sha>` and `:latest` and pushes both.
-2. It renders `deploy/cloud-init.yaml` with this build's image and the Secret
-   Manager resource, and writes the result to the VM's `user-data` metadata.
-3. If the VM does not exist yet, it is **created** from `cos-stable` with that
-   `user-data`. If it exists, the workflow replaces `user-data` and **resets**
-   (reboots) the VM — a reset takes roughly a minute.
-4. On every boot, COS re-runs cloud-init, which (re)writes `udamanami.service` and
-   starts it; the service pulls the rendered image and runs it.
+1. GitHub Actions が `…/udamanami:<sha>` と `:latest` をビルドし、両方を push します。
+2. `deploy/cloud-init.yaml` に、そのビルドのイメージと Secret Manager のリソース名を差し込み、結果を VM の `user-data` メタデータへ書き込みます。
+3. VM がまだ無ければ、その `user-data` を付けて `cos-stable` から作成します。既にあれば、`user-data` を置き換えて VM を reset（再起動）します。reset には 1 分ほどかかります。
+4. 起動のたびに COS が cloud-init を再実行し、`udamanami.service` を書き（直し）て起動します。サービスは差し込まれたイメージを pull して実行します。
 
-`/etc` on COS is stateless, so we don't `systemctl enable` — COS re-runs
-cloud-init on every boot instead. `udamanami.service` also has `Restart=always`,
-so the bot comes back on its own after a crash.
+COS の `/etc` は揮発性なので、`systemctl enable` はしません。
+代わりに COS が起動のたびに cloud-init を再実行します。
+`udamanami.service` は `Restart=always` なので、クラッシュしてもボットは自力で復帰します。
 
-## One-time setup
+## 初回セットアップ
 
-Prerequisites: [`gcloud`](https://cloud.google.com/sdk/docs/install) installed,
-and a GCP project where you have Owner/Editor.
+前提は、[`gcloud`](https://cloud.google.com/sdk/docs/install) がインストール済みで、Owner か Editor 権限を持つ GCP プロジェクトがあることです。
 
 ```sh
 gcloud auth login
 gcloud config set project <PROJECT_ID>
 ```
 
-### 1. Provision GCP resources
+### 1. GCP リソースを用意する
 
 ```sh
-# APIs, Artifact Registry, runtime SA, and the (empty) secret
+# API、Artifact Registry、ランタイム SA、（空の）シークレットを作成
 PROJECT_ID=<PROJECT_ID> ./deploy/setup-gcp.sh
 ```
 
-### 2. Store the bot configuration in Secret Manager
+### 2. ボットの設定を Secret Manager に保存する
 
 ```sh
 cp deploy/udamanami.env.example deploy/udamanami.env
-# edit deploy/udamanami.env — put in the real DISCORD_TOKEN, GEMINI_API_KEY, etc.
+# deploy/udamanami.env を編集し、実際の DISCORD_TOKEN や LLM_API_KEY などを入れる
 gcloud secrets versions add udamanami-env \
   --project <PROJECT_ID> --data-file deploy/udamanami.env
 ```
 
-`deploy/udamanami.env` is git-ignored — never commit real tokens.
+`deploy/udamanami.env` は git 管理外です。
+実トークンをコミットしないでください。
+`/model` と `/auto` で選べるモデルは `LLM_MODELS`（カンマ区切り）で決まります。
+LLM エンドポイントは既定で OpenAI を指し、`LLM_BASE_URL` で切り替えられます。
 
-### 3. Set up keyless GitHub → GCP auth
+### 3. GitHub から GCP へのキーレス認証を設定する
 
 ```sh
 PROJECT_ID=<PROJECT_ID> GITHUB_REPO=gitdmnt/udamanami ./deploy/setup-github-wif.sh
 ```
 
-The script prints three values. Set them as **repository variables**
-(GitHub → Settings → Secrets and variables → Actions → **Variables**):
+スクリプトが 3 つの値を出力します。
+これらを**リポジトリ変数**として設定してください（GitHub → Settings → Secrets and variables → Actions → Variables）。
 
 - `GCP_PROJECT_ID`
 - `GCP_WIF_PROVIDER`
 - `GCP_DEPLOY_SA`
 
-### 4. Deploy
+### 4. デプロイする
 
-Push to `main` (or run the **Deploy to Compute Engine** workflow manually). The
-first run **creates** the VM; later runs update its `user-data` and reset it.
-Watch it in the Actions tab.
+`main` に push します（または Deploy to Compute Engine ワークフローを手動実行します）。
+初回の実行で VM を作成し、以降の実行は `user-data` を更新して reset します。
+進行状況は Actions タブで確認できます。
 
-## Everyday operations
+## 日々の運用
 
-**Deploy a new version** — merge to `main`. That's it.
+新しいバージョンのデプロイは、`main` にマージするだけです。
 
-**Change configuration / rotate a token** — add a new secret version, then make
-the container re-read it. Re-running the deploy workflow does this; to do it by
-hand without a full reset:
+設定変更やトークンのローテーションは、シークレットの新しいバージョンを追加し、コンテナに読み直させます。
+デプロイワークフローを再実行すればこれが行われます。
+reset せずに手作業で行うには次のようにします。
 
 ```sh
 gcloud secrets versions add udamanami-env --project <PROJECT_ID> \
   --data-file deploy/udamanami.env
-gcloud compute ssh udamanami-bot --zone asia-northeast1-b \
+gcloud compute ssh udamanami-bot --zone us-central1-a \
   --command 'sudo systemctl restart udamanami'
 ```
 
-**View logs**
+ログを見るには次のようにします。
 
 ```sh
-gcloud compute ssh udamanami-bot --zone asia-northeast1-b \
+gcloud compute ssh udamanami-bot --zone us-central1-a \
   --command 'docker logs -f udamanami'
-# or inspect the service:
-gcloud compute ssh udamanami-bot --zone asia-northeast1-b \
+# またはサービスの状態を調べる:
+gcloud compute ssh udamanami-bot --zone us-central1-a \
   --command 'sudo systemctl status udamanami; journalctl -u udamanami -n 100'
 ```
 
-**Back up the database**
+データベースをバックアップするには次のようにします。
 
 ```sh
-gcloud compute ssh udamanami-bot --zone asia-northeast1-b \
+gcloud compute ssh udamanami-bot --zone us-central1-a \
   --command 'sudo cp /var/lib/udamanami/db.sqlite /tmp/db.sqlite'
 gcloud compute scp udamanami-bot:/tmp/db.sqlite ./db.sqlite.bak \
-  --zone asia-northeast1-b
+  --zone us-central1-a
 ```
 
-The database persists across reboots and deploys (it lives on the boot disk at
-`/var/lib/udamanami`). It is **not** retained if the VM and its boot disk are
-deleted — take a backup before deleting the instance.
+データベースは再起動やデプロイをまたいで残ります（ブートディスク上の `/var/lib/udamanami` にあります）。
+VM とそのブートディスクを削除すると残りません。
+インスタンスを削除する前にバックアップを取ってください。
 
-`gcloud compute ssh` works out of the box on the `default` network, which already
-permits SSH from your machine. This is administrator access only; the bot itself
-opens no ports.
+`gcloud compute ssh` は `default` ネットワークでそのまま使えます。
+このネットワークは手元のマシンからの SSH を既に許可しているためです。
+これは管理者アクセス専用であり、ボット自体はどのポートも開けません。
 
-## Configuration knobs
+## 設定値の変更
 
-Region, zone, machine type, and names are `env:` values at the top of
-`.github/workflows/deploy.yml` and defaults in the `deploy/*.sh` scripts. To run
-in the US free tier, set the region to `us-central1` and machine type to
-`e2-micro`.
+リージョン、ゾーン、マシンタイプ、各種名前は、`.github/workflows/deploy.yml` 冒頭の `env:` の値と、`deploy/*.sh` スクリプトの既定値にあります。
+既定値は無料枠（Always Free）向けにしてあります（リージョン `us-central1`、マシンタイプ `e2-micro`、`pd-standard` の 30GB ブートディスク）。
+リージョンは無料枠対象の `us-west1` や `us-east1` にも変えられます。
+無料枠は 1 台のみ、かつ非プリエンプティブが条件です。
+ただし外部 IPv4 アドレスは無料枠に含まれず、月 2 ドル前後かかります。
+これはボットが外部へ接続するために必要で、外すと egress に Cloud NAT が要り、かえって割高になります。
 
-## Notes and alternatives
+## 補足と代替案
 
-- **Secrets, not metadata.** Config is fetched from Secret Manager at container
-  start by `entrypoint.sh`, using the VM's service account. Nothing sensitive is
-  stored in instance metadata. When `UDAMANAMI_ENV_SECRET` is unset the image
-  runs with whatever environment you pass it, so it still works locally.
-- **Zero-downtime deploys.** The default deploy resets the VM (~1 min of
-  downtime). If that ever matters, replace the `reset` step with an
-  [IAP-tunnelled](https://cloud.google.com/iap/docs/using-tcp-forwarding) SSH
-  call that runs `sudo systemctl restart udamanami` — no reboot, at the cost of a
-  little extra IAM/firewall setup.
-- **Locking down SSH / dropping the public IP.** The VM's public IP is only for
-  outbound traffic, but on the `default` network tcp:22 is reachable from the
-  internet (auth still required). To restrict it, tighten or replace the
-  `default-allow-ssh` firewall rule (e.g. limit the source range to your IP or to
-  the [IAP range](https://cloud.google.com/iap/docs/using-tcp-forwarding)
-  `35.235.240.0/20`). To remove the public IP entirely, add `--no-address` to the
-  create step and set up [Cloud NAT](https://cloud.google.com/nat/docs/overview)
-  for egress.
-- **Durable database.** For a database that survives instance deletion, attach a
-  separate persistent disk and mount it at `/var/lib/udamanami`, or run a
-  scheduled backup of `db.sqlite` to Cloud Storage.
+- **秘密情報はメタデータに置かない**：設定はコンテナ起動時に `entrypoint.sh` が VM のサービスアカウントで Secret Manager から取得します。機密はインスタンスメタデータに一切保存しません。`UDAMANAMI_ENV_SECRET` が未設定なら、イメージは渡された環境変数のまま動くので、ローカルでもそのまま動作します。
+- **無停止デプロイ**：既定のデプロイは VM を reset するため、1 分ほど停止します。これが問題になる場合は、`reset` の代わりに [IAP トンネル](https://cloud.google.com/iap/docs/using-tcp-forwarding)経由の SSH で `sudo systemctl restart udamanami` を実行します。再起動は不要になりますが、IAM とファイアウォールの設定が少し増えます。
+- **SSH の締め出しと公開 IP の除去**：VM の公開 IP は外向き通信のためだけにありますが、`default` ネットワークでは tcp:22 がインターネットから到達可能です（認証は必要）。制限するには、`default-allow-ssh` ファイアウォールルールを厳しくするか置き換えます（送信元範囲を自分の IP や [IAP レンジ](https://cloud.google.com/iap/docs/using-tcp-forwarding) `35.235.240.0/20` に絞る、など）。公開 IP を完全に無くすには、作成ステップに `--no-address` を足し、外向き通信のために [Cloud NAT](https://cloud.google.com/nat/docs/overview) を設定します。
+- **データベースの永続化を強くする**：インスタンス削除後も残るデータベースにするには、別の永続ディスクを付けて `/var/lib/udamanami` にマウントするか、`db.sqlite` を Cloud Storage へ定期バックアップします。

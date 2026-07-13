@@ -23,8 +23,8 @@
 #
 set -euo pipefail
 
-PROJECT_ID="${PROJECT_ID:?set PROJECT_ID to your GCP project id}"
-REGION="${REGION:-asia-northeast1}"
+PROJECT_ID="manami-502312"
+REGION="${REGION:-us-central1}"
 AR_REPO="${AR_REPO:-udamanami}"
 RUNTIME_SA_ID="${RUNTIME_SA_ID:-udamanami-vm}"
 SECRET_NAME="${SECRET_NAME:-udamanami-env}"

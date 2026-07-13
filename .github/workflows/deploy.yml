@@ -20,12 +20,14 @@ env:
   #   GCP_WIF_PROVIDER: projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github
   #   GCP_DEPLOY_SA   : udamanami-ci@<PROJECT_ID>.iam.gserviceaccount.com
   # (all three are printed by deploy/setup-github-wif.sh)
-  GCP_REGION: asia-northeast1
-  GCP_ZONE: asia-northeast1-b
+  # Free-tier (Always Free) settings: e2-micro in a US region (us-west1 /
+  # us-central1 / us-east1), with a pd-standard boot disk up to 30 GB.
+  GCP_REGION: us-central1
+  GCP_ZONE: us-central1-a
   AR_REPO: udamanami
   IMAGE_NAME: udamanami
   INSTANCE_NAME: udamanami-bot
-  MACHINE_TYPE: e2-small
+  MACHINE_TYPE: e2-micro
   RUNTIME_SA_ID: udamanami-vm
 
 jobs:
@@ -119,8 +121,8 @@ jobs:
               --machine-type "${MACHINE_TYPE}" \
               --image-family cos-stable \
               --image-project cos-cloud \
-              --boot-disk-size 20GB \
-              --boot-disk-type pd-balanced \
+              --boot-disk-size 30GB \
+              --boot-disk-type pd-standard \
               --service-account "${runtime_sa}" \
               --scopes cloud-platform \
               --tags udamanami-bot \
