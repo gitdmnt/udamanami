@@ -1,0 +1,64 @@
+#cloud-config
+#
+# Container-Optimized OS (COS) startup configuration for the udamanami bot.
+# COS reads this from the instance's `user-data` metadata key.
+#
+# This file is a TEMPLATE: the deploy workflow substitutes @@IMAGE_REF@@ and
+# @@ENV_SECRET@@ with the image to run and the Secret Manager resource before
+# writing it to the instance's metadata. A deploy re-renders it and resets the
+# VM.
+#
+# Two COS specifics this relies on (see cloud.google.com/container-optimized-os):
+#   * /etc is stateless, so `systemctl enable` does NOT persist across reboots.
+#   * cloud-init `write_files` and `runcmd` therefore run on EVERY boot, so we
+#     simply (re)write the unit and `systemctl start` it each boot.
+# It depends only on tools guaranteed present on COS: docker, docker-credential-gcr
+# and systemctl -- no host-side metadata fetch.
+
+write_files:
+  - path: /etc/udamanami/run.sh
+    permissions: "0755"
+    owner: root
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+
+      # docker-credential-gcr writes ~/.docker/config.json; give it a writable HOME.
+      export HOME=/home/udamanami
+      mkdir -p "${HOME}"
+
+      image="@@IMAGE_REF@@"
+      secret="@@ENV_SECRET@@"
+      registry="${image%%/*}"
+
+      # Authenticate docker to Artifact Registry using the VM's service account.
+      /usr/bin/docker-credential-gcr configure-docker --registries "${registry}"
+
+      /usr/bin/docker pull "${image}"
+      exec /usr/bin/docker run --rm --name udamanami \
+        --log-driver json-file --log-opt max-size=10m --log-opt max-file=3 \
+        -e "UDAMANAMI_ENV_SECRET=${secret}" \
+        -v /var/lib/udamanami:/data \
+        "${image}"
+
+  - path: /etc/systemd/system/udamanami.service
+    permissions: "0644"
+    owner: root
+    content: |
+      [Unit]
+      Description=udamanami Discord bot
+      Wants=network-online.target gcr-online.target
+      After=network-online.target gcr-online.target
+
+      [Service]
+      ExecStartPre=-/usr/bin/docker rm -f udamanami
+      ExecStart=/etc/udamanami/run.sh
+      ExecStop=/usr/bin/docker stop udamanami
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+
+runcmd:
+  - mkdir -p /var/lib/udamanami
+  - systemctl daemon-reload
+  - systemctl start udamanami.service

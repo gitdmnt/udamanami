@@ -1,10 +1,11 @@
 use std::collections::VecDeque;
 use std::sync::Mutex;
 
-use anyhow::{anyhow, Result};
+use anyhow::Result;
 
-use reqwest;
-use serde::{Deserialize, Serialize};
+use rig::client::CompletionClient;
+use rig::completion::{AssistantContent, CompletionModel, Message as RigMessage};
+use rig::providers::openai;
 
 const MANAMI_PROMPT: &str = r"
 ## 指示
@@ -92,302 +93,246 @@ const MATOME_PROMPT: &str = r"
 ```
 ";
 
+/// `LLM_MODELS` が未設定・空のときに使う既定モデル一覧。
+const DEFAULT_MODELS: &[&str] = &["5.4-mini", "5.4-nano", "5.6-luna"];
+
+/// 利用可能なモデル一覧を環境変数 `LLM_MODELS`（カンマ区切り）から得る。
+/// 未設定または空のときは [`DEFAULT_MODELS`] にフォールバックする。
+/// スラッシュコマンドの選択肢と既定モデルの決定に使う。
+pub fn available_models() -> Vec<String> {
+    let from_env: Vec<String> = std::env::var("LLM_MODELS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|m| m.trim().to_owned())
+        .filter(|m| !m.is_empty())
+        .collect();
+
+    if from_env.is_empty() {
+        DEFAULT_MODELS.iter().map(|s| (*s).to_owned()).collect()
+    } else {
+        from_env
+    }
+}
+
+/// プロバイダ非依存のチャットメッセージ。会話バッファと DB 由来のログで使う。
+#[derive(Clone, Copy)]
+pub enum Role {
+    User,
+    Assistant,
+}
+
 #[derive(Clone)]
-pub enum GeminiModel {
-    Gemini25Flash,
-    Gemini25FlashLite,
-    Gemini25Pro,
+pub struct ChatMessage {
+    pub role: Role,
+    pub content: String,
 }
 
-impl std::fmt::Display for GeminiModel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Gemini25Flash => write!(f, "gemini-2.5-flash"),
-            Self::Gemini25FlashLite => write!(f, "gemini-2.5-flash-lite"),
-            Self::Gemini25Pro => write!(f, "gemini-2.5-pro"),
-        }
-    }
-}
-
-impl From<&str> for GeminiModel {
-    fn from(model: &str) -> Self {
-        match model {
-            "gemini-2.5-flash" => Self::Gemini25Flash,
-            "gemini-2.5-flash-lite" => Self::Gemini25FlashLite,
-            "gemini-2.5-pro" => Self::Gemini25Pro,
-            _ => Self::Gemini25FlashLite,
-        }
-    }
-}
-
-impl Default for GeminiModel {
-    fn default() -> Self {
-        Self::Gemini25FlashLite
-    }
-}
-
-pub struct GeminiAI {
-    model: Mutex<GeminiModel>,
-    api_key: String,
-    conversation: GeminiConversation,
-}
-
-#[derive(Serialize, Debug)]
-struct GeminiConversation {
-    system_instruction: GeminiContent,
-    contents: Mutex<VecDeque<GeminiContent>>,
-}
-
-#[derive(Deserialize, Serialize, Debug)]
-pub struct GeminiContent {
-    role: Option<String>,
-    parts: Vec<Part>,
-}
-
-impl GeminiContent {
+impl ChatMessage {
+    /// ユーザー発言。話者名を内容の先頭に付ける（複数話者を区別するため）。
     pub fn user(user_name: &str, message: &str) -> Self {
         Self {
-            role: Some("user".to_owned()),
-            parts: vec![Part {
-                text: format!("{user_name}: {message}"),
-            }],
+            role: Role::User,
+            content: format!("{user_name}: {message}"),
         }
     }
 
-    pub fn model(message: &str) -> Self {
+    /// まなみ（アシスタント）の発言。
+    pub fn assistant(message: &str) -> Self {
         Self {
-            role: Some("model".to_owned()),
-            parts: vec![Part {
-                text: message.to_owned(),
-            }],
+            role: Role::Assistant,
+            content: message.to_owned(),
+        }
+    }
+
+    fn to_rig(&self) -> RigMessage {
+        match self.role {
+            Role::User => RigMessage::user(self.content.clone()),
+            Role::Assistant => RigMessage::assistant(self.content.clone()),
         }
     }
 }
 
-#[derive(Deserialize, Serialize, Debug)]
-pub struct Part {
-    text: String,
+/// まなみの雑談・要約用 AI。OpenAI 互換エンドポイント（`base_url` + `api_key`）を通すので、
+/// `base_url`・`api_key`・モデル名を変えるだけで各種プロバイダを使える。
+pub struct ManamiAi {
+    client: openai::CompletionsClient,
+    default_model: String,
+    model: Mutex<String>,
+    system_prompt: String,
+    conversation: Mutex<VecDeque<ChatMessage>>,
 }
 
-#[derive(Deserialize)]
-struct GeminiResponse {
-    candidates: Vec<Candidate>,
-    // その他のフィールドは不要なため省略
-}
+impl ManamiAi {
+    /// まなみのペルソナ付きで構築する。
+    pub fn manami(base_url: &str, api_key: &str, default_model: &str) -> Result<Self> {
+        Self::with_system_prompt(base_url, api_key, default_model, MANAMI_PROMPT)
+    }
 
-#[derive(Deserialize)]
-struct Candidate {
-    content: GeminiContent,
-}
+    pub fn with_system_prompt(
+        base_url: &str,
+        api_key: &str,
+        default_model: &str,
+        system_prompt: &str,
+    ) -> Result<Self> {
+        // OpenAI 互換の Chat Completions クライアント（POST {base_url}/chat/completions）。
+        let client = openai::CompletionsClient::builder()
+            .api_key(api_key)
+            .base_url(base_url)
+            .build()
+            .map_err(|e| anyhow::anyhow!("failed to build LLM client: {e:?}"))?;
 
-impl GeminiConversation {
-    fn new() -> Self {
-        Self {
-            system_instruction: GeminiContent {
-                role: None,
-                parts: vec![Part {
-                    text: MANAMI_PROMPT.to_owned(),
-                }],
-            },
-            contents: Mutex::new(VecDeque::new()),
-        }
+        Ok(Self {
+            client,
+            default_model: default_model.to_owned(),
+            model: Mutex::new(default_model.to_owned()),
+            system_prompt: system_prompt.to_owned(),
+            conversation: Mutex::new(VecDeque::new()),
+        })
     }
-}
 
-impl Default for GeminiConversation {
-    fn default() -> Self {
-        Self {
-            system_instruction: GeminiContent {
-                role: None,
-                parts: vec![],
-            },
-            contents: Mutex::new(VecDeque::new()),
-        }
-    }
-}
-impl std::fmt::Display for GeminiConversation {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let result = serde_json::to_string(self).map_err(|_| std::fmt::Error)?;
-        write!(f, "{result}")
-    }
-}
-
-impl GeminiAI {
-    pub fn new(api_key: &str) -> Self {
-        Self {
-            model: Mutex::new(GeminiModel::Gemini25FlashLite),
-            api_key: api_key.to_owned(),
-            conversation: GeminiConversation::default(),
-        }
-    }
-    pub fn manami(api_key: &str) -> Self {
-        Self {
-            model: Mutex::new(GeminiModel::Gemini25FlashLite),
-            api_key: api_key.to_owned(),
-            conversation: GeminiConversation::new(),
-        }
-    }
     pub fn set_system_instruction(&mut self, instruction: &str) {
-        let content = GeminiContent {
-            role: None,
-            parts: vec![Part {
-                text: instruction.to_owned(),
-            }],
-        };
-        self.conversation.system_instruction = content;
+        self.system_prompt = instruction.to_owned();
     }
+
     pub fn add_user_log(&self, user: &str, message: &str) {
-        let content = GeminiContent {
-            role: Some("user".to_owned()),
-            parts: vec![Part {
-                text: format!("{user}: {message}"),
-            }],
-        };
-        let mut contents = self.conversation.contents.lock().unwrap();
-        contents.push_back(content);
-        if contents.len() > 500 {
-            contents.pop_front();
-        }
+        self.push(ChatMessage::user(user, message));
     }
+
     pub fn add_model_log(&self, message: &str) {
-        let content = GeminiContent {
-            role: Some("model".to_owned()),
-            parts: vec![Part {
-                text: message.to_owned(),
-            }],
-        };
-        let mut contents = self.conversation.contents.lock().unwrap();
-        contents.push_back(content);
-        if contents.len() > 500 {
-            contents.pop_front();
+        self.push(ChatMessage::assistant(message));
+    }
+
+    fn push(&self, message: ChatMessage) {
+        let mut buf = self.conversation.lock().unwrap();
+        buf.push_back(message);
+        if buf.len() > 500 {
+            buf.pop_front();
         }
     }
 
     pub fn add_log_bulk(&self, messages: Vec<(String, &str)>) {
-        let mut contents = self.conversation.contents.lock().unwrap();
+        let mut buf = self.conversation.lock().unwrap();
         for (user, message) in messages {
-            let role = if user == "model" { "model" } else { "user" };
-            let text = if user == "model" {
-                message.to_owned()
+            let msg = if user == "model" {
+                ChatMessage::assistant(message)
             } else {
-                format!("{user}: {message}")
+                ChatMessage::user(&user, message)
             };
-            let content = GeminiContent {
-                role: Some(role.to_owned()),
-                parts: vec![Part { text }],
-            };
-            contents.push_back(content);
+            buf.push_back(msg);
         }
-        let length = contents.len();
-        if length > 500 {
-            contents.drain(0..(length - 500));
+        let len = buf.len();
+        if len > 500 {
+            buf.drain(0..(len - 500));
         }
     }
 
     pub fn clear(&self) {
-        self.conversation.contents.lock().unwrap().clear();
+        self.conversation.lock().unwrap().clear();
     }
+
     pub fn debug(&self) -> String {
-        self.conversation.to_string()
+        self.conversation
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|m| {
+                let role = match m.role {
+                    Role::User => "user",
+                    Role::Assistant => "model",
+                };
+                format!("{role}: {}", m.content)
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
-    pub async fn generate(&self) -> Result<String, anyhow::Error> {
-        let model = self.model.lock().unwrap().clone();
-        self.generate_with_model(model).await
-    }
-
-    pub async fn generate_with_model(&self, model: GeminiModel) -> Result<String, anyhow::Error> {
-        let (status, response) = generate(model, &self.api_key, &self.conversation).await?;
-
-        if status.is_success() {
-            self.add_model_log(&response);
-            Ok(response)
-        } else {
-            Err(anyhow!(response))
-        }
-    }
-
-    pub async fn generate_matome(
-        &self,
-        messages: Vec<GeminiContent>,
-    ) -> Result<String, anyhow::Error> {
-        let conversation = GeminiConversation {
-            system_instruction: GeminiContent {
-                role: None,
-                parts: vec![Part {
-                    text: MATOME_PROMPT.to_owned(),
-                }],
-            },
-            contents: Mutex::new(messages.into()),
-        };
-
-        let model = GeminiModel::Gemini25FlashLite;
-        let (status, response) = generate(model, &self.api_key, &conversation).await?;
-        if status.is_success() {
-            Ok(response)
-        } else {
-            Err(anyhow!(response))
-        }
-    }
-
-    pub fn set_model(&self, model: GeminiModel) {
+    pub fn set_model(&self, model: String) {
         *self.model.lock().unwrap() = model;
     }
 
-    pub fn get_model(&self) -> GeminiModel {
+    pub fn get_model(&self) -> String {
         self.model.lock().unwrap().clone()
+    }
+
+    pub async fn generate(&self) -> Result<String> {
+        let model = self.get_model();
+        self.generate_with_model(&model).await
+    }
+
+    pub async fn generate_with_model(&self, model: &str) -> Result<String> {
+        // ロックは await をまたがず、ここでコピーして解放する。
+        let messages: Vec<ChatMessage> =
+            self.conversation.lock().unwrap().iter().cloned().collect();
+
+        if messages.is_empty() {
+            return Ok("やっほー！　どうしたの？".to_owned());
+        }
+
+        let reply = self
+            .run_completion(model, &self.system_prompt, messages)
+            .await?;
+        self.add_model_log(&reply);
+        Ok(reply)
+    }
+
+    /// チャットログを渡して要約させる（会話バッファには影響しない）。
+    pub async fn generate_matome(&self, messages: Vec<ChatMessage>) -> Result<String> {
+        if messages.is_empty() {
+            return Ok("まとめるログがないよ".to_owned());
+        }
+        let model = self.default_model.clone();
+        self.run_completion(&model, MATOME_PROMPT, messages).await
+    }
+
+    async fn run_completion(
+        &self,
+        model: &str,
+        preamble: &str,
+        messages: Vec<ChatMessage>,
+    ) -> Result<String> {
+        let mut rig_messages: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
+
+        // rig の builder は prompt を末尾メッセージとして付けるので、
+        // バッファ末尾を prompt、それ以前を chat_history に割り当てる。
+        let prompt = rig_messages
+            .pop()
+            .ok_or_else(|| anyhow::anyhow!("no messages to send"))?;
+
+        let completion_model = self.client.completion_model(model);
+        let request = completion_model
+            .completion_request(prompt)
+            .messages(rig_messages)
+            .preamble(preamble.to_owned())
+            .build();
+
+        let response = completion_model.completion(request).await?;
+
+        let reply = response
+            .choice
+            .into_iter()
+            .filter_map(|content| match content {
+                AssistantContent::Text(text) => Some(text.text),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+        Ok(reply)
     }
 }
 
-async fn generate(
-    model: GeminiModel,
-    api_key: &String,
-    conversation: &GeminiConversation,
-) -> Result<(reqwest::StatusCode, String), anyhow::Error> {
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-    );
-    let prompt = conversation.to_string();
-    println!("Prompt: {prompt}");
-    let client = reqwest::Client::new();
-    let response = client
-        .post(&url)
-        .header("Content-Type", "application/json")
-        .body(prompt)
-        .send()
-        .await?;
-    let status = response.status();
-    let response = response.text().await?;
-    println!("Response: {response}");
-    let response = serde_json::from_str::<GeminiResponse>(&response)
-        .map_err(|e| anyhow!("Failed to parse response: {}\n {}", e, response))?;
-    let response = response
-        .candidates
-        .first()
-        .ok_or_else(|| anyhow!("No candidates found"))?
-        .content
-        .parts
-        .first()
-        .ok_or_else(|| anyhow!("No content found"))?
-        .text
-        .clone();
-
-    Ok((status, response))
-}
-
 #[cfg(test)]
-mod gemini_tests {
+mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn test_gemini_generate() {
-        let ai = GeminiAI::new("");
-        ai.add_user_log("宇田", "まなみ、おはよう！　今日は何をする予定？");
-        println!("{}", &ai.conversation);
-        let response = ai.generate().await;
-        match response {
-            Ok(res) => println!("Response: {res}"),
-            Err(err) => println!("Error: {err}"),
-        }
+    #[test]
+    fn available_models_never_empty() {
+        // 環境変数の有無にかかわらず、少なくとも既定モデルが返る。
+        assert!(!available_models().is_empty());
+    }
+
+    #[test]
+    fn chat_message_roles() {
+        assert_eq!(ChatMessage::user("宇田", "やあ").content, "宇田: やあ");
+        assert_eq!(ChatMessage::assistant("やっほー").content, "やっほー");
     }
 }

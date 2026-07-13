@@ -89,7 +89,17 @@ async fn main() -> anyhow::Result<()> {
 
     let commit_date = env_var("COMMIT_DATE");
 
-    let gemini = ai::GeminiAI::manami(&env_var_required("GEMINI_API_KEY")?);
+    // LLM 設定。OpenAI 互換エンドポイントを通すので、base_url / api_key / model を
+    // 変えるだけで各種プロバイダを使える。利用可能モデルは LLM_MODELS（カンマ区切り）。
+    let llm_base_url =
+        env_var("LLM_BASE_URL").unwrap_or_else(|| "https://api.openai.com/v1".to_owned());
+    let llm_api_key = env_var("LLM_API_KEY")
+        .or_else(|| env_var("OPENAI_API_KEY"))
+        .context("'LLM_API_KEY' (or 'OPENAI_API_KEY') was not found")?;
+    let llm_model = env_var("LLM_MODEL")
+        .or_else(|| ai::available_models().into_iter().next())
+        .unwrap_or_else(|| "5.4-nano".to_owned());
+    let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model)?;
 
     let database_path = env_var("DATABASE_PATH").unwrap_or_else(|| "./db.sqlite".to_owned());
     let database = BotDatabase::new(&database_path).await?;
@@ -100,7 +110,7 @@ async fn main() -> anyhow::Result<()> {
         guild_id,
         jail_mark_role_id,
         jail_main_role_id,
-        gemini,
+        ai,
         commit_hash,
         commit_date,
         &disabled_commands,

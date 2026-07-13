@@ -4,6 +4,7 @@ target/
 *.md
 .dockerignore
 Dockerfile
-railway.toml
-deploy.sh
+deploy/
 generate_entity.sh
+db.sqlite
+*.env

@@ -5,7 +5,6 @@ use std::pin::Pin;
 
 use std::time::Instant;
 
-use crate::ai::GeminiModel;
 use std::time::Duration;
 
 use serenity::all::ResolvedOption;
@@ -21,11 +20,11 @@ pub mod deletevar;
 pub mod dice;
 pub mod endauto;
 pub mod fetch;
-pub mod gemini;
 pub mod help;
 pub mod imakita;
 pub mod isprime;
 pub mod jail;
+pub mod model;
 pub mod listvar;
 pub mod ping;
 pub mod unjail;
@@ -36,7 +35,7 @@ pub mod varbulk;
 #[derive(Clone)]
 pub struct ReplyToAllModeData {
     pub until: Option<Instant>,
-    pub model: GeminiModel,
+    pub model: String,
     pub duration: Duration,
 }
 
@@ -50,12 +49,12 @@ impl ReplyToAllModeData {
     pub const fn blank() -> Self {
         Self {
             until: None,
-            model: GeminiModel::Gemini25FlashLite,
+            model: String::new(),
             duration: Duration::from_secs(0),
         }
     }
 
-    pub fn set(&mut self, model: GeminiModel, duration: Duration) {
+    pub fn set(&mut self, model: String, duration: Duration) {
         self.until = Instant::now().checked_add(duration);
         self.model = model;
         self.duration = duration;
@@ -163,7 +162,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         channel::SLASH_CHANNEL_COMMAND,
         dice::SLASH_DICE_COMMAND,
         fetch::SLASH_FETCH_COMMAND,
-        gemini::SLASH_GEMINI_COMMAND,
+        model::SLASH_MODEL_COMMAND,
         isprime::SLASH_ISPRIME_COMMAND,
     ]
     .into_iter()

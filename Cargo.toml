@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.98"
 dashmap = "6.1.0"
+rig = "0.40.0"
 nom = "8.0.0"
 rand = "0.9.1"
 regex = "1.11.1"

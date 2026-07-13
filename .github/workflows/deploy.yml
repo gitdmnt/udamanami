@@ -1,0 +1,130 @@
+name: Deploy to Compute Engine
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never run two deployments at once; let an in-flight one finish.
+concurrency:
+  group: deploy-compute-engine
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write # required for Workload Identity Federation
+
+env:
+  # --- Set these as repository variables (Settings > Secrets and variables > Actions > Variables) ---
+  #   GCP_PROJECT_ID  : your GCP project id
+  #   GCP_WIF_PROVIDER: projects/<PROJECT_NUMBER>/locations/global/workloadIdentityPools/github/providers/github
+  #   GCP_DEPLOY_SA   : udamanami-ci@<PROJECT_ID>.iam.gserviceaccount.com
+  # (all three are printed by deploy/setup-github-wif.sh)
+  # Free-tier (Always Free) settings: e2-micro in a US region (us-west1 /
+  # us-central1 / us-east1), with a pd-standard boot disk up to 30 GB.
+  GCP_REGION: us-central1
+  GCP_ZONE: us-central1-a
+  AR_REPO: udamanami
+  IMAGE_NAME: udamanami
+  INSTANCE_NAME: udamanami-bot
+  MACHINE_TYPE: e2-micro
+  RUNTIME_SA_ID: udamanami-vm
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          {
+            echo "sha_short=$(git rev-parse --short HEAD)"
+            echo "commit_date=$(git show -s --format=%ci HEAD)"
+            echo "image=${GCP_REGION}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${AR_REPO}/${IMAGE_NAME}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${GCP_REGION}-docker.pkg.dev" --quiet
+
+      - name: Build image
+        run: |
+          docker build \
+            --build-arg COMMIT_HASH='${{ steps.meta.outputs.sha_short }}' \
+            --build-arg COMMIT_DATE='${{ steps.meta.outputs.commit_date }}' \
+            --tag '${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_short }}' \
+            --tag '${{ steps.meta.outputs.image }}:latest' \
+            .
+
+      - name: Push image
+        run: |
+          docker push '${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_short }}'
+          docker push '${{ steps.meta.outputs.image }}:latest'
+
+      # We run the container ourselves via COS + systemd (deploy/cloud-init.yaml)
+      # rather than gcloud's deprecated create-with-container/update-container.
+      # The cloud-init template is rendered with this build's image + secret and
+      # written to the VM's `user-data`; a reset reboots the VM, and on boot COS
+      # re-runs cloud-init, which pulls that image and (re)starts the service.
+      - name: Deploy to Compute Engine
+        env:
+          IMAGE_REF: '${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_short }}'
+          PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          runtime_sa="${RUNTIME_SA_ID}@${PROJECT_ID}.iam.gserviceaccount.com"
+          env_secret="projects/${PROJECT_ID}/secrets/udamanami-env/versions/latest"
+
+          # Render the cloud-init template with this deploy's image and secret.
+          # '|' delimiter avoids clashing with the '/' and ':' in the values.
+          user_data="$(mktemp)"
+          sed -e "s|@@IMAGE_REF@@|${IMAGE_REF}|g" \
+              -e "s|@@ENV_SECRET@@|${env_secret}|g" \
+              deploy/cloud-init.yaml > "${user_data}"
+
+          # Does the instance already exist? Distinguish a genuine "not found"
+          # from transient/permission errors so we never fall through to creating
+          # a duplicate on a hiccup.
+          if describe_err="$(gcloud compute instances describe "${INSTANCE_NAME}" \
+                --zone "${GCP_ZONE}" --format='value(name)' 2>&1 >/dev/null)"; then
+            exists=1
+          elif printf '%s' "${describe_err}" | grep -qiE 'was not found|not found|HTTPError 404'; then
+            exists=0
+          else
+            echo "Unexpected error from 'gcloud compute instances describe':" >&2
+            printf '%s\n' "${describe_err}" >&2
+            exit 1
+          fi
+
+          if [[ "${exists}" == "1" ]]; then
+            echo "Instance exists -> updating user-data and resetting"
+            gcloud compute instances add-metadata "${INSTANCE_NAME}" \
+              --zone "${GCP_ZONE}" \
+              --metadata-from-file "user-data=${user_data}"
+            gcloud compute instances reset "${INSTANCE_NAME}" --zone "${GCP_ZONE}"
+          else
+            echo "Instance missing -> creating it"
+            gcloud compute instances create "${INSTANCE_NAME}" \
+              --zone "${GCP_ZONE}" \
+              --machine-type "${MACHINE_TYPE}" \
+              --image-family cos-stable \
+              --image-project cos-cloud \
+              --boot-disk-size 30GB \
+              --boot-disk-type pd-standard \
+              --service-account "${runtime_sa}" \
+              --scopes cloud-platform \
+              --tags udamanami-bot \
+              --metadata-from-file "user-data=${user_data}"
+          fi

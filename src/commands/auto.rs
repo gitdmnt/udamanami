@@ -1,4 +1,4 @@
-use crate::ai::GeminiModel;
+use crate::ai::available_models;
 use serenity::{
     builder::{CreateCommand, CreateCommandOption},
     model::application::{CommandOptionType, ResolvedValue},
@@ -23,16 +23,16 @@ pub const SLASH_AUTO_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
 };
 
 pub fn register() -> CreateCommand {
+    let mut model_option =
+        CreateCommandOption::new(CommandOptionType::String, "model", "モデル").required(false);
+    // 選択肢は環境変数 LLM_MODELS（カンマ区切り）から生成する（Discord の上限は 25）。
+    for model in available_models().into_iter().take(25) {
+        model_option = model_option.add_string_choice(model.clone(), model);
+    }
+
     CreateCommand::new(COMMAND_NAME)
         .description("[sec]秒以内の連続した会話に対して、[model]を使って必ず返信するよ")
-        .add_option(
-            CreateCommandOption::new(CommandOptionType::String, "model", "モデル")
-                .required(false)
-                .add_string_choice("Gemini 2.0 Flash Lite", "gemini-2.0-flash-lite")
-                .add_string_choice("Gemini 2.0 Flash", "gemini-2.0-flash")
-                .add_string_choice("Gemini 2.5 Flash Preview", "gemini-2.5-flash-preview-04-17")
-                .add_string_choice("Gemini 2.5 Pro Experimental", "gemini-2.5-pro-exp-03-25"),
-        )
+        .add_option(model_option)
         .add_option(
             CreateCommandOption::new(CommandOptionType::Integer, "sec", "秒数")
                 .required(false)
@@ -45,14 +45,14 @@ pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
     run_body(parse_options(option, bot), bot).await
 }
 
-fn parse_options(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> (GeminiModel, Duration) {
+fn parse_options(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> (String, Duration) {
     let model = option
         .iter()
         .fold(None, |model, option| match (option.name, &option.value) {
-            ("model", ResolvedValue::String(s)) => Some(GeminiModel::from(*s)),
+            ("model", ResolvedValue::String(s)) => Some((*s).to_owned()),
             _ => model,
         })
-        .unwrap_or_else(|| bot.gemini.get_model());
+        .unwrap_or_else(|| bot.ai.get_model());
 
     let sec = Duration::from_secs(
         option
@@ -67,7 +67,7 @@ fn parse_options(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> (GeminiModel, Du
     (model, sec)
 }
 
-async fn run_body((model, sec): (GeminiModel, Duration), bot: &Bot) -> String {
+async fn run_body((model, sec): (String, Duration), bot: &Bot) -> String {
     bot.reply_to_all_mode
         .lock()
         .unwrap()

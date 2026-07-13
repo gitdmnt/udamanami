@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::ai::GeminiContent;
+use crate::ai::ChatMessage;
 use crate::calculator::EvalContext;
 use crate::db::migrator::Migrator;
 use chrono::DateTime;
@@ -396,11 +396,11 @@ pub struct MessageInfo {
 }
 
 impl MessageInfo {
-    pub fn gemini_content(&self, my_userid: &UserId) -> GeminiContent {
+    pub fn to_chat_message(&self, my_userid: &UserId) -> ChatMessage {
         if self.user_id == *my_userid {
-            GeminiContent::model(&self.content)
+            ChatMessage::assistant(&self.content)
         } else {
-            GeminiContent::user(&self.user_name, &self.content)
+            ChatMessage::user(&self.user_name, &self.content)
         }
     }
 }
