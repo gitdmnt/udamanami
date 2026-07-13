@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         .context("'LLM_API_KEY' (or 'OPENAI_API_KEY') was not found")?;
     let llm_model = env_var("LLM_MODEL")
         .or_else(|| ai::available_models().into_iter().next())
-        .unwrap_or_else(|| "5.4-nano".to_owned());
+        .unwrap_or_else(|| "gpt-5.4-nano".to_owned());
     let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model)?;
 
     let database_path = env_var("DATABASE_PATH").unwrap_or_else(|| "./db.sqlite".to_owned());

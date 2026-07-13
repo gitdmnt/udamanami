@@ -94,7 +94,7 @@ const MATOME_PROMPT: &str = r"
 ";
 
 /// `LLM_MODELS` が未設定・空のときに使う既定モデル一覧。
-const DEFAULT_MODELS: &[&str] = &["5.4-mini", "5.4-nano", "5.6-luna"];
+const DEFAULT_MODELS: &[&str] = &["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.6-luna"];
 
 /// 利用可能なモデル一覧を環境変数 `LLM_MODELS`（カンマ区切り）から得る。
 /// 未設定または空のときは [`DEFAULT_MODELS`] にフォールバックする。
@@ -260,6 +260,13 @@ impl ManamiAi {
     }
 
     pub async fn generate_with_model(&self, model: &str) -> Result<String> {
+        // 全レスモード未設定時などモデルが空なら、現在のモデルにフォールバックする。
+        let model = if model.trim().is_empty() {
+            self.get_model()
+        } else {
+            model.to_owned()
+        };
+
         // ロックは await をまたがず、ここでコピーして解放する。
         let messages: Vec<ChatMessage> =
             self.conversation.lock().unwrap().iter().cloned().collect();
@@ -269,7 +276,7 @@ impl ManamiAi {
         }
 
         let reply = self
-            .run_completion(model, &self.system_prompt, messages)
+            .run_completion(&model, &self.system_prompt, messages)
             .await?;
         self.add_model_log(&reply);
         Ok(reply)
