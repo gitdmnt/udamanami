@@ -1,18 +1,19 @@
 use crate::commands::var;
-use crate::commands::CommandContext;
+use crate::commands::{CommandContext, ManamiSlashCommand};
 
-use crate::commands::ManamiPrefixCommand;
-
-pub const PREFIX_LISTVAR_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+pub const SLASH_LISTVAR_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "listvar",
-    alias: &[],
-    usage: "!listvar",
+    usage: "/listvar",
     description: "定義された変数の一覧を表示するよ！",
-    run: |ctx| Box::pin(run(ctx)),
-    is_dm_command: true,
-    is_guild_command: true,
+    register,
+    run: |_, ctx| Box::pin(async move { run_body(&ctx).await }),
+    is_local_command: false,
 };
 
-pub async fn run(ctx: CommandContext<'_>) {
-    var::list_var(ctx.channel_id, ctx.cache_http(), ctx.bot).await;
+pub fn register() -> serenity::builder::CreateCommand {
+    serenity::builder::CreateCommand::new("listvar").description("定義された変数の一覧を表示するよ！")
+}
+
+async fn run_body(ctx: &CommandContext<'_>) -> String {
+    var::list_var(ctx.bot).await
 }

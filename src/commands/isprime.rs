@@ -1,48 +1,6 @@
-use crate::commands::CommandContext;
-
-use crate::commands::ManamiPrefixCommand;
-
 use crate::commands::ManamiSlashCommand;
 
 use serenity::model::application::ResolvedValue;
-
-pub const PREFIX_ISPRIME_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
-    name: "isprime",
-    alias: &[],
-    usage: "!isprime <n>",
-    description: "nが素数かどうかを判定するよ！",
-    run: |ctx| Box::pin(run_old(ctx)),
-    is_dm_command: true,
-    is_guild_command: true,
-};
-
-async fn run_old(ctx: CommandContext<'_>) {
-    let command_args = ctx.args();
-
-    if command_args.len() != 1 {
-        ctx.channel_id
-            .say(ctx.cache_http(), "使い方: `!isprime <number>`")
-            .await
-            .unwrap();
-        return;
-    };
-
-    let Ok(num) = command_args[0].parse::<u64>() else {
-        ctx.channel_id
-            .say(ctx.cache_http(), "わかんないよ")
-            .await
-            .unwrap();
-        return;
-    };
-
-    let (is_prime, factor) = check_is_prime(num);
-
-    let is_prime = message(num, is_prime, factor);
-    ctx.channel_id
-        .say(ctx.cache_http(), is_prime)
-        .await
-        .unwrap();
-}
 
 pub const SLASH_ISPRIME_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "isprime",
@@ -86,7 +44,7 @@ fn check_is_prime(num: u64) -> (bool, Vec<u64>) {
             let mut num = num;
             let mut factor = vec![];
 
-            while num % 2 == 0 {
+            while num.is_multiple_of(2) {
                 num /= 2;
                 factor.push(2);
             }
@@ -94,7 +52,7 @@ fn check_is_prime(num: u64) -> (bool, Vec<u64>) {
             let mut i = 3;
 
             while i * i <= num {
-                if num % i == 0 {
+                if num.is_multiple_of(i) {
                     num /= i;
                     factor.push(i);
                 } else {

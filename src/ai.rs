@@ -209,7 +209,8 @@ impl ManamiAi {
         self.system_prompt = instruction.to_owned();
     }
 
-    /// 会話バッファにユーザー発言を追加する。話者名を内容の先頭に付ける。
+    /// 会話バッファにユーザー発言を追加する。話者名は Role に保持し、
+    /// LLM 送信時（to_rig）に本文の先頭へ付与する。
     pub fn add_user_log(&self, user: &str, message: &str) {
         self.push(ChatMessage::user(user, message));
     }
@@ -372,8 +373,8 @@ impl Block {
     /// ブロックを Discord 向けの文字列へ装飾する。
     fn decorate(self) -> String {
         match self {
-            Block::Text(text) => text,
-            Block::Reasoning(text) => prefix_lines(&text, "> -# "),
+            Self::Text(text) => text,
+            Self::Reasoning(text) => prefix_lines(&text, "> -# "),
         }
     }
 }
@@ -423,7 +424,18 @@ mod tests {
 
     #[test]
     fn chat_message_roles() {
-        assert_eq!(ChatMessage::user("宇田", "やあ").content, "宇田: やあ");
-        assert_eq!(ChatMessage::assistant("やっほー").content, "やっほー");
+        // ユーザー発言は話者名を Role に保持し、content は本文そのもの。
+        // 話者名の付与は LLM 送信時（to_rig）に行う。
+        let user_msg = ChatMessage::user("宇田", "やあ");
+        match &user_msg.role {
+            Role::User { name } => assert_eq!(name.as_str(), "宇田"),
+            Role::Assistant => panic!("expected a user role"),
+        }
+        assert_eq!(user_msg.content, "やあ");
+
+        // まなみ（アシスタント）の発言は名前を持たず、content は本文そのもの。
+        let assistant_msg = ChatMessage::assistant("やっほー");
+        assert!(matches!(assistant_msg.role, Role::Assistant));
+        assert_eq!(assistant_msg.content, "やっほー");
     }
 }

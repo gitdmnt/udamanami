@@ -1,29 +1,38 @@
-use crate::commands::var::{var_main, VAR_DEFAULT};
-use crate::commands::CommandContext;
+use serenity::all::{CommandOptionType, ResolvedOption, ResolvedValue};
 
-use crate::commands::ManamiPrefixCommand;
-pub const PREFIX_CALC_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
+use crate::commands::var::{eval_and_bind, VAR_DEFAULT};
+use crate::commands::{CommandContext, ManamiSlashCommand};
+
+pub const SLASH_CALC_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "calc",
-    alias: &[],
-    usage: "!calc <expr>",
+    usage: "/calc <expr>",
     description: "数式を計算するよ！",
-    run: |ctx| Box::pin(run(ctx)),
-    is_dm_command: true,
-    is_guild_command: true,
+    register,
+    run: |options, ctx| {
+        let expr = parse_options(options);
+        Box::pin(async move { run_body(expr, &ctx).await })
+    },
+    is_local_command: false,
 };
 
-pub async fn run(ctx: CommandContext<'_>) {
-    let reply = ctx.channel_id;
-    let bot = ctx.bot;
-    let expression = ctx.args().join(" ");
+pub fn register() -> serenity::builder::CreateCommand {
+    serenity::builder::CreateCommand::new("calc")
+        .description("数式を計算するよ！")
+        .add_option(
+            serenity::builder::CreateCommandOption::new(CommandOptionType::String, "expr", "数式")
+                .required(true),
+        )
+}
 
-    var_main(
-        reply,
-        ctx.cache_http(),
-        VAR_DEFAULT.to_owned(),
-        expression,
-        bot,
-        ctx.author_id,
-    )
-    .await;
+fn parse_options(options: Vec<ResolvedOption<'_>>) -> String {
+    options
+        .iter()
+        .fold(String::new(), |expr, option| match (option.name, &option.value) {
+            ("expr", ResolvedValue::String(s)) => (*s).to_owned(),
+            _ => expr,
+        })
+}
+
+async fn run_body(expr: String, ctx: &CommandContext<'_>) -> String {
+    eval_and_bind(VAR_DEFAULT, &expr, ctx.bot, ctx.author_id).await
 }

@@ -40,4 +40,3 @@ chrono = { version = "0.4.41", features = ["serde"] }
 nursery = { level = "warn", priority = -1 }
 manual_let_else = "warn"
 str_to_string = "warn"
-string_to_string = "warn"

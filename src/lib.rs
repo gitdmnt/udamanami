@@ -214,15 +214,16 @@ impl EventHandler for Bot {
 
         for member in members {
             if member.roles.iter().any(|role| roles.contains(role)) {
-                let command_context = commands::CommandContext {
-                    bot: self,
-                    ctx: &ctx,
-                    channel_id: self.debug_channel_id,
-                    author_id: member.user.id,
-                    guild_id: Some(guild),
-                    command: "".to_owned(),
-                };
-                unjail::run(command_context).await;
+                unjail::unjail_and_notify(
+                    self.debug_channel_id,
+                    &ctx,
+                    member.user.id,
+                    &guild,
+                    &roles,
+                    None,
+                    &self.jail_process,
+                )
+                .await;
             }
         }
     }
@@ -285,6 +286,13 @@ impl EventHandler for Bot {
             {
                 Some(cmd) => (cmd.run)(command.data.options(), command_context).await,
                 None => "知らないコマンドだよ！".to_owned(),
+            };
+
+            // Discord は空（または空白のみ）の content を拒否するので、そのときは代替文言を送る。
+            let content = if content.trim().is_empty() {
+                "（返す言葉が見つからなかったよ）".to_owned()
+            } else {
+                content
             };
 
             let data = CreateInteractionResponseMessage::new().content(content);

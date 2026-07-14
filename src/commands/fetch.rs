@@ -2,18 +2,7 @@ use serenity::all::{GetMessages, UserId};
 use serenity::model::application::ResolvedOption;
 use std::{cmp::min, collections::HashMap};
 
-use crate::commands::ManamiPrefixCommand;
-
 use super::{CommandContext, ManamiSlashCommand};
-pub const PREFIX_FETCH_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
-    name: "fetch",
-    alias: &[],
-    usage: "!fetch [count]",
-    description: "このチャンネルに投稿された、覚えているのより古いメッセージを取得するよ！",
-    run: |ctx| Box::pin(run_prefix(ctx)),
-    is_dm_command: false,
-    is_guild_command: true,
-};
 
 pub const SLASH_FETCH_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "fetch",
@@ -48,13 +37,6 @@ pub fn parse_options(options: Vec<ResolvedOption<'_>>) -> Option<u64> {
             ("count", serenity::model::application::ResolvedValue::Integer(i)) => Some(*i as u64),
             _ => count,
         })
-}
-
-pub async fn run_prefix(ctx: CommandContext<'_>) {
-    let count = ctx.args().first().and_then(|arg| arg.parse::<u64>().ok());
-    let result = run_body(count, &ctx).await;
-
-    ctx.channel_id.say(ctx.cache_http(), result).await.ok();
 }
 
 const FETCH_DEFAULT: u64 = 100;

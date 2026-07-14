@@ -166,30 +166,30 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         model::SLASH_MODEL_COMMAND,
         isprime::SLASH_ISPRIME_COMMAND,
         effort::SLASH_EFFORT_COMMAND,
+        clear::SLASH_CLEAR_COMMAND,
+        calc::SLASH_CALC_COMMAND,
+        calcsay::SLASH_CALCSAY_COMMAND,
+        var::SLASH_VAR_COMMAND,
+        varbulk::SLASH_VARBULK_COMMAND,
+        deletevar::SLASH_DELETEVAR_COMMAND,
+        listvar::SLASH_LISTVAR_COMMAND,
+        jail::SLASH_JAIL_COMMAND,
+        unjail::SLASH_UNJAIL_COMMAND,
+        imakita::SLASH_IMAKITA_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
     .collect::<Vec<_>>()
 }
 
-// 最終的にdice以外はslash commandに移行したい
+// dice はパースの都合で prefix のまま。cclemon は対話型で応答 defer が必要なため後回し。
+// 自然言語エイリアスを持つ clear / help / imakita は slash に加えて prefix も残している。
 pub fn prefix_commands(disabled_commands: &[&str]) -> Vec<ManamiPrefixCommand> {
     [
         help::PREFIX_HELP_COMMAND,
         dice::PREFIX_DICE_COMMAND,
-        isprime::PREFIX_ISPRIME_COMMAND,
         clear::PREFIX_CLEAR_COMMAND,
-        channel::PREFIX_CHANNEL_COMMAND,
-        deletevar::PREFIX_DELETEVAR_COMMAND,
-        jail::PREFIX_JAIL_COMMAND,
-        listvar::PREFIX_LISTVAR_COMMAND,
-        unjail::PREFIX_UNJAIL_COMMAND,
         cclemon::PREFIX_CCLEMON_COMMAND,
-        calc::PREFIX_CALC_COMMAND,
-        calcsay::PREFIX_CALCSAY_COMMAND,
-        var::PREFIX_VAR_COMMAND,
-        varbulk::PREFIX_VARBULK_COMMAND,
-        fetch::PREFIX_FETCH_COMMAND,
         imakita::PREFIX_IMAKITA_COMMAND,
     ]
     .into_iter()

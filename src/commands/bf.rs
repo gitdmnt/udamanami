@@ -64,7 +64,7 @@ pub fn run(option: Vec<ResolvedOption>) -> String {
     run_body(parse_options(option))
 }
 
-fn parse_options(option: Vec<ResolvedOption>) -> Result<(Vec<BrainfuckCommand>, &str), &str> {
+fn parse_options(option: Vec<ResolvedOption<'_>>) -> Result<(Vec<BrainfuckCommand>, &str), &str> {
     let (code, input) = option.iter().fold((None, None), |(code, input), option| {
         match (option.name, &option.value) {
             ("code", ResolvedValue::String(s)) => (Some(*s), input),

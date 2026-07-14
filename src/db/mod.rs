@@ -305,7 +305,7 @@ impl BotDatabase {
                 let user_id = UserId::from(user.as_ref().map_or(0, |u| u.user_id) as u64);
                 let user_name = user
                     .as_ref()
-                    .map_or("Unknown".to_owned(), |u| u.username.clone());
+                    .map_or_else(|| "Unknown".to_owned(), |u| u.username.clone());
                 MessageInfo {
                     message_id,
                     user_id,
@@ -344,7 +344,7 @@ impl BotDatabase {
     }
 
     pub async fn retrieve_eval_context(&self) -> EvalContext {
-        (calc_var::Entity::find().all(&self.db).await).map_or(EvalContext::new(), |models| {
+        (calc_var::Entity::find().all(&self.db).await).map_or_else(|_| EvalContext::new(), |models| {
             EvalContext::from_dashmap({
                 let dashmap = DashMap::new();
                 models.into_iter().for_each(|model| {
@@ -379,7 +379,7 @@ impl BotDatabase {
             .map(|(var, user)| {
                 (
                     var.var_name,
-                    user.map_or("[不明]".to_owned(), |u| u.username),
+                    user.map_or_else(|| "[不明]".to_owned(), |u| u.username),
                 )
             })
             .collect())

@@ -74,7 +74,7 @@ pub fn run(options: Vec<ResolvedOption>) -> String {
     run_body(parse_options(options))
 }
 
-fn parse_options(options: Vec<ResolvedOption>) -> Result<Dice, &str> {
+fn parse_options(options: Vec<ResolvedOption<'_>>) -> Result<Dice, &str> {
     // parse options
     let (literal, num, dice, operator, operand) = options.iter().fold(
         (None, None, None, None, None),

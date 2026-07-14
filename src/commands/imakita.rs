@@ -1,8 +1,9 @@
 use crate::ManamiPrefixCommand;
 
 use chrono::TimeDelta;
+use serenity::model::application::{ResolvedOption, ResolvedValue};
 
-use super::CommandContext;
+use super::{CommandContext, ManamiSlashCommand};
 
 const COMMAND_NAME: &str = "imakita";
 
@@ -13,37 +14,58 @@ pub const PREFIX_IMAKITA_COMMAND: ManamiPrefixCommand = ManamiPrefixCommand {
     description: "今北産業",
     run: |ctx| {
         let time = ctx.args().first().and_then(|arg| arg.parse::<u32>().ok());
-        Box::pin(async move { run_body(time, &ctx).await })
+        Box::pin(async move {
+            let result = run_body(time, &ctx).await;
+            ctx.channel_id.say(ctx.cache_http(), result).await.ok();
+        })
     },
     is_dm_command: false,
     is_guild_command: true,
 };
 
-/*
+pub const SLASH_IMAKITA_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+    name: COMMAND_NAME,
+    usage: "/imakita [minutes]",
+    description: "今北産業",
+    register,
+    run: |options, ctx| {
+        let time = parse_options(options);
+        Box::pin(async move {
+            let result = run_body(time, &ctx).await;
+            if result.is_empty() {
+                "うまくまとめられなかったよ".to_owned()
+            } else {
+                result
+            }
+        })
+    },
+    is_local_command: true,
+};
+
 pub fn register() -> serenity::builder::CreateCommand {
-    serenity::builder::CreateCommand::new("imakita")
+    serenity::builder::CreateCommand::new(COMMAND_NAME)
         .description("今北産業")
         .add_option(
             serenity::builder::CreateCommandOption::new(
                 serenity::model::application::CommandOptionType::Integer,
-                "time",
+                "minutes",
                 "何分間のログを取得するか",
             )
-            .required(false),
+            .required(false)
+            .min_int_value(0),
         )
 }
 
-pub fn parse_options(options: Vec<serenity::model::application::ResolvedOption>) -> Option<u32> {
+fn parse_options(options: Vec<ResolvedOption<'_>>) -> Option<u32> {
     options
         .iter()
         .fold(None, |time, option| match (option.name, &option.value) {
-            ("time", serenity::model::application::ResolvedValue::Integer(i)) => Some(*i as u32),
+            ("minutes", ResolvedValue::Integer(i)) => Some(*i as u32),
             _ => time,
         })
 }
-*/
 
-pub async fn run_body(time: Option<u32>, ctx: &CommandContext<'_>) {
+pub async fn run_body(time: Option<u32>, ctx: &CommandContext<'_>) -> String {
     let channel_id = ctx.channel_id;
     let self_id = &ctx.ctx.http.get_current_user().await.unwrap().id;
 
@@ -67,16 +89,12 @@ pub async fn run_body(time: Option<u32>, ctx: &CommandContext<'_>) {
         .map(|m| m.to_chat_message(self_id))
         .collect::<Vec<_>>();
 
-    let result = ctx
-        .bot
+    ctx.bot
         .ai
         .generate_matome(chat_messages)
         .await
         .unwrap_or_else(|e| {
             println!("Failed to generate matome: {e}");
-            "".to_owned()
-        });
-
-    ctx.channel_id.say(ctx.cache_http(), result).await.ok();
+            String::new()
+        })
 }
-//
