@@ -33,7 +33,7 @@ Compute Engine VM (COS) ── systemd udamanami.service ──▶ container
 reset せずに手作業で行うには次のようにします。
 
 ```sh
-gcloud secrets versions add udamanami-env --project <PROJECT_ID> \
+gcloud secrets versions add udamanami-env --project manami-502312 \
   --data-file deploy/udamanami.env
 gcloud compute ssh udamanami-bot --zone us-central1-a \
   --command 'sudo systemctl restart udamanami'

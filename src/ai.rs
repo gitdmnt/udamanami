@@ -439,13 +439,11 @@ impl ManamiAi {
                 }
 
                 // 最終ステップ
-                AgentRunStep::Done(response) => {
-                    // response.output が最終テキスト。reasoning は上で別途集めてある
-                    let mut out = response_blocks
+                AgentRunStep::Done(_) => {
+                    let out = response_blocks
                         .into_iter()
                         .map(Block::decorate)
                         .collect::<Vec<_>>();
-                    out.push(response.output);
                     return Ok(out.join("\n"));
                 }
             }
