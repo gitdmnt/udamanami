@@ -1,12 +1,15 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::Mutex;
 
 use anyhow::Result;
 use serde_json::json;
 
+use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::client::CompletionClient;
-use rig::completion::{AssistantContent, CompletionModel, Message as RigMessage};
+use rig::completion::{AssistantContent, CompletionModel, Message as RigMessage, ToolDefinition};
+use rig::message::{ToolResultContent, UserContent}; // ← 実際の module 位置はコンパイラに従って調整
 use rig::providers::openai;
+use rig::OneOrMany;
 
 const MANAMI_PROMPT: &str = r"
 ## 指示
@@ -310,9 +313,7 @@ impl ManamiAi {
             return Ok("やっほー！　どうしたの？".to_owned());
         }
 
-        let reply = self
-            .run_completion(&model, &effort, &self.system_prompt, messages)
-            .await?;
+        let reply = self.run_agent(&model, &effort, messages).await?;
         self.add_model_log(&reply);
         Ok(reply)
     }
@@ -328,7 +329,130 @@ impl ManamiAi {
             .await
     }
 
-    /// 内部用。Rig の CompletionClient を使ってメッセージを生成する。
+    fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        vec![ToolDefinition {
+            name: "watch".into(),
+            description: "現在時刻を確認したいときに使用できます。".into(),
+            parameters: json!({}),
+        }]
+    }
+
+    async fn dispatch_tool(&self, name: &str, _args: serde_json::Value) -> String {
+        match name {
+            "watch" => {
+                let now = chrono::Utc::now();
+                let formatted_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
+                format!("まなみの時計によると、現在時刻は {formatted_time} だよ！")
+            }
+            _ => format!("{name}は知らないツールだよ！"),
+        }
+    }
+
+    /// 内部用。Rig の AgentRun を使って、ツール呼び出しを含む複数ターンの会話を進める。
+    async fn run_agent(
+        &self,
+        model: &str,
+        effort: &str,
+        messages: Vec<ChatMessage>,
+    ) -> anyhow::Result<String> {
+        let history: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
+        let prompt = history
+            .last()
+            .ok_or_else(|| anyhow::anyhow!("no messages to send"))?
+            .clone();
+
+        let tool_defs = self.tool_definitions();
+        let tool_names: BTreeSet<String> = tool_defs
+            .iter()
+            .map(|t: &ToolDefinition| t.name.clone())
+            .collect();
+
+        let mut run = AgentRun::new(prompt).with_history(history).max_turns(10);
+
+        let mut response_blocks: Vec<Block> = Vec::new(); // まなみの reasoning 表示用
+
+        loop {
+            match run.next_step()? {
+                // LLMによる応答
+                AgentRunStep::CallModel {
+                    prompt, history, ..
+                } => {
+                    let cm = self.client.completion_model(model);
+                    let request = cm
+                        .completion_request(prompt)
+                        .messages(history)
+                        .preamble(self.system_prompt.clone())
+                        .tools(tool_defs.clone()) // ★ ここでツールを広告
+                        .additional_params(json!({ "reasoning_effort": effort }))
+                        .build();
+
+                    let resp = cm.completion(request).await?;
+
+                    response_blocks.extend(compress(resp.choice.clone()));
+
+                    // モデルの結果を機械に返す
+                    let turn = ModelTurn::new(
+                        resp.message_id,
+                        resp.choice,
+                        resp.usage,
+                        tool_names.clone(), // executable_tool_names
+                        tool_names.clone(), // allowed_tool_names
+                    );
+
+                    match run.model_response(turn)? {
+                        ModelTurnOutcome::Continue { .. } => {} // 通常はこれ。次の next_step へ
+                        ModelTurnOutcome::TurnRetried => {} // リトライ挿入済み。next_step が再度 CallModel を返す
+                        ModelTurnOutcome::NeedsResolution(_) => {} // TODO: どうにかする
+                    }
+                }
+
+                // ツール呼び出し
+                AgentRunStep::CallTools { calls } => {
+                    let mut results = vec![];
+
+                    for pending in calls {
+                        // retryとかで結果が既に確定しているものは、実行せずそのまま返す
+                        if let Some(pre) = pending.preresolved_result {
+                            results.push(pre);
+                            continue;
+                        }
+
+                        // ツール実行ここから
+                        let call = pending.tool_call;
+                        let output: String = self
+                            .dispatch_tool(&call.function.name, call.function.arguments)
+                            .await;
+
+                        response_blocks.push(Block::ToolCall {
+                            name: call.function.name,
+                            result: output.clone(),
+                        });
+
+                        // 結果は呼び出し ID と 1 対 1 で対応させる
+                        results.push(UserContent::tool_result(
+                            call.id,
+                            OneOrMany::one(ToolResultContent::text(output)),
+                        ));
+                    }
+
+                    run.tool_results(results)?; // 積んで次の next_step へ（= 再びモデル呼び出し）
+                }
+
+                // 最終ステップ
+                AgentRunStep::Done(response) => {
+                    // response.output が最終テキスト。reasoning は上で別途集めてある
+                    let mut out = response_blocks
+                        .into_iter()
+                        .map(Block::decorate)
+                        .collect::<Vec<_>>();
+                    out.push(response.output);
+                    return Ok(out.join("\n"));
+                }
+            }
+        }
+    }
+
+    /// 内部用。Rig の CompletionClient を使って1回だけのメッセージを生成する。
     async fn run_completion(
         &self,
         model: &str,
@@ -367,6 +491,7 @@ impl ManamiAi {
 enum Block {
     Text(String),
     Reasoning(String),
+    ToolCall { name: String, result: String }, // ツール呼び出しの表示用（未使用）
 }
 
 impl Block {
@@ -375,6 +500,9 @@ impl Block {
         match self {
             Self::Text(text) => text,
             Self::Reasoning(text) => prefix_lines(&text, "> -# "),
+            Self::ToolCall { name, result } => {
+                prefix_lines(&format!("ツール {} の結果: {}", name, result), "> -# ")
+            }
         }
     }
 }
@@ -397,7 +525,7 @@ fn compress(choice: impl IntoIterator<Item = AssistantContent>) -> Vec<Block> {
                     _ => blocks.push(Block::Reasoning(text)),
                 }
             }
-            AssistantContent::ToolCall(_) => {}
+            AssistantContent::ToolCall(_) => {} // ツール呼び出しは AgentRunStep::CallTools で処理する
             AssistantContent::Image(_) => {}
         }
         blocks
