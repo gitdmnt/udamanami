@@ -274,6 +274,16 @@ impl ManamiAi {
         self.model.lock().unwrap().clone()
     }
 
+    /// 現在のreasoning effortを変更する。会話バッファはクリアされない。
+    pub fn set_effort(&self, effort: String) {
+        *self.effort.lock().unwrap() = effort;
+    }
+
+    /// 現在のreasoning effortを取得する。
+    pub fn get_effort(&self) -> String {
+        self.effort.lock().unwrap().clone()
+    }
+
     /// 現在のモデルを使ってメッセージを生成する。
     pub async fn generate(&self) -> Result<String> {
         let model = self.get_model();

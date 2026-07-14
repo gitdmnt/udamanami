@@ -18,14 +18,15 @@ pub mod channel;
 pub mod clear;
 pub mod deletevar;
 pub mod dice;
+pub mod effort;
 pub mod endauto;
 pub mod fetch;
 pub mod help;
 pub mod imakita;
 pub mod isprime;
 pub mod jail;
-pub mod model;
 pub mod listvar;
+pub mod model;
 pub mod ping;
 pub mod unjail;
 pub mod var;
@@ -164,6 +165,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         fetch::SLASH_FETCH_COMMAND,
         model::SLASH_MODEL_COMMAND,
         isprime::SLASH_ISPRIME_COMMAND,
+        effort::SLASH_EFFORT_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))
