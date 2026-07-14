@@ -342,7 +342,7 @@ impl Block {
     fn decorate(self) -> String {
         match self {
             Block::Text(text) => text,
-            Block::Reasoning(text) => prefix_lines(&text, "-# "),
+            Block::Reasoning(text) => prefix_lines(&text, "> -# "),
         }
     }
 }
