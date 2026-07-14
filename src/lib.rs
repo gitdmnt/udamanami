@@ -356,6 +356,15 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
+/// AI の生成結果を整形してチャンネルに送信する。
+async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<String>) {
+    let content = match content {
+        Ok(content) => content.replace("うだまなみ: ", ""),
+        Err(e) => format!("Error sending message: {e:?}"),
+    };
+    let _ = msg.channel_id.say(&ctx.http, content).await;
+}
+
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     save_guild_message(bot, ctx, msg).await;
 
@@ -365,76 +374,63 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 
     // 全レスモード中？
-    let response_to_all = bot.reply_to_all_mode.lock().unwrap().is_active();
-    let response_to_all_model = bot.reply_to_all_mode.lock().unwrap().model.clone();
+    let (response_to_all, response_to_all_model) = {
+        let mode = bot.reply_to_all_mode.lock().unwrap();
+        (mode.is_active(), mode.model.clone())
+    };
+    let is_debug_channel = msg.channel_id.get() == bot.debug_channel_id.get();
 
     // if message does not contains any command, ignore
     let command_pattern =
         Regex::new(r"(?ms)((?:まなみ(?:ちゃん)?(?:\s|、|は|って|の)?)|!)(.*)").unwrap();
-    let (_prefix, input_string): (String, String) = match command_pattern.captures(&msg.content) {
-        Some(caps) => (
-            caps.get(1).unwrap().as_str().to_owned(),
-            caps.get(2).unwrap().as_str().to_owned(),
-        ),
+    let input_string = match command_pattern.captures(&msg.content) {
+        Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
         None => {
             // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答
-            if msg.channel_id.get() == bot.debug_channel_id.get()
-                && (response_to_all || rng().random::<f32>() < 0.3)
-            {
+            if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3) {
                 bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
                 let content = bot.ai.generate_with_model(&response_to_all_model).await;
-                let content = match content {
-                    Ok(content) => content.replace("うだまなみ: ", ""),
-                    Err(e) => {
-                        format!("Error sending message: {e:?}")
-                    }
-                };
-                let _ = &msg.channel_id.say(&ctx.http, content).await;
+                say_ai_reply(ctx, msg, content).await;
             }
             return;
         }
     };
 
-    let command_context = CommandContext::new(bot, ctx, msg, input_string.clone());
+    let command_context = CommandContext::new(bot, ctx, msg, input_string);
 
     // handle other command
     let command_name = &command_context.command_name()[..];
 
-    match bot
+    let guild_command = bot
         .prefix_commands
         .iter()
         .filter(|cmd| cmd.is_guild_command)
-        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name))
-    {
+        .find(|cmd| cmd.name == command_name || cmd.alias.contains(&command_name));
+
+    match guild_command {
         Some(cmd) => (cmd.run)(command_context).await,
         None => {
-            if msg.content.starts_with("!") {
+            // "!" 始まりで未知のコマンドなら dice にフォールバック
+            if msg.content.starts_with('!') {
                 if let Some(cmd) = bot
                     .prefix_commands
                     .iter()
-                    .filter(|cmd| cmd.is_guild_command)
-                    .find(|cmd| cmd.name == "dice")
+                    .find(|cmd| cmd.is_guild_command && cmd.name == "dice")
                 {
                     return (cmd.run)(command_context).await;
                 }
             }
 
-            if msg.channel_id.get() == bot.debug_channel_id.get() {
+            if is_debug_channel {
                 // まなみが自由に応答するコーナー
                 let content = if response_to_all {
-                    bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
-                                                                   // ↓全レスモードなら全レス用のモデルを使用
+                    // 全レスモードなら期限を更新して全レス用モデルを使用
+                    bot.reply_to_all_mode.lock().unwrap().renew();
                     bot.ai.generate_with_model(&response_to_all_model).await
                 } else {
                     bot.ai.generate().await
                 };
-                let content = match content {
-                    Ok(content) => content.replace("うだまなみ: ", ""),
-                    Err(e) => {
-                        format!("Error sending message: {e:?}")
-                    }
-                };
-                let _ = &msg.channel_id.say(&ctx.http, content).await;
+                say_ai_reply(ctx, msg, content).await;
             }
         }
     }
