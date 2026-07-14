@@ -370,7 +370,56 @@ async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<Stri
         Ok(content) => content.replace("うだまなみ: ", ""),
         Err(e) => format!("Error sending message: {e:?}"),
     };
-    let _ = msg.channel_id.say(&ctx.http, content).await;
+    // Discord の文字数上限を超えると say が失敗するので、上限ごとに分割して送る。
+    // 送信失敗を握り潰すと「応答が無い」ように見えるため、失敗はログに残す。
+    for chunk in split_for_discord(&content) {
+        if let Err(why) = msg.channel_id.say(&ctx.http, chunk).await {
+            error!("failed to send AI reply: {why:?}");
+        }
+    }
+}
+
+/// Discord の1メッセージ上限に合わせて文字列を分割する。
+/// できるだけ行境界で区切り、1行だけで上限を超える場合は文字単位で強制分割する。
+fn split_for_discord(content: &str) -> Vec<String> {
+    const LIMIT: usize = 2000;
+    let mut chunks: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut current_len = 0usize; // current が保持する文字数
+
+    for line in content.split_inclusive('\n') {
+        let line_len = line.chars().count();
+
+        // 1 行だけで上限を超えるなら、文字単位で強制的に割る。
+        if line_len > LIMIT {
+            if !current.is_empty() {
+                chunks.push(std::mem::take(&mut current));
+                current_len = 0;
+            }
+            for c in line.chars() {
+                if current_len == LIMIT {
+                    chunks.push(std::mem::take(&mut current));
+                    current_len = 0;
+                }
+                current.push(c);
+                current_len += 1;
+            }
+            continue;
+        }
+
+        // この行を足すと上限を超えるなら、いったん確定させてから積む。
+        if current_len + line_len > LIMIT {
+            chunks.push(std::mem::take(&mut current));
+            current_len = 0;
+        }
+        current.push_str(line);
+        current_len += line_len;
+    }
+
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
 }
 
 /// 全レスモードの状態に応じて返答を生成し、チャンネルに送信する。
@@ -468,4 +517,54 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
         return false;
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_for_discord;
+
+    const LIMIT: usize = 2000;
+
+    fn chars(s: &str) -> usize {
+        s.chars().count()
+    }
+
+    #[test]
+    fn keeps_short_content_as_single_chunk() {
+        let chunks = split_for_discord("やっほー！");
+        assert_eq!(chunks, vec!["やっほー！".to_owned()]);
+    }
+
+    #[test]
+    fn empty_content_yields_no_chunk() {
+        assert!(split_for_discord("").is_empty());
+    }
+
+    #[test]
+    fn every_chunk_is_within_the_limit_and_content_is_preserved() {
+        // 改行を含み上限を大きく超える多バイト文字列。
+        let line = "あ".repeat(1500) + "\n";
+        let content = line.repeat(5); // 約 7505 文字
+        let chunks = split_for_discord(&content);
+
+        assert!(chunks.len() > 1);
+        for chunk in &chunks {
+            assert!(chars(chunk) <= LIMIT, "chunk exceeds limit: {}", chars(chunk));
+        }
+        // 分割しても内容は完全に復元できる。
+        assert_eq!(chunks.concat(), content);
+    }
+
+    #[test]
+    fn hard_splits_a_single_line_longer_than_the_limit() {
+        // 改行の無い、上限超えの1行（多バイト）。
+        let content = "猫".repeat(5000);
+        let chunks = split_for_discord(&content);
+
+        assert!(chunks.len() >= 3);
+        for chunk in &chunks {
+            assert!(chars(chunk) <= LIMIT);
+        }
+        assert_eq!(chunks.concat(), content);
+    }
 }

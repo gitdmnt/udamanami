@@ -431,13 +431,15 @@ impl ManamiAi {
 
                         // ツール実行ここから
                         let call = pending.tool_call;
+                        // 引数は痕跡表示用にコンパクト JSON で控えておく（dispatch で move する前に取る）。
+                        let args = call.function.arguments.to_string();
                         let output: String = self
                             .dispatch_tool(&call.function.name, call.function.arguments)
                             .await;
 
                         response_blocks.push(Block::ToolCall {
                             name: call.function.name,
-                            result: output.clone(),
+                            args,
                         });
 
                         // 結果は呼び出し ID と 1 対 1 で対応させる。
@@ -504,7 +506,8 @@ impl ManamiAi {
 enum Block {
     Text(String),
     Reasoning(String),
-    ToolCall { name: String, result: String }, // ツール呼び出しの表示用（未使用）
+    // ツール使用の痕跡表示用。結果全文は Discord の文字数上限を超えるので載せず、名前と引数だけ残す。
+    ToolCall { name: String, args: String },
 }
 
 impl Block {
@@ -513,8 +516,8 @@ impl Block {
         match self {
             Self::Text(text) => text,
             Self::Reasoning(text) => prefix_lines(&text, "> -# "),
-            Self::ToolCall { name, result } => {
-                prefix_lines(&format!("ツール {} の結果: {}", name, result), "> -# ")
+            Self::ToolCall { name, args } => {
+                prefix_lines(&format!("ツール {name} を使ったよ (引数: {args})"), "> -# ")
             }
         }
     }
