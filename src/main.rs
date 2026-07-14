@@ -29,32 +29,12 @@ async fn main() -> anyhow::Result<()> {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
 
-    let channel_ids_new = env_var("ROOMS_ID").map_or(vec![], |rooms| {
+    let channel_ids = env_var("ROOMS_ID").map_or(vec![], |rooms| {
         rooms
             .split(',')
             .filter_map(|id| ChannelId::from_str(id.trim()).ok())
             .collect()
     });
-
-    // ↓ここからのコードは将来的に取り除きたい
-    let channel_ids_old: Vec<ChannelId> = vec![
-        env_var("FREETALK1_ROOM_ID"),
-        env_var("FREETALK2_ROOM_ID"),
-        env_var("MADSISTERS_ROOM_ID"),
-        env_var("SHYBOYS_ROOM_ID"),
-        env_var("DEBUG_ROOM_ID"),
-        env_var("HOSPITAL_ROOM_ID"),
-    ]
-    .into_iter()
-    .filter_map(|id| id.and_then(|id| ChannelId::from_str(&id).ok()))
-    .collect();
-
-    let channel_ids = if channel_ids_old.len() > 1 {
-        channel_ids_old
-    } else {
-        channel_ids_new
-    };
-    // ↑ここまで
 
     let debug_channel_id = env_var("DEBUG_ROOM_ID")
         .map(|id| ChannelId::from_str(&id).unwrap())
