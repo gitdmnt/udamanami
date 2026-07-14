@@ -19,10 +19,13 @@ pub const SLASH_EFFORT_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
 };
 
 pub fn register() -> CreateCommand {
-    let mut effort_option =
-        CreateCommandOption::new(CommandOptionType::String, "effort", "努力レベル").required(false);
-    // 選択肢は環境変数 LLM_EFFORT（カンマ区切り）から生成する（Discord の上限は 25）。
-    for effort in ["minimal", "low", "medium", "high"].iter() {
+    let mut effort_option = CreateCommandOption::new(
+        CommandOptionType::String,
+        "effort",
+        "reasoning effortを変えるよ",
+    )
+    .required(false);
+    for effort in ["none", "low", "medium", "high"].iter() {
         effort_option = effort_option.add_string_choice(effort.to_string(), effort.to_string());
     }
 
