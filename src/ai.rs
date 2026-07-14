@@ -157,7 +157,7 @@ impl ChatMessage {
 /// まなみの雑談・要約用 AI。OpenAI 互換エンドポイント（`base_url` + `api_key`）を通すので、
 /// `base_url`・`api_key`・モデル名を変えるだけで各種プロバイダを使える。
 pub struct ManamiAi {
-    client: openai::CompletionsClient,
+    client: openai::Client,
     default_model: String,
     model: Mutex<String>,
     effort: Mutex<String>,
@@ -190,8 +190,8 @@ impl ManamiAi {
         default_effort: &str,
         system_prompt: &str,
     ) -> Result<Self> {
-        // OpenAI 互換の Chat Completions クライアント（POST {base_url}/chat/completions）。
-        let client = openai::CompletionsClient::builder()
+        // OpenAI 互換の Responses API クライアント（POST {base_url}/responses）。
+        let client = openai::Client::builder()
             .api_key(api_key)
             .base_url(base_url)
             .build()
@@ -382,8 +382,8 @@ impl ManamiAi {
                         .completion_request(prompt)
                         .messages(history)
                         .preamble(self.system_prompt.clone())
-                        .tools(tool_defs.clone()) // ★ ここでツールを広告
-                        .additional_params(json!({ "reasoning_effort": effort }))
+                        .tools(tool_defs.clone()) // ここでツールを登録
+                        .additional_params(json!({ "reasoning": { "effort": effort } }))
                         .build();
 
                     let resp = cm.completion(request).await?;
@@ -471,7 +471,7 @@ impl ManamiAi {
             .completion_request(prompt)
             .messages(rig_messages)
             .preamble(preamble.to_owned())
-            .additional_params(json!({"reasoning_effort": effort}))
+            .additional_params(json!({"reasoning": {"effort": effort}}))
             .build();
 
         let response = completion_model.completion(request).await?;
