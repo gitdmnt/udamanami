@@ -365,6 +365,24 @@ async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<Stri
     let _ = msg.channel_id.say(&ctx.http, content).await;
 }
 
+/// 全レスモードの状態に応じて返答を生成し、チャンネルに送信する。
+/// 全レスモード中なら期限を更新して全レス用モデルを、そうでなければ現在のモデルを使う。
+async fn say_free_reply(
+    bot: &Bot,
+    ctx: &Context,
+    msg: &Message,
+    response_to_all: bool,
+    response_to_all_model: &str,
+) {
+    let content = if response_to_all {
+        bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
+        bot.ai.generate_with_model(response_to_all_model).await
+    } else {
+        bot.ai.generate().await
+    };
+    say_ai_reply(ctx, msg, content).await;
+}
+
 async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     save_guild_message(bot, ctx, msg).await;
 
@@ -380,17 +398,16 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     };
     let is_debug_channel = msg.channel_id.get() == bot.debug_channel_id.get();
 
-    // if message does not contains any command, ignore
+    // if message does not contains any command, respond with AI
     let command_pattern =
         Regex::new(r"(?ms)((?:まなみ(?:ちゃん)?(?:\s|、|は|って|の)?)|!)(.*)").unwrap();
     let input_string = match command_pattern.captures(&msg.content) {
+        // コマンド部分を抽出
         Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
         None => {
             // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答
             if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3) {
-                bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
-                let content = bot.ai.generate_with_model(&response_to_all_model).await;
-                say_ai_reply(ctx, msg, content).await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
             return;
         }
@@ -423,14 +440,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
             if is_debug_channel {
                 // まなみが自由に応答するコーナー
-                let content = if response_to_all {
-                    // 全レスモードなら期限を更新して全レス用モデルを使用
-                    bot.reply_to_all_mode.lock().unwrap().renew();
-                    bot.ai.generate_with_model(&response_to_all_model).await
-                } else {
-                    bot.ai.generate().await
-                };
-                say_ai_reply(ctx, msg, content).await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
         }
     }
