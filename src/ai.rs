@@ -111,9 +111,9 @@ pub fn available_models() -> Vec<String> {
 }
 
 /// プロバイダ非依存のチャットメッセージ。会話バッファと DB 由来のログで使う。
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub enum Role {
-    User,
+    User { name: String },
     Assistant,
 }
 
@@ -124,11 +124,13 @@ pub struct ChatMessage {
 }
 
 impl ChatMessage {
-    /// ユーザー発言。話者名を内容の先頭に付ける（複数話者を区別するため）。
+    /// ユーザー発言。。
     pub fn user(user_name: &str, message: &str) -> Self {
         Self {
-            role: Role::User,
-            content: format!("{user_name}: {message}"),
+            role: Role::User {
+                name: user_name.to_owned(),
+            },
+            content: message.to_owned(),
         }
     }
 
@@ -141,8 +143,8 @@ impl ChatMessage {
     }
 
     fn to_rig(&self) -> RigMessage {
-        match self.role {
-            Role::User => RigMessage::user(self.content.clone()),
+        match &self.role {
+            Role::User { name } => RigMessage::user(format!("{}: {}", name, self.content)),
             Role::Assistant => RigMessage::assistant(self.content.clone()),
         }
     }
@@ -159,11 +161,12 @@ pub struct ManamiAi {
 }
 
 impl ManamiAi {
-    /// まなみのペルソナ付きで構築する。
+    /// まなみのペルソナ付きでチャットボットのクライアントを構築する。
     pub fn manami(base_url: &str, api_key: &str, default_model: &str) -> Result<Self> {
         Self::with_system_prompt(base_url, api_key, default_model, MANAMI_PROMPT)
     }
 
+    /// システムプロンプトを指定してチャットボットのクライアントを構築する。
     pub fn with_system_prompt(
         base_url: &str,
         api_key: &str,
@@ -186,18 +189,22 @@ impl ManamiAi {
         })
     }
 
+    /// システムプロンプトを変更する。会話バッファはクリアされない。
     pub fn set_system_instruction(&mut self, instruction: &str) {
         self.system_prompt = instruction.to_owned();
     }
 
+    /// 会話バッファにユーザー発言を追加する。話者名を内容の先頭に付ける。
     pub fn add_user_log(&self, user: &str, message: &str) {
         self.push(ChatMessage::user(user, message));
     }
 
+    /// 会話バッファにまなみの発言を追加する。
     pub fn add_model_log(&self, message: &str) {
         self.push(ChatMessage::assistant(message));
     }
 
+    /// 会話バッファにメッセージを追加する。最大 500 件まで保持する。
     fn push(&self, message: ChatMessage) {
         let mut buf = self.conversation.lock().unwrap();
         buf.push_back(message);
@@ -206,13 +213,13 @@ impl ManamiAi {
         }
     }
 
-    pub fn add_log_bulk(&self, messages: Vec<(String, &str)>) {
+    /// 会話バッファに複数のメッセージを追加する。最大 500 件まで保持する。
+    pub fn add_log_bulk(&self, messages: Vec<(Role, &str)>) {
         let mut buf = self.conversation.lock().unwrap();
-        for (user, message) in messages {
-            let msg = if user == "model" {
-                ChatMessage::assistant(message)
-            } else {
-                ChatMessage::user(&user, message)
+        for (role, message) in messages {
+            let msg = match role {
+                Role::User { name } => ChatMessage::user(&name, message),
+                Role::Assistant => ChatMessage::assistant(message),
             };
             buf.push_back(msg);
         }
@@ -232,9 +239,9 @@ impl ManamiAi {
             .unwrap()
             .iter()
             .map(|m| {
-                let role = match m.role {
-                    Role::User => "user",
-                    Role::Assistant => "model",
+                let role = match &m.role {
+                    Role::User { name } => format!("user ({})", name),
+                    Role::Assistant => "model".into(),
                 };
                 format!("{role}: {}", m.content)
             })
@@ -242,19 +249,23 @@ impl ManamiAi {
             .join("\n")
     }
 
+    /// 現在のモデルを変更する。会話バッファはクリアされない。
     pub fn set_model(&self, model: String) {
         *self.model.lock().unwrap() = model;
     }
 
+    /// 現在のモデルを取得する。
     pub fn get_model(&self) -> String {
         self.model.lock().unwrap().clone()
     }
 
+    /// 現在のモデルを使ってメッセージを生成する。
     pub async fn generate(&self) -> Result<String> {
         let model = self.get_model();
         self.generate_with_model(&model).await
     }
 
+    /// 現在のモデルを使ってメッセージを生成する。モデル名が空文字列なら現在のモデルにフォールバックする。
     pub async fn generate_with_model(&self, model: &str) -> Result<String> {
         // 全レスモード未設定時などモデルが空なら、現在のモデルにフォールバックする。
         let model = if model.trim().is_empty() {
@@ -278,7 +289,7 @@ impl ManamiAi {
         Ok(reply)
     }
 
-    /// チャットログを渡して要約させる（会話バッファには影響しない）。
+    /// チャットログを渡して要約させる。
     pub async fn generate_matome(&self, messages: Vec<ChatMessage>) -> Result<String> {
         if messages.is_empty() {
             return Ok("まとめるログがないよ".to_owned());
@@ -287,6 +298,7 @@ impl ManamiAi {
         self.run_completion(&model, MATOME_PROMPT, messages).await
     }
 
+    /// 内部用。Rig の CompletionClient を使ってメッセージを生成する。
     async fn run_completion(
         &self,
         model: &str,
@@ -310,17 +322,62 @@ impl ManamiAi {
 
         let response = completion_model.completion(request).await?;
 
-        let reply = response
-            .choice
+        let reply = compress(response.choice)
             .into_iter()
-            .filter_map(|content| match content {
-                AssistantContent::Text(text) => Some(text.text),
-                _ => None,
-            })
+            .map(Block::decorate)
             .collect::<Vec<_>>()
-            .join("");
+            .join("\n");
         Ok(reply)
     }
+}
+
+/// 応答ストリームを、種類ごとの連続ブロックへ圧縮した中間表現。
+enum Block {
+    Text(String),
+    Reasoning(String),
+}
+
+impl Block {
+    /// ブロックを Discord 向けの文字列へ装飾する。
+    fn decorate(self) -> String {
+        match self {
+            Block::Text(text) => text,
+            Block::Reasoning(text) => prefix_lines(&text, "-# "),
+        }
+    }
+}
+
+/// 連続する同種の content をひとつのブロックにまとめる（圧縮）。
+fn compress(choice: impl IntoIterator<Item = AssistantContent>) -> Vec<Block> {
+    choice.into_iter().fold(Vec::new(), |mut blocks, content| {
+        match content {
+            AssistantContent::Text(t) => match blocks.last_mut() {
+                Some(Block::Text(buf)) => buf.push_str(&t.text),
+                _ => blocks.push(Block::Text(t.text)),
+            },
+            AssistantContent::Reasoning(r) => {
+                let text = r.display_text();
+                match blocks.last_mut() {
+                    Some(Block::Reasoning(buf)) => {
+                        buf.push('\n');
+                        buf.push_str(&text);
+                    }
+                    _ => blocks.push(Block::Reasoning(text)),
+                }
+            }
+            AssistantContent::ToolCall(_) => {}
+            AssistantContent::Image(_) => {}
+        }
+        blocks
+    })
+}
+
+/// 各行の先頭に prefix を付ける。
+fn prefix_lines(text: &str, prefix: &str) -> String {
+    text.lines()
+        .map(|line| format!("{prefix}{line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]
