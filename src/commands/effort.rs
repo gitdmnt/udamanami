@@ -9,7 +9,7 @@ use serenity::model::application::ResolvedOption;
 pub const SLASH_EFFORT_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "effort",
     usage: "/effort <effort>",
-    description: "effortのレベルを変えるよ！",
+    description: "reasoning effortを変えるよ！",
     register,
     run: |option, ctx| {
         let opts = parse(option);
@@ -27,7 +27,7 @@ pub fn register() -> CreateCommand {
     }
 
     CreateCommand::new("effort")
-        .description("effortのレベルを変えるよ")
+        .description("reasoning effortを変えるよ")
         .add_option(effort_option)
 }
 
@@ -46,10 +46,10 @@ fn parse(option: Vec<ResolvedOption<'_>>) -> Option<String> {
 
 async fn run_body(effort: Option<String>, bot: &Bot) -> String {
     effort.map_or_else(
-        || format!("今の努力レベルは{}だよ", bot.ai.get_effort()),
+        || format!("今のreasoning effortは{}だよ", bot.ai.get_effort()),
         |effort| {
             bot.ai.set_effort(effort.clone());
-            format!("努力レベルを{effort}に変更したよ")
+            format!("reasoning effortを{effort}に変更したよ")
         },
     )
 }
