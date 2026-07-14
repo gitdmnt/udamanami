@@ -330,19 +330,31 @@ impl ManamiAi {
     }
 
     fn tool_definitions(&self) -> Vec<ToolDefinition> {
-        vec![ToolDefinition {
-            name: "watch".into(),
-            description: "現在時刻を確認したいときに使用できます。".into(),
-            parameters: json!({}),
-        }]
+        vec![
+            tools::watch_definition(),
+            tools::web_search_wikipedia_definition(),
+            tools::web_fetch_wikipedia_definition(),
+        ]
     }
 
-    async fn dispatch_tool(&self, name: &str, _args: serde_json::Value) -> String {
+    async fn dispatch_tool(&self, name: &str, args: serde_json::Value) -> String {
         match name {
-            "watch" => {
-                let now = chrono::Utc::now();
-                let formatted_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
-                format!("まなみの時計によると、現在時刻は {formatted_time} だよ！")
+            "watch" => tools::watch(),
+            "web_search_wikipedia" => {
+                let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+                let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
+                match tools::web_search_wikipedia(query, lang).await {
+                    Ok(result) => result,
+                    Err(err) => err,
+                }
+            }
+            "web_fetch_wikipedia" => {
+                let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
+                match tools::web_fetch_wikipedia(title, lang).await {
+                    Ok(result) => result,
+                    Err(err) => err,
+                }
             }
             _ => format!("{name}は知らないツールだよ！"),
         }
@@ -536,6 +548,122 @@ fn prefix_lines(text: &str, prefix: &str) -> String {
         .map(|line| format!("{prefix}{line}"))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+mod tools {
+    pub(super) fn watch() -> String {
+        let now = chrono::Utc::now();
+        let formatted_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
+        format!("まなみの時計によると、現在時刻は {formatted_time} だよ！")
+    }
+
+    pub(super) fn watch_definition() -> super::ToolDefinition {
+        super::ToolDefinition {
+            name: "watch".into(),
+            description: "現在時刻を確認したいときに使用できます。".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {}
+            }),
+        }
+    }
+
+    pub(super) async fn web_search_wikipedia(query: &str, lang: &str) -> Result<String, String> {
+        let url = format!(
+            "https://{lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch={query}&format=json"
+        );
+        let resp = reqwest::get(&url)
+            .await
+            .map_err(|e| format!("Wikipedia にアクセスできなかったよ。Error: {}", e))?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Wikipedia のレスポンスを解析できなかったよ。Error: {}", e))?;
+        let search_results = json["query"]["search"]
+            .as_array()
+            .ok_or("Wikipedia のレスポンスが不正だよ。")?;
+        if search_results.is_empty() {
+            return Err(format!("Wikipedia では「{query}」は見つからなかったよ。"));
+        }
+
+        let search_results = search_results
+            .iter()
+            .map(|result| {
+                let title = result["title"].as_str().unwrap_or("");
+                let snippet = result["snippet"].as_str().unwrap_or("");
+                format!("- {title}: {snippet}")
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        Ok(format!(
+            "Wikipedia での「{query}」の検索結果だよ:\n{}",
+            search_results
+        ))
+    }
+
+    pub(super) fn web_search_wikipedia_definition() -> super::ToolDefinition {
+        super::ToolDefinition {
+            name: "web_search_wikipedia".into(),
+            description: "Wikipedia で検索して結果を返すツール".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": { "type": "string", "description": "検索クエリ" },
+                    "lang": { "type": "string", "description": "言語コード（例: 'ja', 'en'）" }
+                },
+                "required": ["query", "lang"]
+            }),
+        }
+    }
+
+    pub(super) async fn web_fetch_wikipedia(title: &str, lang: &str) -> Result<String, String> {
+        let url = format!(
+            "https://{lang}.wikipedia.org/w/api.php?action=query&prop=extracts&titles={title}&format=json"
+        );
+        let resp = reqwest::get(&url)
+            .await
+            .map_err(|e| format!("Wikipedia にアクセスできなかったよ。Error: {}", e))?;
+        let json: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Wikipedia のレスポンスを解析できなかったよ。Error: {}", e))?;
+        let pages = json["query"]["pages"]
+            .as_object()
+            .ok_or("Wikipedia のレスポンスが不正だよ。")?;
+        if pages.is_empty() {
+            return Err(format!(
+                "Wikipedia に「{title}」というページは存在しないよ。"
+            ));
+        }
+        let page = pages
+            .values()
+            .next()
+            .ok_or("Wikipedia のレスポンスが不正だよ。")?;
+        let extract = page["extract"].as_str().unwrap_or("");
+        if extract.is_empty() {
+            return Err(format!(
+                "Wikipedia では「{title}」の内容が見つからなかったよ。"
+            ));
+        }
+
+        Ok(format!("Wikipedia の「{title}」の内容だよ:\n{}", extract))
+    }
+
+    pub(super) fn web_fetch_wikipedia_definition() -> super::ToolDefinition {
+        super::ToolDefinition {
+            name: "web_fetch_wikipedia".into(),
+            description: "Wikipedia から指定ページの内容を取得するツール".into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "title": { "type": "string", "description": "ページタイトル" },
+                    "lang": { "type": "string", "description": "言語コード（例: 'ja', 'en'）" }
+                },
+                "required": ["title", "lang"]
+            }),
+        }
+    }
 }
 
 #[cfg(test)]
