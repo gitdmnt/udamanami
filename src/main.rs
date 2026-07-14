@@ -79,7 +79,8 @@ async fn main() -> anyhow::Result<()> {
     let llm_model = env_var("LLM_MODEL")
         .or_else(|| ai::available_models().into_iter().next())
         .unwrap_or_else(|| "gpt-5.4-nano".to_owned());
-    let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model)?;
+    let llm_effort = env_var("LLM_EFFORT").unwrap_or_else(|| "minimal".to_owned());
+    let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model, &llm_effort)?;
 
     let database_path = env_var("DATABASE_PATH").unwrap_or_else(|| "./db.sqlite".to_owned());
     let database = BotDatabase::new(&database_path).await?;

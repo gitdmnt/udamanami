@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 
 use anyhow::Result;
+use serde_json::json;
 
 use rig::client::CompletionClient;
 use rig::completion::{AssistantContent, CompletionModel, Message as RigMessage};
@@ -156,14 +157,26 @@ pub struct ManamiAi {
     client: openai::CompletionsClient,
     default_model: String,
     model: Mutex<String>,
+    effort: Mutex<String>,
     system_prompt: String,
     conversation: Mutex<VecDeque<ChatMessage>>,
 }
 
 impl ManamiAi {
     /// まなみのペルソナ付きでチャットボットのクライアントを構築する。
-    pub fn manami(base_url: &str, api_key: &str, default_model: &str) -> Result<Self> {
-        Self::with_system_prompt(base_url, api_key, default_model, MANAMI_PROMPT)
+    pub fn manami(
+        base_url: &str,
+        api_key: &str,
+        default_model: &str,
+        default_effort: &str,
+    ) -> Result<Self> {
+        Self::with_system_prompt(
+            base_url,
+            api_key,
+            default_model,
+            default_effort,
+            MANAMI_PROMPT,
+        )
     }
 
     /// システムプロンプトを指定してチャットボットのクライアントを構築する。
@@ -171,6 +184,7 @@ impl ManamiAi {
         base_url: &str,
         api_key: &str,
         default_model: &str,
+        default_effort: &str,
         system_prompt: &str,
     ) -> Result<Self> {
         // OpenAI 互換の Chat Completions クライアント（POST {base_url}/chat/completions）。
@@ -184,6 +198,7 @@ impl ManamiAi {
             client,
             default_model: default_model.to_owned(),
             model: Mutex::new(default_model.to_owned()),
+            effort: Mutex::new(default_effort.to_owned()),
             system_prompt: system_prompt.to_owned(),
             conversation: Mutex::new(VecDeque::new()),
         })
@@ -274,6 +289,8 @@ impl ManamiAi {
             model.to_owned()
         };
 
+        let effort = self.effort.lock().unwrap().clone();
+
         // ロックは await をまたがず、ここでコピーして解放する。
         let messages: Vec<ChatMessage> =
             self.conversation.lock().unwrap().iter().cloned().collect();
@@ -283,7 +300,7 @@ impl ManamiAi {
         }
 
         let reply = self
-            .run_completion(&model, &self.system_prompt, messages)
+            .run_completion(&model, &effort, &self.system_prompt, messages)
             .await?;
         self.add_model_log(&reply);
         Ok(reply)
@@ -295,13 +312,16 @@ impl ManamiAi {
             return Ok("まとめるログがないよ".to_owned());
         }
         let model = self.default_model.clone();
-        self.run_completion(&model, MATOME_PROMPT, messages).await
+        let effort = "low";
+        self.run_completion(&model, effort, MATOME_PROMPT, messages)
+            .await
     }
 
     /// 内部用。Rig の CompletionClient を使ってメッセージを生成する。
     async fn run_completion(
         &self,
         model: &str,
+        effort: &str,
         preamble: &str,
         messages: Vec<ChatMessage>,
     ) -> Result<String> {
@@ -318,6 +338,7 @@ impl ManamiAi {
             .completion_request(prompt)
             .messages(rig_messages)
             .preamble(preamble.to_owned())
+            .additional_params(json!({"reasoning_effort": effort}))
             .build();
 
         let response = completion_model.completion(request).await?;
