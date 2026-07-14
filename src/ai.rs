@@ -440,11 +440,14 @@ impl ManamiAi {
                             result: output.clone(),
                         });
 
-                        // 結果は呼び出し ID と 1 対 1 で対応させる
-                        results.push(UserContent::tool_result(
-                            call.id,
-                            OneOrMany::one(ToolResultContent::text(output)),
-                        ));
+                        // 結果は呼び出し ID と 1 対 1 で対応させる。
+                        let content = OneOrMany::one(ToolResultContent::text(output));
+                        let result = if let Some(call_id) = call.call_id {
+                            UserContent::tool_result_with_call_id(call.id, call_id, content)
+                        } else {
+                            UserContent::tool_result(call.id, content)
+                        };
+                        results.push(result);
                     }
 
                     run.tool_results(results)?; // 積んで次の next_step へ（= 再びモデル呼び出し）
