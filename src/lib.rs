@@ -315,7 +315,6 @@ async fn direct_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let command_context = CommandContext::new(bot, ctx, msg, msg.content[1..].to_string());
 
     // if message is command, handle command
-    // handle command
     let command_name = &command_context.command_name()[..];
 
     match bot
@@ -379,7 +378,6 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         ),
         None => {
             // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答
-
             if msg.channel_id.get() == bot.debug_channel_id.get()
                 && (response_to_all || rng().random::<f32>() < 0.3)
             {
