@@ -344,17 +344,20 @@ impl BotDatabase {
     }
 
     pub async fn retrieve_eval_context(&self) -> EvalContext {
-        (calc_var::Entity::find().all(&self.db).await).map_or_else(|_| EvalContext::new(), |models| {
-            EvalContext::from_dashmap({
-                let dashmap = DashMap::new();
-                models.into_iter().for_each(|model| {
-                    if let Ok(value) = serde_json::from_str::<EvalResult>(&model.var_value) {
-                        dashmap.insert(model.var_name, value);
-                    }
-                });
-                dashmap
-            })
-        })
+        (calc_var::Entity::find().all(&self.db).await).map_or_else(
+            |_| EvalContext::new(),
+            |models| {
+                EvalContext::from_dashmap({
+                    let dashmap = DashMap::new();
+                    models.into_iter().for_each(|model| {
+                        if let Ok(value) = serde_json::from_str::<EvalResult>(&model.var_value) {
+                            dashmap.insert(model.var_name, value);
+                        }
+                    });
+                    dashmap
+                })
+            },
+        )
     }
 
     pub async fn delete_var(&self, varname: &str) -> anyhow::Result<()> {
