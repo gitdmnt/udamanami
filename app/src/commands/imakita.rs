@@ -69,19 +69,19 @@ pub async fn run_body(time: Option<u32>, ctx: &CommandContext<'_>) -> String {
     let channel_id = ctx.channel_id;
     let self_id = &ctx.ctx.http.get_current_user().await.unwrap().id;
 
-    let fetch_result = match time {
-        Some(time) => ctx
-            .bot
-            .database
-            .fetch_log_by_duration(&channel_id, TimeDelta::minutes(time as i64))
-            .await
-            .unwrap(),
-        None => ctx
-            .bot
-            .database
-            .fetch_log_until_gap(&channel_id, TimeDelta::minutes(60))
-            .await
-            .unwrap(),
+    // 分数未指定のときは直近60分のログを対象にする
+    let minutes = time.unwrap_or(60);
+    let fetch_result = match ctx
+        .bot
+        .database
+        .fetch_log_by_duration(&channel_id, TimeDelta::minutes(minutes as i64))
+        .await
+    {
+        Ok(messages) => messages,
+        Err(e) => {
+            println!("Failed to fetch log: {e}");
+            return String::new();
+        }
     };
 
     let chat_messages = fetch_result

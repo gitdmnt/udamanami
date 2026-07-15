@@ -10,6 +10,12 @@ mod channel;
 mod message;
 mod user;
 
+/// D1バインド用: None は JsValue::UNDEFINED になり D1_TYPE_ERROR を起こすため、
+/// 明示的に JsValue::NULL へ落とす。
+pub(crate) fn opt_to_js<T: Into<wasm_bindgen::JsValue>>(v: Option<T>) -> wasm_bindgen::JsValue {
+    v.map_or(wasm_bindgen::JsValue::NULL, Into::into)
+}
+
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     // 認証

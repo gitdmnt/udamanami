@@ -20,7 +20,7 @@ ON CONFLICT (user_id) DO UPDATE SET username = excluded.username, room_pointer =
         .bind(&[
             user.user_id.into(),
             user.username.into(),
-            user.room_pointer.into(),
+            crate::opt_to_js(user.room_pointer),
         ])?
         .run()
         .await?;
@@ -38,7 +38,7 @@ pub async fn set_room_pointer(mut req: Request, ctx: RouteContext<()>) -> Result
 
     let _ = d1
         .prepare("UPDATE user SET room_pointer = ? WHERE user_id = ?")
-        .bind(&[user.room_pointer.into(), user.user_id.into()])?
+        .bind(&[crate::opt_to_js(user.room_pointer), user.user_id.into()])?
         .run()
         .await?;
 

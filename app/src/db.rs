@@ -172,51 +172,6 @@ impl BotDatabase {
         .await
     }
 
-    pub async fn fetch_log_until_gap(
-        &self,
-        channel_id: &ChannelId,
-        gap: chrono::Duration,
-    ) -> anyhow::Result<Vec<MessageInfo>> {
-        /*
-        0. 「遡行開始点」を現在時刻に設定
-        1. 「遡行開始点」の直前 gap 分の窓にあるメッセージを取得、result に追加
-        2. 取得できたら最古のメッセージの timestamp を「遡行開始点」にして1に戻る、
-           窓が空(= gap 以上の空白)なら終了
-        */
-
-        // newer-first
-        let mut messages: Vec<MessageInfo> = vec![];
-        let mut seen = std::collections::HashSet::new();
-
-        let mut since = Utc::now();
-        loop {
-            let chunk = self
-                .get_messages(
-                    channel_id,
-                    LIMIT_UNBOUNDED,
-                    MessageOrder::Desc,
-                    Some(since - gap),
-                    Some(since),
-                )
-                .await?;
-
-            // 窓の境界(timestamp >= since - gap)は前回の取得と重なりうるので除外する
-            let fresh: Vec<MessageInfo> = chunk
-                .into_iter()
-                .filter(|m| seen.insert(m.message_id))
-                .collect();
-
-            let Some(oldest) = fresh.last() else {
-                break;
-            };
-
-            since = oldest.timestamp;
-            messages.extend(fresh);
-        }
-
-        Ok(messages.into_iter().rev().collect())
-    }
-
     async fn get_messages(
         &self,
         channel_id: &ChannelId,

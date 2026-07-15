@@ -137,12 +137,16 @@ impl Bot {
         userid: &UserId,
         username: &str,
         room_pointer: ChannelId,
+        channel_name: &str,
     ) -> Result<(), anyhow::Error> {
+        // room_pointer は channel テーブルへの外部キーなので、
+        // まだメッセージが保存されていないチャンネルでも失敗しないよう先に upsert する。
+        self.database
+            .upsert_channel(&room_pointer, channel_name, false)
+            .await?;
         self.database
             .set_user_room_pointer(userid, username, Some(room_pointer))
             .await
-            .unwrap();
-        Ok(())
     }
 }
 
@@ -280,6 +284,18 @@ impl EventHandler for Bot {
                 &command,
                 &command.data.name,
             );
+            // LLM を使うコマンドは 3 秒の応答期限に間に合わないことがあるので、
+            // 先に defer してから後で本文を edit する。
+            if let Err(why) = command
+                .create_response(&ctx.http, CreateInteractionResponse::Defer(
+                    CreateInteractionResponseMessage::new(),
+                ))
+                .await
+            {
+                error!("Error deferring interaction: {:?}", why);
+                return;
+            }
+
             let content = match self
                 .slash_commands
                 .iter()
@@ -296,9 +312,8 @@ impl EventHandler for Bot {
                 content
             };
 
-            let data = CreateInteractionResponseMessage::new().content(content);
-            let builder = CreateInteractionResponse::Message(data);
-            if let Err(why) = command.create_response(&ctx.http, builder).await {
+            let builder = serenity::builder::EditInteractionResponse::new().content(content);
+            if let Err(why) = command.edit_response(&ctx.http, builder).await {
                 error!("Error sending message: {:?}", why);
             }
         }

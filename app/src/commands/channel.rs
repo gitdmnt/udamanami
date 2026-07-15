@@ -1,6 +1,7 @@
 use crate::commands::CommandContext;
 use crate::commands::ManamiSlashCommand;
 use serenity::all::ResolvedValue;
+use tracing::error;
 
 pub const SLASH_CHANNEL_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "channel",
@@ -42,10 +43,14 @@ pub async fn run(
         .await
         .unwrap_or_else(|| user.display_name().to_owned());
 
-    let msg = format!("送信先を{}に設定したよ", channel.name.as_ref().unwrap());
-    ctx.bot
-        .change_room_pointer(&ctx.author_id, &name, channel.id)
+    let channel_name = channel.name.as_deref().unwrap_or("");
+    if let Err(e) = ctx
+        .bot
+        .change_room_pointer(&ctx.author_id, &name, channel.id, channel_name)
         .await
-        .unwrap();
-    msg
+    {
+        error!("Error changing room pointer: {e:?}");
+        return "送信先の設定に失敗しちゃった……もう一回試してみて".to_owned();
+    }
+    format!("送信先を{channel_name}に設定したよ")
 }

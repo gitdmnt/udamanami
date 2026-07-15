@@ -107,8 +107,8 @@ pub async fn get_messages(req: Request, ctx: RouteContext<()>) -> Result<Respons
         ))
         .bind(&[
             channel_id.into(),
-            param("from").into(),
-            param("to").into(),
+            crate::opt_to_js(param("from")),
+            crate::opt_to_js(param("to")),
             limit.into(),
         ])?
         .run()
