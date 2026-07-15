@@ -66,6 +66,7 @@ jobs:
             --build-arg COMMIT_DATE='${{ steps.meta.outputs.commit_date }}' \
             --tag '${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_short }}' \
             --tag '${{ steps.meta.outputs.image }}:latest' \
+            --file app/Dockerfile \
             .
 
       - name: Push image
@@ -73,7 +74,7 @@ jobs:
           docker push '${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.sha_short }}'
           docker push '${{ steps.meta.outputs.image }}:latest'
 
-      # We run the container ourselves via COS + systemd (deploy/cloud-init.yaml)
+      # We run the container ourselves via COS + systemd (app/deploy/cloud-init.yaml)
       # rather than gcloud's deprecated create-with-container/update-container.
       # The cloud-init template is rendered with this build's image + secret and
       # written to the VM's `user-data`; a reset reboots the VM, and on boot COS
@@ -92,7 +93,7 @@ jobs:
           user_data="$(mktemp)"
           sed -e "s|@@IMAGE_REF@@|${IMAGE_REF}|g" \
               -e "s|@@ENV_SECRET@@|${env_secret}|g" \
-              deploy/cloud-init.yaml > "${user_data}"
+              app/deploy/cloud-init.yaml > "${user_data}"
 
           # Does the instance already exist? Distinguish a genuine "not found"
           # from transient/permission errors so we never fall through to creating

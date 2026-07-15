@@ -1,8 +1,11 @@
-/target
+# Rust build artifacts, in any crate of the monorepo (app/, workers/, shared/).
+**/target/
 Cargo.lock
 db.sqlite
 
 # Local deployment secrets -- never commit real tokens.
 .env
-deploy/*.env
-!deploy/*.env.example
+app/deploy/*.env
+!app/deploy/*.env.example
+
+.wrangler/

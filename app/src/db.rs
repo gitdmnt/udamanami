@@ -1,0 +1,336 @@
+//! workers (D1) API をバックエンドにした DB サービス層。
+//!
+//! serenity 型と shared DTO(文字列)の変換をここで行い、
+//! HTTP 通信は [`WorkersApi`] に任せる。
+
+use std::collections::HashMap;
+
+use chrono::{DateTime, Utc};
+use dashmap::DashMap;
+use serenity::all::MessageId;
+use serenity::model::{
+    channel::Message,
+    id::{ChannelId, UserId},
+};
+use udamanami_shared as dto;
+use udamanami_shared::{GetMessages, MessageOrder};
+
+use crate::ai::ChatMessage;
+use crate::calculator::{EvalContext, EvalResult};
+use crate::workers_api::WorkersApi;
+
+/// 期間指定なしの取得で使う実質無制限の件数。
+const LIMIT_UNBOUNDED: usize = 1_000_000_000;
+
+pub struct BotDatabase {
+    api: WorkersApi,
+}
+
+impl BotDatabase {
+    pub fn new(base_url: impl Into<String>, auth_token: impl Into<String>) -> Self {
+        Self {
+            api: WorkersApi::new(base_url, auth_token),
+        }
+    }
+
+    pub async fn insert_guild_message(
+        &self,
+        message: &Message,
+        user_name: &str,
+        channel_name: &str,
+    ) -> anyhow::Result<()> {
+        self.upsert_user(&message.author.id, user_name).await?;
+        self.upsert_channel(&message.channel_id, channel_name, message.thread.is_some())
+            .await?;
+
+        self.api
+            .insert_messages(&[message_to_dto(message, &message.channel_id)])
+            .await
+    }
+
+    pub async fn insert_many_guild_messages(
+        &self,
+        messages: &[Message],
+        unique_users: HashMap<UserId, String>,
+        channel_info: (ChannelId, String),
+    ) -> anyhow::Result<()> {
+        let (channel_id, channel_name) = channel_info;
+
+        self.upsert_channel(&channel_id, &channel_name, false)
+            .await?;
+
+        for (user_id, user_name) in unique_users {
+            self.upsert_user(&user_id, &user_name).await?;
+        }
+
+        let messages: Vec<dto::Message> = messages
+            .iter()
+            .map(|message| message_to_dto(message, &channel_id))
+            .collect();
+
+        self.api.insert_messages(&messages).await
+    }
+
+    pub async fn update_guild_message(&self, edited_message: &Message) -> anyhow::Result<()> {
+        self.api
+            .update_message(
+                edited_message.id.get().to_string(),
+                edited_message.content.clone(),
+            )
+            .await
+    }
+
+    pub async fn delete_guild_message(&self, message_id: &MessageId) -> anyhow::Result<()> {
+        self.api.delete_message(message_id.get().to_string()).await
+    }
+
+    pub async fn upsert_user(&self, user_id: &UserId, user_name: &str) -> anyhow::Result<()> {
+        self.api
+            .upsert_user(user_id.get().to_string(), user_name.to_owned())
+            .await
+    }
+
+    pub async fn set_user_room_pointer(
+        &self,
+        user_id: &UserId,
+        username: &str,
+        room_pointer: Option<ChannelId>,
+    ) -> anyhow::Result<()> {
+        self.api
+            .set_room_pointer(
+                user_id.get().to_string(),
+                username.to_owned(),
+                room_pointer.map(|c| c.get().to_string()),
+            )
+            .await
+    }
+
+    pub async fn fetch_user_room_pointer(
+        &self,
+        user_id: &UserId,
+        default_pointer: ChannelId,
+    ) -> anyhow::Result<ChannelId> {
+        let room_pointer = self
+            .api
+            .get_room_pointer(user_id.get().to_string())
+            .await?;
+
+        Ok(room_pointer
+            .and_then(|p| p.parse::<u64>().ok())
+            .map_or(default_pointer, ChannelId::from))
+    }
+
+    pub async fn upsert_channel(
+        &self,
+        channel_id: &ChannelId,
+        channel_name: &str,
+        is_thread: bool,
+    ) -> anyhow::Result<()> {
+        self.api
+            .upsert_channel(&dto::Channel {
+                channel_id: channel_id.get().to_string(),
+                is_thread,
+                name: channel_name.to_owned(),
+            })
+            .await
+    }
+
+    pub async fn fetch_oldest_message(
+        &self,
+        channel_id: &ChannelId,
+    ) -> anyhow::Result<Option<MessageInfo>> {
+        let messages = self
+            .get_messages(channel_id, 1, MessageOrder::Asc, None, None)
+            .await?;
+        Ok(messages.into_iter().next())
+    }
+
+    pub async fn fetch_log_by_count(
+        &self,
+        channel_id: &ChannelId,
+        n: usize,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        let messages = self
+            .get_messages(channel_id, n, MessageOrder::Desc, None, None)
+            .await?;
+        Ok(messages.into_iter().rev().collect())
+    }
+
+    pub async fn fetch_log_by_duration(
+        &self,
+        channel_id: &ChannelId,
+        duration: chrono::Duration,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        let since = Utc::now() - duration;
+        self.get_messages(
+            channel_id,
+            LIMIT_UNBOUNDED,
+            MessageOrder::Asc,
+            Some(since),
+            None,
+        )
+        .await
+    }
+
+    pub async fn fetch_log_until_gap(
+        &self,
+        channel_id: &ChannelId,
+        gap: chrono::Duration,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        /*
+        0. 「遡行開始点」を現在時刻に設定
+        1. 「遡行開始点」の直前 gap 分の窓にあるメッセージを取得、result に追加
+        2. 取得できたら最古のメッセージの timestamp を「遡行開始点」にして1に戻る、
+           窓が空(= gap 以上の空白)なら終了
+        */
+
+        // newer-first
+        let mut messages: Vec<MessageInfo> = vec![];
+        let mut seen = std::collections::HashSet::new();
+
+        let mut since = Utc::now();
+        loop {
+            let chunk = self
+                .get_messages(
+                    channel_id,
+                    LIMIT_UNBOUNDED,
+                    MessageOrder::Desc,
+                    Some(since - gap),
+                    Some(since),
+                )
+                .await?;
+
+            // 窓の境界(timestamp >= since - gap)は前回の取得と重なりうるので除外する
+            let fresh: Vec<MessageInfo> = chunk
+                .into_iter()
+                .filter(|m| seen.insert(m.message_id))
+                .collect();
+
+            let Some(oldest) = fresh.last() else {
+                break;
+            };
+
+            since = oldest.timestamp;
+            messages.extend(fresh);
+        }
+
+        Ok(messages.into_iter().rev().collect())
+    }
+
+    async fn get_messages(
+        &self,
+        channel_id: &ChannelId,
+        limit: usize,
+        order: MessageOrder,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        let messages = self
+            .api
+            .get_messages(GetMessages {
+                channel_id: channel_id.get().to_string(),
+                limit,
+                order: Some(order),
+                from: from.map(|t| t.to_rfc3339()),
+                to: to.map(|t| t.to_rfc3339()),
+            })
+            .await?;
+
+        Ok(messages.into_iter().map(message_from_dto).collect())
+    }
+
+    pub async fn upsert_var(
+        &self,
+        varname: &str,
+        x: EvalResult,
+        author_id: UserId,
+    ) -> anyhow::Result<()> {
+        let value = serde_json::to_value(x)?;
+
+        self.api
+            .upsert_calc_var(&dto::CalcVar {
+                var_name: varname.to_owned(),
+                var_value: value.to_string(),
+                user_id: author_id.get().to_string(),
+            })
+            .await
+    }
+
+    pub async fn retrieve_eval_context(&self) -> EvalContext {
+        (self.api.get_all_calc_vars().await).map_or_else(
+            |_| EvalContext::new(),
+            |vars| {
+                EvalContext::from_dashmap({
+                    let dashmap = DashMap::new();
+                    vars.into_iter().for_each(|var| {
+                        if let Ok(value) = serde_json::from_str::<EvalResult>(&var.var_value) {
+                            dashmap.insert(var.var_name, value);
+                        }
+                    });
+                    dashmap
+                })
+            },
+        )
+    }
+
+    pub async fn delete_var(&self, varname: &str) -> anyhow::Result<()> {
+        self.api.delete_calc_var(varname.to_owned()).await
+    }
+
+    pub async fn list_var(&self) -> anyhow::Result<Vec<(String, String)>> {
+        let vars = self.api.list_calc_vars().await?;
+
+        Ok(vars
+            .into_iter()
+            .map(|var| {
+                (
+                    var.var_name,
+                    var.username.unwrap_or_else(|| "[不明]".to_owned()),
+                )
+            })
+            .collect())
+    }
+}
+
+fn message_to_dto(message: &Message, channel_id: &ChannelId) -> dto::Message {
+    dto::Message {
+        message_id: message.id.get().to_string(),
+        channel_id: channel_id.get().to_string(),
+        user_id: message.author.id.get().to_string(),
+        content: message.content.clone(),
+        timestamp: message.timestamp.to_utc().to_rfc3339(),
+        username: None,
+    }
+}
+
+fn message_from_dto(message: dto::Message) -> MessageInfo {
+    MessageInfo {
+        message_id: MessageId::from(message.message_id.parse::<u64>().unwrap_or(0)),
+        user_id: UserId::from(message.user_id.parse::<u64>().unwrap_or(0)),
+        user_name: message
+            .username
+            .unwrap_or_else(|| "Unknown".to_owned()),
+        timestamp: DateTime::parse_from_rfc3339(&message.timestamp)
+            .map_or_else(|_| Utc::now(), |t| t.with_timezone(&Utc)),
+        content: message.content,
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MessageInfo {
+    pub message_id: MessageId,
+    pub user_id: UserId,
+    pub user_name: String,
+    pub timestamp: DateTime<Utc>,
+    pub content: String,
+}
+
+impl MessageInfo {
+    pub fn to_chat_message(&self, my_userid: &UserId) -> ChatMessage {
+        if self.user_id == *my_userid {
+            ChatMessage::assistant(&self.content)
+        } else {
+            ChatMessage::user(&self.user_name, &self.content)
+        }
+    }
+}

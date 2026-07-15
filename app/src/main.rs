@@ -82,8 +82,10 @@ async fn main() -> anyhow::Result<()> {
     let llm_effort = env_var("LLM_EFFORT").unwrap_or_else(|| "minimal".to_owned());
     let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model, &llm_effort)?;
 
-    let database_path = env_var("DATABASE_PATH").unwrap_or_else(|| "./db.sqlite".to_owned());
-    let database = BotDatabase::new(&database_path).await?;
+    let workers_api_url = env_var("WORKERS_API_URL").context("'WORKERS_API_URL' was not found")?;
+    let workers_api_token =
+        env_var("WORKERS_API_TOKEN").context("'WORKERS_API_TOKEN' was not found")?;
+    let database = BotDatabase::new(workers_api_url, workers_api_token);
 
     let bot = Bot::new(
         channel_ids,
