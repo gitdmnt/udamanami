@@ -7,17 +7,17 @@ pub struct WebFetchWikipedia;
 #[serenity::async_trait]
 impl Tool for WebFetchWikipedia {
     fn def() -> ToolDefinition {
-        web_fetch_wikipedia_definition()
+        def()
     }
 
     async fn call(args: serde_json::Value) -> Result<String, String> {
         let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
         let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
-        web_fetch_wikipedia(title, lang).await
+        fetch(title, lang).await
     }
 }
 
-async fn web_fetch_wikipedia(title: &str, lang: &str) -> Result<String, String> {
+async fn fetch(title: &str, lang: &str) -> Result<String, String> {
     let url = format!(
             "https://{lang}.wikipedia.org/w/api.php?action=query&prop=extracts&titles={title}&format=json"
         );
@@ -61,7 +61,7 @@ async fn web_fetch_wikipedia(title: &str, lang: &str) -> Result<String, String> 
     ))
 }
 
-fn web_fetch_wikipedia_definition() -> super::ToolDefinition {
+fn def() -> super::ToolDefinition {
     super::ToolDefinition {
         name: "web_fetch_wikipedia".into(),
         description: "Wikipedia から指定ページの内容を取得するツール".into(),

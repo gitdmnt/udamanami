@@ -7,17 +7,17 @@ pub struct WebSearchWikipedia;
 #[serenity::async_trait]
 impl Tool for WebSearchWikipedia {
     fn def() -> ToolDefinition {
-        web_search_wikipedia_definition()
+        def()
     }
 
     async fn call(args: serde_json::Value) -> Result<String, String> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
-        web_search_wikipedia(query, lang).await
+        search(query, lang).await
     }
 }
 
-async fn web_search_wikipedia(query: &str, lang: &str) -> Result<String, String> {
+async fn search(query: &str, lang: &str) -> Result<String, String> {
     let url = format!(
             "https://{lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch={query}&format=json"
         );
@@ -59,7 +59,7 @@ async fn web_search_wikipedia(query: &str, lang: &str) -> Result<String, String>
     ))
 }
 
-fn web_search_wikipedia_definition() -> super::ToolDefinition {
+fn def() -> super::ToolDefinition {
     super::ToolDefinition {
         name: "web_search_wikipedia".into(),
         description: "Wikipedia で検索して結果を返すツール".into(),
