@@ -1,5 +1,5 @@
 //! メッセージログのCRUD
-use udamanami_shared::{DeleteMessage, GetMessages, Message, MessageOrder, UpdateMessage};
+use udamanami_shared::{DeleteMessage, Message, UpdateMessage};
 use worker::*;
 
 pub async fn insert_messages(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -7,6 +7,10 @@ pub async fn insert_messages(mut req: Request, ctx: RouteContext<()>) -> Result<
     let Ok(messages) = serde_json::from_str::<Vec<Message>>(&body) else {
         return Response::error("Failed to parse request body", 400);
     };
+
+    if messages.is_empty() {
+        return Response::ok("No messages to insert");
+    }
 
     let d1 = ctx.env.d1("DB")?;
 
@@ -67,36 +71,48 @@ pub async fn delete_message(mut req: Request, ctx: RouteContext<()>) -> Result<R
     Response::ok("Message deleted successfully")
 }
 
-/// 最古のメッセージn件を取得する
-pub async fn get_messages(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
-    let body = req.text().await?;
-    let Ok(request) = serde_json::from_str::<GetMessages>(&body) else {
-        return Response::error("Failed to parse request body", 400);
+/// 条件(件数上限・並び順・期間)を指定してチャンネルのメッセージを取得する
+///
+/// クエリパラメータ: channel_id (必須), limit (必須), order (Asc/Desc), from, to
+pub async fn get_messages(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let param = |key: &str| {
+        url.query_pairs()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.into_owned())
+    };
+
+    let Some(channel_id) = param("channel_id") else {
+        return Response::error("Missing query parameter: channel_id", 400);
+    };
+    let Some(limit) = param("limit").and_then(|v| v.parse::<usize>().ok()) else {
+        return Response::error("Missing or invalid query parameter: limit", 400);
+    };
+    let order = match param("order").as_deref() {
+        Some("Desc") => "DESC",
+        _ => "ASC",
     };
 
     let d1 = ctx.env.d1("DB")?;
 
-    let order = match request.order {
-        Some(MessageOrder::Asc) => "ASC",
-        Some(MessageOrder::Desc) => "DESC",
-        None => "ASC",
-    };
-
+    // ASC/DESC はプレースホルダにバインドできないため SQL に直接埋め込む(match済みの固定文字列)
     let result = d1
-        .prepare("SELECT * FROM message WHERE channel_id = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ? LIMIT ?")
+        .prepare(format!(
+            "SELECT message.*, user.username FROM message
+             LEFT JOIN user ON message.user_id = user.user_id
+             WHERE channel_id = ?1
+             AND (?2 IS NULL OR timestamp >= ?2)
+             AND (?3 IS NULL OR timestamp <= ?3)
+             ORDER BY timestamp {order} LIMIT ?4"
+        ))
         .bind(&[
-            request.channel_id.into(),
-            request.from.into(),
-            request.to.into(),
-            order.into(),
-            request.limit.into(),
+            channel_id.into(),
+            param("from").into(),
+            param("to").into(),
+            limit.into(),
         ])?
         .run()
         .await?;
 
-    if let Some(message) = result.results::<Message>()?.first() {
-        Response::from_json(message)
-    } else {
-        Response::error("No messages found", 404)
-    }
+    Response::from_json(&result.results::<Message>()?)
 }

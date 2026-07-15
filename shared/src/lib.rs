@@ -15,6 +15,9 @@ pub struct Message {
     pub user_id: UserId,
     pub content: String,
     pub timestamp: String,
+    /// 取得時のみ user テーブルとの JOIN で埋まる。挿入時は不要。
+    #[serde(default)]
+    pub username: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
