@@ -1,10 +1,23 @@
+# Rust build artifacts in any crate (app/, shared/, workers/).
 target/
+
+# VCS and CI.
 .git/
 .github/
+
+# Docs and markdown.
 *.md
+docs/
+
+# Files not needed inside the bot image.
 .dockerignore
-Dockerfile
-deploy/
-generate_entity.sh
+app/Dockerfile
+app/deploy/
+app/generate_entity.sh
+
+# The Cloudflare Worker builds and deploys separately via wrangler.
+workers/
+
+# Local data and secrets.
 db.sqlite
 *.env
