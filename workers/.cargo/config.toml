@@ -1,0 +1,5 @@
+# workers/ は Cloudflare Workers 向けの wasm ビルド専用。
+# rust-analyzer や cargo check がこのディレクトリを扱うときに
+# 正しいターゲットで解析されるようにする。
+[build]
+target = "wasm32-unknown-unknown"

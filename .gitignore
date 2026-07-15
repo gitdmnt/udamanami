@@ -7,3 +7,5 @@ db.sqlite
 .env
 app/deploy/*.env
 !app/deploy/*.env.example
+
+.wrangler/

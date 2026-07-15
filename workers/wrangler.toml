@@ -11,12 +11,12 @@ command = "worker-build --release"
 [[d1_databases]]
 binding = "DB"
 database_name = "udamanami"
-database_id = "TODO_PASTE_D1_DATABASE_ID"
+database_id = "6578b5fa-41af-429d-9e1c-bfc67c60db8e"
 
 # Vectorize: 埋め込みベクトル。次元は使う埋め込みモデルに合わせる(未確定)。
 #   wrangler vectorize create udamanami-memory --dimensions=1536 --metric=cosine
 [[vectorize]]
-binding = "VEC"
+binding = "VECTORIZE"
 index_name = "udamanami-memory"
 
 # シークレット(wrangler secret put <NAME> で設定):
