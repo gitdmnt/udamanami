@@ -1,30 +1,6 @@
 //! メッセージログのCRUD
-use crate::channel::ChannelId;
-use crate::user::UserId;
-use serde::{Deserialize, Serialize};
+use udamanami_shared::{DeleteMessage, GetMessages, Message, MessageOrder, UpdateMessage};
 use worker::*;
-
-pub type MessageId = String;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Message {
-    message_id: MessageId,
-    channel_id: ChannelId,
-    user_id: UserId,
-    content: String,
-    timestamp: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct UpdateMessage {
-    message_id: MessageId,
-    content: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct DeleteMessage {
-    message_id: MessageId,
-}
 
 pub async fn insert_messages(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;
@@ -92,24 +68,9 @@ pub async fn delete_message(mut req: Request, ctx: RouteContext<()>) -> Result<R
 }
 
 /// 最古のメッセージn件を取得する
-#[derive(Debug, Deserialize, Serialize)]
-pub struct GetMessagesRequest {
-    pub channel_id: ChannelId,
-    pub limit: usize,
-    pub order: Option<MessageOrder>,
-    pub from: Option<String>, // chrono::DateTime<chrono::Utc>
-    pub to: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub enum MessageOrder {
-    Asc,
-    Desc,
-}
-
 pub async fn get_messages(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;
-    let Ok(request) = serde_json::from_str::<GetMessagesRequest>(&body) else {
+    let Ok(request) = serde_json::from_str::<GetMessages>(&body) else {
         return Response::error("Failed to parse request body", 400);
     };
 

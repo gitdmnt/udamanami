@@ -1,27 +1,7 @@
-//! 計算機の変数のCRUD
+//! calc varのCRUD
 
-use serde::{Deserialize, Serialize};
+use udamanami_shared::{CalcVar, CalcVarWithUsername, DeleteCalcVar};
 use worker::*;
-
-use crate::user::UserId;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CalcVar {
-    var_name: String,
-    var_value: String,
-    user_id: UserId,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct DeleteCalcVar {
-    var_name: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct CalcVarWithUsername {
-    var_name: String,
-    username: Option<String>,
-}
 
 pub async fn upsert_var(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;
@@ -37,7 +17,11 @@ pub async fn upsert_var(mut req: Request, ctx: RouteContext<()>) -> Result<Respo
 ON CONFLICT (var_name) DO UPDATE SET var_value = excluded.var_value;
 ",
         )
-        .bind(&[var.var_name.into(), var.var_value.into(), var.user_id.into()])?
+        .bind(&[
+            var.var_name.into(),
+            var.var_value.into(),
+            var.user_id.into(),
+        ])?
         .run()
         .await?;
 

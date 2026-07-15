@@ -1,18 +1,7 @@
 //! ユーザーとそれに関連する情報のCRUD
 
-use serde::{Deserialize, Serialize};
+use udamanami_shared::User;
 use worker::*;
-
-use crate::channel::ChannelId;
-
-pub type UserId = String;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct User {
-    user_id: UserId,
-    username: String,
-    room_pointer: Option<ChannelId>,
-}
 
 pub async fn upsert_user(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;

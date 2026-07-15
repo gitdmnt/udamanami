@@ -1,16 +1,7 @@
 //! チャンネルのCRUD
 
-use serde::{Deserialize, Serialize};
+use udamanami_shared::Channel;
 use worker::*;
-
-pub type ChannelId = String;
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Channel {
-    channel_id: ChannelId,
-    is_thread: bool,
-    name: String,
-}
 
 pub async fn upsert_channel(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;
