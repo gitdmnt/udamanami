@@ -1,0 +1,2 @@
+project_id = "manami-502312"
+# 他の値はデフォルトのままでよい。変える場合は variables.tf を参照。
