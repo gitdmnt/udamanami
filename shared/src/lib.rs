@@ -94,11 +94,6 @@ pub struct Memory {
     pub content: String,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-pub struct DeleteMemory {
-    pub memory_id: MemoryId,
-}
-
 /// 意味検索の結果1件。Vectorize の類似度 score を付与して返す。
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MemorySearchResult {
@@ -109,4 +104,20 @@ pub struct MemorySearchResult {
     pub title: String,
     pub timestamp: String,
     pub score: f64,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct MemoryListItem {
+    pub memory_id: MemoryId,
+    pub title: String,
+    pub timestamp: String,
+}
+
+/// メモリ1件の全文。chunk を連結して本文を復元したもの。
+#[derive(Debug, Deserialize, Serialize)]
+pub struct MemoryDetail {
+    pub memory_id: MemoryId,
+    pub title: String,
+    pub timestamp: String,
+    pub content: String,
 }

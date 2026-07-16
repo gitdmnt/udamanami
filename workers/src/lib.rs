@@ -53,7 +53,9 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         // メモリ
         .post_async("/memory", memory::create_memory)
         .delete_async("/memory", memory::delete_memory)
-        .get_async("/memory", memory::search_memory)
+        .get_async("/memory/search", memory::search_memory)
+        .get_async("/memory/list", memory::list_memories)
+        .get_async("/memory", memory::get_memory)
         .run(req, env)
         .await
 }

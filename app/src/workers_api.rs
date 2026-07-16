@@ -7,7 +7,8 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use udamanami_shared::{
     CalcVar, CalcVarWithUsername, Channel, ChannelId, DeleteCalcVar, DeleteMessage, GetMessages,
-    Message, MessageId, MessageOrder, UpdateMessage, User, UserId,
+    Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message, MessageId, MessageOrder,
+    UpdateMessage, User, UserId,
 };
 
 pub struct WorkersApi {
@@ -150,6 +151,40 @@ impl WorkersApi {
     /// 変数名と所有者名の一覧を取得する(GET /calcvar/list)
     pub async fn list_calc_vars(&self) -> anyhow::Result<Vec<CalcVarWithUsername>> {
         self.get_with_query("/calcvar/list", &[]).await
+    }
+
+    // ---------------- メモリ ----------------
+
+    pub async fn create_memory(&self, memory: &Memory) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::POST, "/memory", Some(memory))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn delete_memory(&self, memory_id: String) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::DELETE, "/memory", Some(&memory_id))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn search_memory(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<MemorySearchResult>> {
+        let params = [("q", query.to_owned()), ("limit", limit.to_string())];
+        self.get_with_query("/memory/search", &params).await
+    }
+
+    /// メモリ一覧を取得する(GET /memory/list)
+    pub async fn list_memories(&self) -> anyhow::Result<Vec<MemoryListItem>> {
+        self.get_with_query("/memory/list", &[]).await
+    }
+
+    /// メモリ1件の全文を取得する(GET /memory)
+    pub async fn get_memory(&self, memory_id: String) -> anyhow::Result<MemoryDetail> {
+        let params = [("memory_id", memory_id)];
+        self.get_with_query("/memory", &params).await
     }
 
     // ---------------- 内部ヘルパ ----------------

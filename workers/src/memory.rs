@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use udamanami_shared::{DeleteMemory, Memory, MemorySearchResult};
+use udamanami_shared::{Memory, MemoryId, MemoryListItem, MemorySearchResult};
 use worker::js_sys;
 use worker::wasm_bindgen::prelude::*;
 use worker::wasm_bindgen::{JsCast, JsValue};
@@ -257,7 +257,7 @@ pub(super) async fn create_memory(mut req: Request, ctx: RouteContext<()>) -> Re
 /// (memory_chunk は ON DELETE CASCADE で連鎖削除される)。
 pub(super) async fn delete_memory(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let body = req.text().await?;
-    let Ok(input) = serde_json::from_str::<DeleteMemory>(&body) else {
+    let Ok(memory_id) = serde_json::from_str::<MemoryId>(&body) else {
         return Response::error("Failed to parse request body", 400);
     };
 
@@ -270,7 +270,7 @@ pub(super) async fn delete_memory(mut req: Request, ctx: RouteContext<()>) -> Re
     }
     let rows = d1
         .prepare("SELECT chunk_id FROM memory_chunk WHERE memory_id = ?")
-        .bind(&[input.memory_id.clone().into()])?
+        .bind(&[memory_id.clone().into()])?
         .run()
         .await?
         .results::<ChunkIdRow>()?;
@@ -289,14 +289,14 @@ pub(super) async fn delete_memory(mut req: Request, ctx: RouteContext<()>) -> Re
 
     let _ = d1
         .prepare("DELETE FROM memory WHERE memory_id = ?")
-        .bind(&[input.memory_id.into()])?
+        .bind(&[memory_id.clone().into()])?
         .run()
         .await?;
 
     Response::ok("Memory deleted successfully")
 }
 
-/// クエリ文の意味検索。
+/// メモリを検索する。クエリ文を埋め込み、Vectorize で近傍を引き、D1 で本文・メタデータを解決して返す。
 ///
 /// クエリパラメータ: q (必須), limit (任意, 既定 5)
 pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -400,4 +400,68 @@ pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result
     });
 
     Response::from_json(&results)
+}
+
+/// メモリの一覧を返す。Vectorize で近傍を引くのではなく、D1 に保存されている memory の一覧を返す。
+pub(super) async fn list_memories(_req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let d1 = ctx.env.d1("DB")?;
+
+    let rows = d1
+        .prepare("SELECT memory_id, title, timestamp FROM memory ORDER BY timestamp DESC")
+        .run()
+        .await?
+        .results::<MemoryListItem>()?;
+
+    Response::from_json(&rows)
+}
+
+/// メモリの内容を返す。Vectorize で近傍を引くのではなく、D1 に保存されている memory の内容を返す。
+/// chunk を chunk_index 順に連結して本文を復元する。
+pub(super) async fn get_memory(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let Some(memory_id) = url
+        .query_pairs()
+        .find(|(k, _)| k == "memory_id")
+        .map(|(_, v)| v.into_owned())
+    else {
+        return Response::error("Missing query parameter: memory_id", 400);
+    };
+    let d1 = ctx.env.d1("DB")?;
+
+    // 1. memory 本体(タイトル・時刻)を引く。無ければ 404。
+    let Some(meta) = d1
+        .prepare("SELECT memory_id, title, timestamp FROM memory WHERE memory_id = ?")
+        .bind(&[memory_id.clone().into()])?
+        .first::<MemoryListItem>(None)
+        .await?
+    else {
+        return Response::error("Memory not found", 404);
+    };
+
+    // 2. chunk を index 順に連結して本文を復元する。
+    #[derive(Deserialize)]
+    struct ChunkContentRow {
+        content: String,
+    }
+    let chunks = d1
+        .prepare(
+            "SELECT content FROM memory_chunk
+             WHERE memory_id = ? ORDER BY chunk_index ASC",
+        )
+        .bind(&[memory_id.into()])?
+        .run()
+        .await?
+        .results::<ChunkContentRow>()?;
+    let content = chunks
+        .into_iter()
+        .map(|c| c.content)
+        .collect::<Vec<_>>()
+        .join("");
+
+    Response::from_json(&serde_json::json!({
+        "memory_id": meta.memory_id,
+        "title": meta.title,
+        "timestamp": meta.timestamp,
+        "content": content,
+    }))
 }
