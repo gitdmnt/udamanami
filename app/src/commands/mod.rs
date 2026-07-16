@@ -177,6 +177,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         jail::SLASH_JAIL_COMMAND,
         unjail::SLASH_UNJAIL_COMMAND,
         imakita::SLASH_IMAKITA_COMMAND,
+        memory::SLASH_MEMORY_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))

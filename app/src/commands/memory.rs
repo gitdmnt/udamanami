@@ -3,7 +3,7 @@ use crate::commands::ManamiSlashCommand;
 use serenity::all::{CommandOptionType, ResolvedOption, ResolvedValue};
 use tracing::error;
 
-pub const SLASH_CHANNEL_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
+pub const SLASH_MEMORY_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "memory",
     usage: "/memory [list|get <id>]",
     description: "まなみの記憶を覗けるよ！",
