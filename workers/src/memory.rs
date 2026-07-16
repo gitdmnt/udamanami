@@ -9,18 +9,12 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use udamanami_shared::{DeleteMemory, MemorySearchResult};
+use udamanami_shared::{DeleteMemory, Memory, MemorySearchResult};
 use worker::js_sys;
 use worker::wasm_bindgen::prelude::*;
 use worker::wasm_bindgen::{JsCast, JsValue};
 use worker::wasm_bindgen_futures::JsFuture;
 use worker::*;
-
-#[derive(Deserialize, Serialize)]
-struct Memory {
-    title: String,
-    content: String,
-}
 
 #[derive(Deserialize, Serialize)]
 struct Chunk {

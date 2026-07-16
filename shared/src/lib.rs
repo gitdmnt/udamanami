@@ -89,6 +89,12 @@ pub struct CalcVarWithUsername {
 // ---------------- memory ----------------
 
 #[derive(Debug, Deserialize, Serialize)]
+pub struct Memory {
+    pub title: String,
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
 pub struct DeleteMemory {
     pub memory_id: MemoryId,
 }
