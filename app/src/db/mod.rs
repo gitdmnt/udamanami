@@ -14,7 +14,7 @@ use serenity::model::{
 };
 use udamanami_shared as dto;
 use udamanami_shared::{
-    GetMessages, MemoryDetail, MemoryListItem, MemorySearchResult, MessageOrder,
+    GetMessages, MemoryDetail, MemoryListItem, MemorySearchResult, MessageOrder, UserProfile,
 };
 
 use crate::ai::ChatMessage;
@@ -119,6 +119,31 @@ impl BotDatabase {
         Ok(room_pointer
             .and_then(|p| p.parse::<u64>().ok())
             .map_or(default_pointer, ChannelId::from))
+    }
+
+    /// 応答相手の人間プロフィールを取得する。未登録なら `None`。
+    /// AI レイヤを serenity 非依存に保つため、生の Discord id 文字列で受ける。
+    pub async fn fetch_user_profile(&self, user_id: &str) -> anyhow::Result<Option<UserProfile>> {
+        self.api.get_user_profile(user_id.to_owned()).await
+    }
+
+    /// 応答相手の人間プロフィールを部分更新する。
+    /// `None` のフィールドは据え置き、`Some(値)` はそのフィールドを全文置換する。
+    pub async fn set_user_profile(
+        &self,
+        user_id: &str,
+        calling_name: Option<String>,
+        liked_topics: Option<String>,
+        disliked_topics: Option<String>,
+    ) -> anyhow::Result<()> {
+        self.api
+            .set_user_profile(&dto::SetUserProfile {
+                user_id: user_id.to_owned(),
+                calling_name,
+                liked_topics,
+                disliked_topics,
+            })
+            .await
     }
 
     pub async fn upsert_channel(

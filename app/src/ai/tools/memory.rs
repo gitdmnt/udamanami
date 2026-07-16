@@ -1,4 +1,4 @@
-use super::Tool;
+use super::{Tool, ToolCallContext};
 use crate::db::BotDatabase;
 use rig::completion::ToolDefinition;
 
@@ -16,13 +16,17 @@ impl Tool for Remember {
         remember_def()
     }
 
-    async fn call(db: &BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let title = ctx.args.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let content = ctx
+            .args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if title.is_empty() || content.is_empty() {
             return Err("title と content は必須だよ。".into());
         }
-        remember(db, title, content).await
+        remember(ctx.db, title, content).await
     }
 }
 
@@ -32,16 +36,17 @@ impl Tool for Recall {
         recall_def()
     }
 
-    async fn call(db: &BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         if query.is_empty() {
             return Err("query は必須だよ。".into());
         }
-        let limit = args
+        let limit = ctx
+            .args
             .get("limit")
             .and_then(serde_json::Value::as_u64)
             .map_or(DEFAULT_RECALL_LIMIT, |n| n as usize);
-        recall(db, query, limit).await
+        recall(ctx.db, query, limit).await
     }
 }
 
@@ -51,14 +56,22 @@ impl Tool for Amend {
         amend_def()
     }
 
-    async fn call(db: &BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let memory_id = args.get("memory_id").and_then(|v| v.as_str()).unwrap_or("");
-        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let memory_id = ctx
+            .args
+            .get("memory_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let title = ctx.args.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let content = ctx
+            .args
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if memory_id.is_empty() || title.is_empty() || content.is_empty() {
             return Err("memory_id と title と content は必須だよ。".into());
         }
-        amend(db, memory_id, title, content).await
+        amend(ctx.db, memory_id, title, content).await
     }
 }
 
@@ -68,12 +81,16 @@ impl Tool for Read {
         read_def()
     }
 
-    async fn call(db: &BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let memory_id = args.get("memory_id").and_then(|v| v.as_str()).unwrap_or("");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let memory_id = ctx
+            .args
+            .get("memory_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         if memory_id.is_empty() {
             return Err("memory_id は必須だよ。".into());
         }
-        read(db, memory_id).await
+        read(ctx.db, memory_id).await
     }
 }
 
@@ -104,7 +121,8 @@ fn recall_def() -> ToolDefinition {
         Rememberツールで保存した記憶を意味検索で思い出すツールです。
         過去に記憶した情報を参照したいときに使ってください。
 
-".into(),
+"
+        .into(),
         parameters: serde_json::json!({
             "type": "object",
             "properties": {
@@ -146,7 +164,8 @@ fn read_def() -> ToolDefinition {
         Recallツールでは各chunkの断片しか返らないため、記憶の全文を正確に読みたいときや、
         Amendツールで更新する前に元の全文を確認したいときに使ってください。
 
-".into(),
+"
+        .into(),
         parameters: serde_json::json!({
             "type": "object",
             "properties": {

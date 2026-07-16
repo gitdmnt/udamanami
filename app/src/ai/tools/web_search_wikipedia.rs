@@ -1,4 +1,4 @@
-use super::Tool;
+use super::{Tool, ToolCallContext};
 use crate::ai::tools::shared_utils::strip_html;
 use rig::completion::ToolDefinition;
 
@@ -10,9 +10,9 @@ impl Tool for WebSearchWikipedia {
         def()
     }
 
-    async fn call(_: &crate::db::BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-        let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let lang = ctx.args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
         search(query, lang).await
     }
 }

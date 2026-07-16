@@ -1,4 +1,4 @@
-use super::Tool;
+use super::{Tool, ToolCallContext};
 use crate::ai::tools::shared_utils::html_to_text;
 use rig::completion::ToolDefinition;
 
@@ -10,9 +10,9 @@ impl Tool for WebFetchWikipedia {
         def()
     }
 
-    async fn call(_: &crate::db::BotDatabase, args: serde_json::Value) -> Result<String, String> {
-        let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
+    async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
+        let title = ctx.args.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let lang = ctx.args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
         fetch(title, lang).await
     }
 }

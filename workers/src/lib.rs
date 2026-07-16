@@ -43,6 +43,8 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/user", user::upsert_user)
         .put_async("/user/room-pointer", user::set_room_pointer)
         .get_async("/user/room-pointer", user::get_room_pointer)
+        .put_async("/user/profile", user::set_profile)
+        .get_async("/user/profile", user::get_profile)
         // チャンネル
         .post_async("/channel", channel::upsert_channel)
         // 計算機の変数

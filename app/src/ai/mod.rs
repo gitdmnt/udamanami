@@ -153,16 +153,23 @@ impl ManamiAi {
     }
 
     /// 現在のモデルを使ってメッセージを生成する。
-    pub async fn generate(&self, db: &crate::db::BotDatabase) -> Result<String> {
+    /// `target_user_id` は「いま応答している相手」の Discord user_id。
+    pub async fn generate(
+        &self,
+        db: &crate::db::BotDatabase,
+        target_user_id: &str,
+    ) -> Result<String> {
         let model = self.get_model();
-        self.generate_with_model(&model, db).await
+        self.generate_with_model(&model, db, target_user_id).await
     }
 
     /// 現在のモデルを使ってメッセージを生成する。モデル名が空文字列なら現在のモデルにフォールバックする。
+    /// `target_user_id` の人間プロフィールを取得し、システムプロンプト末尾へ決定的に注入する。
     pub async fn generate_with_model(
         &self,
         model: &str,
         db: &crate::db::BotDatabase,
+        target_user_id: &str,
     ) -> Result<String> {
         // 全レスモード未設定時などモデルが空なら、現在のモデルにフォールバックする。
         let model = if model.trim().is_empty() {
@@ -181,13 +188,30 @@ impl ManamiAi {
             return Ok("やっほー！　どうしたの？".to_owned());
         }
 
+        // 応答相手のプロフィールを決定的に引き、システムプロンプト末尾へ注入する。
+        // 取得失敗や未登録は握り潰し、素のペルソナのまま会話を止めない。
+        // target_user_id が空のときは「応答相手が会話文脈に居ない」ケース（呼び出し側参照）なので、
+        // 取り違え注入を避けるためプロフィールは引かない。
+        let profile_block = if target_user_id.is_empty() {
+            String::new()
+        } else {
+            db.fetch_user_profile(target_user_id)
+                .await
+                .ok()
+                .flatten()
+                .map(|profile| profile.to_prompt())
+                .unwrap_or_default()
+        };
+        let system_prompt = format!("{}\n\n{}", self.system_prompt, profile_block.trim());
+
         let reply = engine::run_agent(
             &self.client,
             &model,
             &effort,
-            &self.system_prompt,
+            &system_prompt,
             messages,
             db,
+            target_user_id,
         )
         .await?;
         self.add_model_log(&reply);

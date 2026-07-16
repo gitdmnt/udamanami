@@ -19,13 +19,14 @@ use super::message::ChatMessage;
 use super::tools;
 
 /// `AgentRun` を使って、ツール呼び出しを含む複数ターンの会話を進める。
-pub(crate) async fn run_agent(
+pub async fn run_agent(
     client: &openai::Client,
     model: &str,
     effort: &str,
     system_prompt: &str,
     messages: Vec<ChatMessage>,
     db: &crate::db::BotDatabase,
+    target_user_id: &str,
 ) -> Result<String> {
     let history: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
     let prompt = history
@@ -93,18 +94,22 @@ pub(crate) async fn run_agent(
                     let call = pending.tool_call;
                     // 引数は痕跡表示用にコンパクト JSON で控えておく（dispatch で move する前に取る）。
                     let args = call.function.arguments.to_string();
-                    let output =
-                        match tools::dispatch(db, &call.function.name, call.function.arguments)
-                            .await
-                        {
-                            Ok(output) => output,
-                            Err(e) => {
-                                format!(
-                                    "ツール {} の呼び出しに失敗したよ。Error: {}",
-                                    call.function.name, e
-                                )
-                            }
-                        };
+                    let output = match tools::dispatch(
+                        db,
+                        target_user_id,
+                        &call.function.name,
+                        call.function.arguments,
+                    )
+                    .await
+                    {
+                        Ok(output) => output,
+                        Err(e) => {
+                            format!(
+                                "ツール {} の呼び出しに失敗したよ。Error: {}",
+                                call.function.name, e
+                            )
+                        }
+                    };
 
                     response_blocks.push(Block::ToolCall {
                         name: call.function.name,
@@ -137,7 +142,7 @@ pub(crate) async fn run_agent(
 }
 
 /// `CompletionClient` を使って1回だけのメッセージを生成する。ツールは使わない。
-pub(crate) async fn run_completion(
+pub async fn run_completion(
     client: &openai::Client,
     model: &str,
     effort: &str,

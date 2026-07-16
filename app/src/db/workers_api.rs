@@ -8,7 +8,7 @@ use serde::Serialize;
 use udamanami_shared::{
     CalcVar, CalcVarWithUsername, Channel, ChannelId, DeleteCalcVar, DeleteMessage, GetMessages,
     Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message, MessageId, MessageOrder,
-    UpdateMemory, UpdateMessage, User, UserId,
+    SetUserProfile, UpdateMemory, UpdateMessage, User, UserId, UserProfile,
 };
 
 pub struct WorkersApi {
@@ -114,6 +114,19 @@ impl WorkersApi {
     /// 代筆先チャンネルを取得する(GET /user/room-pointer)
     pub async fn get_room_pointer(&self, user_id: UserId) -> anyhow::Result<Option<ChannelId>> {
         self.get_with_query("/user/room-pointer", &[("user_id", user_id)])
+            .await
+    }
+
+    /// 人間プロフィールを部分更新する(PUT /user/profile)
+    pub async fn set_user_profile(&self, body: &SetUserProfile) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::PUT, "/user/profile", Some(body))
+            .await?;
+        Ok(())
+    }
+
+    /// 人間プロフィールを取得する(GET /user/profile)。未登録なら None。
+    pub async fn get_user_profile(&self, user_id: UserId) -> anyhow::Result<Option<UserProfile>> {
+        self.get_with_query("/user/profile", &[("user_id", user_id)])
             .await
     }
 

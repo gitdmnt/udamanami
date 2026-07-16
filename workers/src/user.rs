@@ -1,6 +1,6 @@
 //! ユーザーとそれに関連する情報のCRUD
 
-use udamanami_shared::User;
+use udamanami_shared::{SetUserProfile, User, UserProfile};
 use worker::*;
 
 pub async fn upsert_user(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -64,5 +64,65 @@ pub async fn get_room_pointer(req: Request, ctx: RouteContext<()>) -> Result<Res
         .run()
         .await?;
 
-    Response::from_json(&res.results::<User>()?.first().and_then(|u| u.room_pointer.clone()))
+    Response::from_json(
+        &res.results::<User>()?
+            .first()
+            .and_then(|u| u.room_pointer.clone()),
+    )
+}
+
+/// プロフィールを更新する。
+pub async fn set_profile(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body = req.text().await?;
+    let Ok(profile) = serde_json::from_str::<SetUserProfile>(&body) else {
+        return Response::error("Failed to parse request body", 400);
+    };
+
+    let d1 = ctx.env.d1("DB")?;
+
+    let _ = d1
+        .prepare(
+            "INSERT INTO user (user_id, username, calling_name, liked_topics, disliked_topics)
+            VALUES (?, '', ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                calling_name = COALESCE(excluded.calling_name, calling_name),
+                liked_topics = COALESCE(excluded.liked_topics, liked_topics),
+                disliked_topics = COALESCE(excluded.disliked_topics, disliked_topics)",
+        )
+        .bind(&[
+            profile.user_id.into(),
+            crate::opt_to_js(profile.calling_name),
+            crate::opt_to_js(profile.liked_topics),
+            crate::opt_to_js(profile.disliked_topics),
+        ])?
+        .run()
+        .await?;
+
+    Response::ok("User profile upserted successfully")
+}
+
+/// クエリパラメータ: user_id (必須)
+/// 対象ユーザーのプロフィールを返す。行が無ければ null。
+pub async fn get_profile(req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let url = req.url()?;
+    let Some(user_id) = url
+        .query_pairs()
+        .find(|(k, _)| k == "user_id")
+        .map(|(_, v)| v.into_owned())
+    else {
+        return Response::error("Missing query parameter: user_id", 400);
+    };
+
+    let d1 = ctx.env.d1("DB")?;
+
+    let res = d1
+        .prepare(
+            "SELECT user_id, username, calling_name, liked_topics, disliked_topics
+            FROM user WHERE user_id = ?",
+        )
+        .bind(&[user_id.into()])?
+        .run()
+        .await?;
+
+    Response::from_json(&res.results::<UserProfile>()?.into_iter().next())
 }

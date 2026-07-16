@@ -446,14 +446,25 @@ async fn say_free_reply(
     msg: &Message,
     response_to_all: bool,
     response_to_all_model: &str,
+    is_debug_channel: bool,
 ) {
+    // まなみは「いま応答している相手」= このメッセージの author に対してプロフィールを読み書きする。
+    // ただし AI 会話バッファに載るのは debug チャンネルのメッセージだけ（save_guild_message 参照）。
+    // 非 debug チャンネルの偶発応答（1%）では author の発言はバッファに無く、モデルが見ている文脈は
+    // 別チャンネルの別人なので、author をプロフィール対象にすると無関係な会話由来の情報を
+    // 誤って書き込んでしまう。その場合は対象を空にしてプロフィールの読み書きを無効化する。
+    let target_user_id = if is_debug_channel {
+        msg.author.id.get().to_string()
+    } else {
+        String::new()
+    };
     let content = if response_to_all {
         bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
         bot.ai
-            .generate_with_model(response_to_all_model, &bot.database)
+            .generate_with_model(response_to_all_model, &bot.database, &target_user_id)
             .await
     } else {
-        bot.ai.generate(&bot.database).await
+        bot.ai.generate(&bot.database, &target_user_id).await
     };
     say_ai_reply(ctx, msg, content).await;
 }
@@ -484,7 +495,15 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3)
                 || rng().random::<f32>() < 0.01
             {
-                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
+                say_free_reply(
+                    bot,
+                    ctx,
+                    msg,
+                    response_to_all,
+                    &response_to_all_model,
+                    is_debug_channel,
+                )
+                .await;
             }
             return;
         }
@@ -517,7 +536,15 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
             if is_debug_channel {
                 // まなみが自由に応答するコーナー
-                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
+                say_free_reply(
+                    bot,
+                    ctx,
+                    msg,
+                    response_to_all,
+                    &response_to_all_model,
+                    is_debug_channel,
+                )
+                .await;
             }
         }
     }
