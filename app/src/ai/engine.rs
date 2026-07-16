@@ -25,6 +25,7 @@ pub(crate) async fn run_agent(
     effort: &str,
     system_prompt: &str,
     messages: Vec<ChatMessage>,
+    db: &crate::db::BotDatabase,
 ) -> Result<String> {
     let history: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
     let prompt = history
@@ -93,7 +94,9 @@ pub(crate) async fn run_agent(
                     // 引数は痕跡表示用にコンパクト JSON で控えておく（dispatch で move する前に取る）。
                     let args = call.function.arguments.to_string();
                     let output =
-                        match tools::dispatch(&call.function.name, call.function.arguments).await {
+                        match tools::dispatch(db, &call.function.name, call.function.arguments)
+                            .await
+                        {
                             Ok(output) => output,
                             Err(e) => {
                                 format!(

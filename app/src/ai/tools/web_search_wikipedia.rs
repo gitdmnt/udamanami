@@ -10,7 +10,7 @@ impl Tool for WebSearchWikipedia {
         def()
     }
 
-    async fn call(args: serde_json::Value) -> Result<String, String> {
+    async fn call(_: &crate::db::BotDatabase, args: serde_json::Value) -> Result<String, String> {
         let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
         let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
         search(query, lang).await

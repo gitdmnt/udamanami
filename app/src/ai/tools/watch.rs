@@ -5,7 +5,7 @@ pub struct Watch;
 
 #[serenity::async_trait]
 impl Tool for Watch {
-    async fn call(_: serde_json::Value) -> Result<String, String> {
+    async fn call(_: &crate::db::BotDatabase, _: serde_json::Value) -> Result<String, String> {
         let now = chrono::Utc::now();
         let formatted_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
         Ok(format!(

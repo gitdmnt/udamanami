@@ -153,13 +153,17 @@ impl ManamiAi {
     }
 
     /// 現在のモデルを使ってメッセージを生成する。
-    pub async fn generate(&self) -> Result<String> {
+    pub async fn generate(&self, db: &crate::db::BotDatabase) -> Result<String> {
         let model = self.get_model();
-        self.generate_with_model(&model).await
+        self.generate_with_model(&model, db).await
     }
 
     /// 現在のモデルを使ってメッセージを生成する。モデル名が空文字列なら現在のモデルにフォールバックする。
-    pub async fn generate_with_model(&self, model: &str) -> Result<String> {
+    pub async fn generate_with_model(
+        &self,
+        model: &str,
+        db: &crate::db::BotDatabase,
+    ) -> Result<String> {
         // 全レスモード未設定時などモデルが空なら、現在のモデルにフォールバックする。
         let model = if model.trim().is_empty() {
             self.get_model()
@@ -177,8 +181,15 @@ impl ManamiAi {
             return Ok("やっほー！　どうしたの？".to_owned());
         }
 
-        let reply =
-            engine::run_agent(&self.client, &model, &effort, &self.system_prompt, messages).await?;
+        let reply = engine::run_agent(
+            &self.client,
+            &model,
+            &effort,
+            &self.system_prompt,
+            messages,
+            db,
+        )
+        .await?;
         self.add_model_log(&reply);
         Ok(reply)
     }

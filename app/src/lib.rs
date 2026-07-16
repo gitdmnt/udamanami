@@ -37,7 +37,6 @@ pub mod calculator;
 pub mod cclemon;
 pub mod db;
 pub mod parser;
-pub mod workers_api;
 
 pub struct Bot {
     // Discordサーバーの情報
@@ -287,9 +286,10 @@ impl EventHandler for Bot {
             // LLM を使うコマンドは 3 秒の応答期限に間に合わないことがあるので、
             // 先に defer してから後で本文を edit する。
             if let Err(why) = command
-                .create_response(&ctx.http, CreateInteractionResponse::Defer(
-                    CreateInteractionResponseMessage::new(),
-                ))
+                .create_response(
+                    &ctx.http,
+                    CreateInteractionResponse::Defer(CreateInteractionResponseMessage::new()),
+                )
                 .await
             {
                 error!("Error deferring interaction: {:?}", why);
@@ -449,9 +449,11 @@ async fn say_free_reply(
 ) {
     let content = if response_to_all {
         bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
-        bot.ai.generate_with_model(response_to_all_model).await
+        bot.ai
+            .generate_with_model(response_to_all_model, &bot.database)
+            .await
     } else {
-        bot.ai.generate().await
+        bot.ai.generate(&bot.database).await
     };
     say_ai_reply(ctx, msg, content).await;
 }
@@ -565,7 +567,11 @@ mod tests {
 
         assert!(chunks.len() > 1);
         for chunk in &chunks {
-            assert!(chars(chunk) <= LIMIT, "chunk exceeds limit: {}", chars(chunk));
+            assert!(
+                chars(chunk) <= LIMIT,
+                "chunk exceeds limit: {}",
+                chars(chunk)
+            );
         }
         // 分割しても内容は完全に復元できる。
         assert_eq!(chunks.concat(), content);

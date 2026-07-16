@@ -10,7 +10,7 @@ impl Tool for WebFetchWikipedia {
         def()
     }
 
-    async fn call(args: serde_json::Value) -> Result<String, String> {
+    async fn call(_: &crate::db::BotDatabase, args: serde_json::Value) -> Result<String, String> {
         let title = args.get("title").and_then(|v| v.as_str()).unwrap_or("");
         let lang = args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
         fetch(title, lang).await
