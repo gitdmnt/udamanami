@@ -13,11 +13,15 @@ use serenity::model::{
     id::{ChannelId, UserId},
 };
 use udamanami_shared as dto;
-use udamanami_shared::{GetMessages, MessageOrder};
+use udamanami_shared::{
+    GetMessages, MemoryDetail, MemoryListItem, MemorySearchResult, MessageOrder,
+};
 
 use crate::ai::ChatMessage;
 use crate::calculator::{EvalContext, EvalResult};
-use crate::workers_api::WorkersApi;
+use crate::db::workers_api::WorkersApi;
+
+mod workers_api;
 
 /// 期間指定なしの取得で使う実質無制限の件数。
 const LIMIT_UNBOUNDED: usize = 1_000_000_000;
@@ -110,10 +114,7 @@ impl BotDatabase {
         user_id: &UserId,
         default_pointer: ChannelId,
     ) -> anyhow::Result<ChannelId> {
-        let room_pointer = self
-            .api
-            .get_room_pointer(user_id.get().to_string())
-            .await?;
+        let room_pointer = self.api.get_room_pointer(user_id.get().to_string()).await?;
 
         Ok(room_pointer
             .and_then(|p| p.parse::<u64>().ok())
@@ -245,6 +246,35 @@ impl BotDatabase {
             })
             .collect())
     }
+
+    pub async fn upsert_memory(&self, title: &str, content: &str) -> anyhow::Result<()> {
+        self.api
+            .create_memory(&dto::Memory {
+                title: title.to_owned(),
+                content: content.to_owned(),
+            })
+            .await
+    }
+
+    pub async fn search_memory(
+        &self,
+        query: &str,
+        limit: usize,
+    ) -> anyhow::Result<Vec<MemorySearchResult>> {
+        self.api.search_memory(query, limit).await
+    }
+
+    pub async fn delete_memory(&self, memory_id: &str) -> anyhow::Result<()> {
+        self.api.delete_memory(memory_id.to_owned()).await
+    }
+
+    pub async fn get_memory(&self, memory_id: &str) -> anyhow::Result<MemoryDetail> {
+        self.api.get_memory(memory_id.to_owned()).await
+    }
+
+    pub async fn list_memories(&self) -> anyhow::Result<Vec<MemoryListItem>> {
+        self.api.list_memories().await
+    }
 }
 
 fn message_to_dto(message: &Message, channel_id: &ChannelId) -> dto::Message {
@@ -262,9 +292,7 @@ fn message_from_dto(message: dto::Message) -> MessageInfo {
     MessageInfo {
         message_id: MessageId::from(message.message_id.parse::<u64>().unwrap_or(0)),
         user_id: UserId::from(message.user_id.parse::<u64>().unwrap_or(0)),
-        user_name: message
-            .username
-            .unwrap_or_else(|| "Unknown".to_owned()),
+        user_name: message.username.unwrap_or_else(|| "Unknown".to_owned()),
         timestamp: DateTime::parse_from_rfc3339(&message.timestamp)
             .map_or_else(|_| Utc::now(), |t| t.with_timezone(&Utc)),
         content: message.content,

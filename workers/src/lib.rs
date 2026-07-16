@@ -7,6 +7,7 @@ use worker::*;
 
 mod calcvar;
 mod channel;
+mod memory;
 mod message;
 mod user;
 
@@ -49,6 +50,12 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/calcvar", calcvar::get_vars)
         .delete_async("/calcvar", calcvar::delete_var)
         .get_async("/calcvar/list", calcvar::list_vars)
+        // メモリ
+        .post_async("/memory", memory::create_memory)
+        .delete_async("/memory", memory::delete_memory)
+        .get_async("/memory/search", memory::search_memory)
+        .get_async("/memory/list", memory::list_memories)
+        .get_async("/memory", memory::get_memory)
         .run(req, env)
         .await
 }
