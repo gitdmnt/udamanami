@@ -9,7 +9,7 @@ pub const SLASH_MEMORY_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     description: "まなみの記憶を覗けるよ！",
     register,
     run: |options, ctx| Box::pin(async move { run(options, ctx).await }),
-    is_local_command: false,
+    is_local_command: true,
 };
 
 pub fn register() -> serenity::builder::CreateCommand {
