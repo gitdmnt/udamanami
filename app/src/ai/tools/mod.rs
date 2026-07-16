@@ -23,6 +23,8 @@ pub fn definitions() -> Vec<ToolDefinition> {
         web_fetch_wikipedia::WebFetchWikipedia::def(),
         memory::Remember::def(),
         memory::Recall::def(),
+        memory::Amend::def(),
+        memory::Read::def(),
     ]
 }
 
@@ -38,6 +40,8 @@ pub async fn dispatch(
         "web_fetch_wikipedia" => web_fetch_wikipedia::WebFetchWikipedia::call(db, args).await,
         "remember" => memory::Remember::call(db, args).await,
         "recall" => memory::Recall::call(db, args).await,
+        "amend" => memory::Amend::call(db, args).await,
+        "read_memory" => memory::Read::call(db, args).await,
         _ => Err(format!("{name}は知らないツールだよ！")),
     }
 }

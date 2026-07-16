@@ -8,7 +8,7 @@ use serde::Serialize;
 use udamanami_shared::{
     CalcVar, CalcVarWithUsername, Channel, ChannelId, DeleteCalcVar, DeleteMessage, GetMessages,
     Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message, MessageId, MessageOrder,
-    UpdateMessage, User, UserId,
+    UpdateMemory, UpdateMessage, User, UserId,
 };
 
 pub struct WorkersApi {
@@ -157,6 +157,12 @@ impl WorkersApi {
 
     pub async fn create_memory(&self, memory: &Memory) -> anyhow::Result<()> {
         self.request_text(reqwest::Method::POST, "/memory", Some(memory))
+            .await?;
+        Ok(())
+    }
+
+    pub async fn update_memory(&self, update: &UpdateMemory) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::PUT, "/memory", Some(update))
             .await?;
         Ok(())
     }

@@ -94,6 +94,14 @@ pub struct Memory {
     pub content: String,
 }
 
+/// 既存メモリ1件を新しい内容で置き換える。chunk とベクトルを作り直す。
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateMemory {
+    pub memory_id: MemoryId,
+    pub title: String,
+    pub content: String,
+}
+
 /// 意味検索の結果1件。Vectorize の類似度 score を付与して返す。
 #[derive(Debug, Deserialize, Serialize)]
 pub struct MemorySearchResult {

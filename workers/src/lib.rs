@@ -52,6 +52,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/calcvar/list", calcvar::list_vars)
         // メモリ
         .post_async("/memory", memory::create_memory)
+        .put_async("/memory", memory::update_memory)
         .delete_async("/memory", memory::delete_memory)
         .get_async("/memory/search", memory::search_memory)
         .get_async("/memory/list", memory::list_memories)

@@ -256,6 +256,21 @@ impl BotDatabase {
             .await
     }
 
+    pub async fn update_memory(
+        &self,
+        memory_id: &str,
+        title: &str,
+        content: &str,
+    ) -> anyhow::Result<()> {
+        self.api
+            .update_memory(&dto::UpdateMemory {
+                memory_id: memory_id.to_owned(),
+                title: title.to_owned(),
+                content: content.to_owned(),
+            })
+            .await
+    }
+
     pub async fn search_memory(
         &self,
         query: &str,

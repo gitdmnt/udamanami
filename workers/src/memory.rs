@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use udamanami_shared::{Memory, MemoryId, MemoryListItem, MemorySearchResult};
+use udamanami_shared::{Memory, MemoryId, MemoryListItem, MemorySearchResult, UpdateMemory};
 use worker::js_sys;
 use worker::wasm_bindgen::prelude::*;
 use worker::wasm_bindgen::{JsCast, JsValue};
@@ -158,6 +158,125 @@ async fn embed(api_key: &str, inputs: &[String]) -> Result<Vec<Vec<f32>>> {
     Ok(data.into_iter().map(|d| d.embedding).collect())
 }
 
+// ---------------- chunk 生成・埋め込みの共通処理 ----------------
+
+/// 本文を CHUNK_SIZE 文字ごとに分割し、各 chunk を OpenAI でまとめて埋め込む。
+/// 本文が空の場合は空の Vec を返す(呼び出し側で 400 を返すこと)。
+async fn build_embedded_chunks(
+    api_key: &str,
+    memory_id: &str,
+    content: &str,
+) -> Result<Vec<Chunk>> {
+    let contents = content.chars().collect::<Vec<char>>();
+    let mut chunks: Vec<Chunk> = vec![];
+    let mut start = 0;
+    let mut idx = 0;
+
+    while start < contents.len() {
+        let end = std::cmp::min(start + CHUNK_SIZE, contents.len());
+        let chunk_content: String = contents[start..end].iter().collect();
+        chunks.push(Chunk {
+            chunk_id: uuid::Uuid::new_v4().to_string(),
+            memory_id: memory_id.to_string(),
+            chunk_index: idx,
+            content: chunk_content,
+            embedding: vec![], // このあと OpenAI でまとめて埋める。
+        });
+        start = end;
+        idx += 1;
+    }
+
+    if chunks.is_empty() {
+        return Ok(chunks);
+    }
+
+    let inputs: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
+    let embeddings = embed(api_key, &inputs).await?;
+    for (chunk, embedding) in chunks.iter_mut().zip(embeddings) {
+        chunk.embedding = embedding;
+    }
+    Ok(chunks)
+}
+
+/// INSERT する memory_chunk 行の prepared statement を組み立てる。
+fn insert_chunk_stmts(d1: &D1Database, chunks: &[Chunk]) -> Result<Vec<D1PreparedStatement>> {
+    chunks
+        .iter()
+        .map(|chunk| {
+            d1.prepare(
+                "INSERT INTO memory_chunk (chunk_id, memory_id, chunk_index, content)
+                 VALUES (?, ?, ?, ?)",
+            )
+            .bind(&[
+                chunk.chunk_id.clone().into(),
+                chunk.memory_id.clone().into(),
+                // D1 は BigInt(Rust の i64→JS BigInt)を受け付けないため、
+                // JS の Number になる f64 でバインドする。INTEGER カラムへは整数として入る。
+                (chunk.chunk_index as f64).into(),
+                chunk.content.clone().into(),
+            ])
+        })
+        .collect()
+}
+
+/// chunk 群を Vectorize に upsert する。
+async fn upsert_vectors(ctx: &RouteContext<()>, chunks: Vec<Chunk>) -> Result<()> {
+    let vectors: Vec<VectorizeVector> = chunks
+        .into_iter()
+        .map(|chunk| VectorizeVector {
+            chunk_id: chunk.chunk_id,
+            values: chunk.embedding,
+            metadata: VectorMeta {
+                memory_id: chunk.memory_id,
+            },
+        })
+        .collect();
+
+    let index = vectorize(ctx)?;
+    let js = serde_wasm_bindgen::to_value(&vectors).map_err(|e| wb_err("serialize vectors", e))?;
+    let promise = index
+        .upsert(js)
+        .map_err(|e| js_err("vectorize.upsert", e))?;
+    JsFuture::from(promise)
+        .await
+        .map_err(|e| js_err("await vectorize.upsert", e))?;
+    Ok(())
+}
+
+/// ある memory_id に紐づく全 embeddings を Vectorize から削除する。
+/// D1 側の memory_chunk 行はここでは消さない(呼び出し側で削除・再作成すること)。
+async fn delete_vectors_of_memory(
+    d1: &D1Database,
+    ctx: &RouteContext<()>,
+    memory_id: &str,
+) -> Result<()> {
+    #[derive(Deserialize)]
+    struct ChunkIdRow {
+        chunk_id: String,
+    }
+    let rows = d1
+        .prepare("SELECT chunk_id FROM memory_chunk WHERE memory_id = ?")
+        .bind(&[memory_id.into()])?
+        .run()
+        .await?
+        .results::<ChunkIdRow>()?;
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    let ids: Vec<String> = rows.into_iter().map(|r| r.chunk_id).collect();
+    let index = vectorize(ctx)?;
+    let js = serde_wasm_bindgen::to_value(&ids).map_err(|e| wb_err("serialize ids", e))?;
+    let promise = index
+        .delete_by_ids(js)
+        .map_err(|e| js_err("vectorize.deleteByIds", e))?;
+    JsFuture::from(promise)
+        .await
+        .map_err(|e| js_err("await vectorize.deleteByIds", e))?;
+    Ok(())
+}
+
 // ---------------- ハンドラ ----------------
 
 /// メモリ1件を登録する。本文を chunk 分割し、D1 に保存して各 chunk を Vectorize に upsert する。
@@ -167,38 +286,12 @@ pub(super) async fn create_memory(mut req: Request, ctx: RouteContext<()>) -> Re
         return Response::error("Failed to parse request body", 400);
     };
 
-    let mut chunks: Vec<Chunk> = vec![];
-
-    let contents = memory.content.chars().collect::<Vec<char>>();
-    let mut start = 0;
-    let mut idx = 0;
     let memory_id = uuid::Uuid::new_v4().to_string();
-
-    while start < contents.len() {
-        let end = std::cmp::min(start + CHUNK_SIZE, contents.len());
-        let chunk_content: String = contents[start..end].iter().collect();
-        let chunk = Chunk {
-            chunk_id: uuid::Uuid::new_v4().to_string(),
-            memory_id: memory_id.clone(),
-            chunk_index: idx,
-            content: chunk_content,
-            embedding: vec![], // このあと OpenAI でまとめて埋める。
-        };
-        chunks.push(chunk);
-        start = end;
-        idx += 1;
-    }
+    let api_key = ctx.env.secret("OPENAI_API_KEY")?.to_string();
+    let chunks = build_embedded_chunks(&api_key, &memory_id, &memory.content).await?;
 
     if chunks.is_empty() {
         return Response::error("memory content must not be empty", 400);
-    }
-
-    // chunk 本文をまとめて埋め込む。
-    let api_key = ctx.env.secret("OPENAI_API_KEY")?.to_string();
-    let inputs: Vec<String> = chunks.iter().map(|c| c.content.clone()).collect();
-    let embeddings = embed(&api_key, &inputs).await?;
-    for (chunk, embedding) in chunks.iter_mut().zip(embeddings) {
-        chunk.embedding = embedding;
     }
 
     // D1 に memory とその chunk を書き込む。
@@ -213,46 +306,69 @@ pub(super) async fn create_memory(mut req: Request, ctx: RouteContext<()>) -> Re
                 timestamp.into(),
             ])?,
     );
-    for chunk in &chunks {
-        stmts.push(
-            d1.prepare(
-                "INSERT INTO memory_chunk (chunk_id, memory_id, chunk_index, content)
-                 VALUES (?, ?, ?, ?)",
-            )
-            .bind(&[
-                chunk.chunk_id.clone().into(),
-                chunk.memory_id.clone().into(),
-                // D1 は BigInt(Rust の i64→JS BigInt)を受け付けないため、
-                // JS の Number になる f64 でバインドする。INTEGER カラムへは整数として入る。
-                (chunk.chunk_index as f64).into(),
-                chunk.content.clone().into(),
-            ])?,
-        );
-    }
+    stmts.extend(insert_chunk_stmts(&d1, &chunks)?);
     let _ = d1.batch(stmts).await?;
 
-    // 2. Vectorize に upsert する。
-    let vectors: Vec<VectorizeVector> = chunks
-        .into_iter()
-        .map(|chunk| VectorizeVector {
-            chunk_id: chunk.chunk_id,
-            values: chunk.embedding,
-            metadata: VectorMeta {
-                memory_id: chunk.memory_id,
-            },
-        })
-        .collect();
-
-    let index = vectorize(&ctx)?;
-    let js = serde_wasm_bindgen::to_value(&vectors).map_err(|e| wb_err("serialize vectors", e))?;
-    let promise = index
-        .upsert(js)
-        .map_err(|e| js_err("vectorize.upsert", e))?;
-    JsFuture::from(promise)
-        .await
-        .map_err(|e| js_err("await vectorize.upsert", e))?;
+    // Vectorize に upsert する。
+    upsert_vectors(&ctx, chunks).await?;
 
     Response::from_json(&serde_json::json!({ "memory_id": memory_id }))
+}
+
+/// 既存メモリ1件を新しい内容で置き換える。古いベクトルを消したうえで、同じ memory_id の
+/// memory 行を消して(chunk は CASCADE で連鎖削除)新しい内容で作り直す。
+pub(super) async fn update_memory(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
+    let body = req.text().await?;
+    let Ok(update) = serde_json::from_str::<UpdateMemory>(&body) else {
+        return Response::error("Failed to parse request body", 400);
+    };
+
+    let d1 = ctx.env.d1("DB")?;
+
+    // 対象メモリの存在確認。無ければ 404。
+    let exists = d1
+        .prepare("SELECT memory_id FROM memory WHERE memory_id = ?")
+        .bind(&[update.memory_id.clone().into()])?
+        .first::<serde_json::Value>(None)
+        .await?
+        .is_some();
+    if !exists {
+        return Response::error("Memory not found", 404);
+    }
+
+    let api_key = ctx.env.secret("OPENAI_API_KEY")?.to_string();
+    let chunks = build_embedded_chunks(&api_key, &update.memory_id, &update.content).await?;
+
+    if chunks.is_empty() {
+        return Response::error("memory content must not be empty", 400);
+    }
+
+    // 先に古いベクトルを Vectorize から消す(D1 の chunk 行はまだ残っている)。
+    delete_vectors_of_memory(&d1, &ctx, &update.memory_id).await?;
+
+    // D1 を作り直す: memory 行を消す(memory_chunk は CASCADE で連鎖削除される)。
+    // その後、同じ memory_id で memory とその chunk を入れ直す。
+    let timestamp = Date::now().to_string();
+    let mut stmts = Vec::with_capacity(chunks.len() + 2);
+    stmts.push(
+        d1.prepare("DELETE FROM memory WHERE memory_id = ?")
+            .bind(&[update.memory_id.clone().into()])?,
+    );
+    stmts.push(
+        d1.prepare("INSERT INTO memory (memory_id, title, timestamp) VALUES (?, ?, ?)")
+            .bind(&[
+                update.memory_id.clone().into(),
+                update.title.into(),
+                timestamp.into(),
+            ])?,
+    );
+    stmts.extend(insert_chunk_stmts(&d1, &chunks)?);
+    let _ = d1.batch(stmts).await?;
+
+    // 新しいベクトルを Vectorize に upsert する。
+    upsert_vectors(&ctx, chunks).await?;
+
+    Response::from_json(&serde_json::json!({ "memory_id": update.memory_id }))
 }
 
 /// メモリ1件を削除する。Vectorize から該当 chunk のベクトルを消し、D1 からも削除する
