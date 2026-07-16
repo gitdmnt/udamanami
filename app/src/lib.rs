@@ -480,8 +480,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         // コマンド部分を抽出
         Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
         None => {
-            // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答
-            if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3) {
+            // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答。debug room以外でも1%の確率で返答。
+            if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3)
+                || rng().random::<f32>() < 0.01
+            {
                 say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
             return;
