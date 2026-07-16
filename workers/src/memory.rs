@@ -222,7 +222,9 @@ pub(super) async fn create_memory(mut req: Request, ctx: RouteContext<()>) -> Re
             .bind(&[
                 chunk.chunk_id.clone().into(),
                 chunk.memory_id.clone().into(),
-                (chunk.chunk_index as i64).into(),
+                // D1 は BigInt(Rust の i64→JS BigInt)を受け付けないため、
+                // JS の Number になる f64 でバインドする。INTEGER カラムへは整数として入る。
+                (chunk.chunk_index as f64).into(),
                 chunk.content.clone().into(),
             ])?,
         );
