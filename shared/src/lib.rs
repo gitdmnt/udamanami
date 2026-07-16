@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub type MessageId = String;
 pub type ChannelId = String;
 pub type UserId = String;
+pub type MemoryId = String;
+pub type ChunkId = String;
 
 // ---------------- メッセージ ----------------
 
@@ -82,4 +84,23 @@ pub struct DeleteCalcVar {
 pub struct CalcVarWithUsername {
     pub var_name: String,
     pub username: Option<String>,
+}
+
+// ---------------- memory ----------------
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct DeleteMemory {
+    pub memory_id: MemoryId,
+}
+
+/// 意味検索の結果1件。Vectorize の類似度 score を付与して返す。
+#[derive(Debug, Deserialize, Serialize)]
+pub struct MemorySearchResult {
+    pub chunk_id: ChunkId,
+    pub memory_id: MemoryId,
+    pub chunk_index: i64,
+    pub content: String,
+    pub title: String,
+    pub timestamp: String,
+    pub score: f64,
 }
