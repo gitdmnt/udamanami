@@ -26,6 +26,7 @@ pub mod imakita;
 pub mod isprime;
 pub mod jail;
 pub mod listvar;
+pub mod memory;
 pub mod model;
 pub mod ping;
 pub mod unjail;
