@@ -374,9 +374,11 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         error!("Error adding message: {e:?}");
     }
 
-    // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.debug_channel_id.get() && !msg.author.bot {
-        bot.ai.add_user_log(user_name, &msg.content);
+    // AIのためにメッセージを保存する。会話バッファはチャンネルごとに分かれるので全チャンネルで積む。
+    // ボット（まなみ自身を含む）の発言は積まない。まなみの発言は add_model_log 側で積まれる。
+    if !msg.author.bot {
+        bot.ai
+            .add_user_log(msg.channel_id.get(), user_name, &msg.content);
     }
 }
 
@@ -446,25 +448,27 @@ async fn say_free_reply(
     msg: &Message,
     response_to_all: bool,
     response_to_all_model: &str,
-    is_debug_channel: bool,
 ) {
     // まなみは「いま応答している相手」= このメッセージの author に対してプロフィールを読み書きする。
-    // ただし AI 会話バッファに載るのは debug チャンネルのメッセージだけ（save_guild_message 参照）。
-    // 非 debug チャンネルの偶発応答（1%）では author の発言はバッファに無く、モデルが見ている文脈は
-    // 別チャンネルの別人なので、author をプロフィール対象にすると無関係な会話由来の情報を
-    // 誤って書き込んでしまう。その場合は対象を空にしてプロフィールの読み書きを無効化する。
-    let target_user_id = if is_debug_channel {
-        msg.author.id.get().to_string()
-    } else {
-        String::new()
-    };
+    // 会話バッファはチャンネルごとに分かれ、各チャンネルが自分の文脈を持つので、
+    // どのチャンネルでも応答相手（author）を対象にプロフィールを読み書きする。
+    let target_user_id = msg.author.id.get().to_string();
+    // 会話バッファはチャンネルごとに分かれているので、応答も必ずこのチャンネルのログだけを使う。
+    let channel_id = msg.channel_id.get();
     let content = if response_to_all {
         bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
         bot.ai
-            .generate_with_model(response_to_all_model, &bot.database, &target_user_id)
+            .generate_with_model(
+                response_to_all_model,
+                &bot.database,
+                &target_user_id,
+                channel_id,
+            )
             .await
     } else {
-        bot.ai.generate(&bot.database, &target_user_id).await
+        bot.ai
+            .generate(&bot.database, &target_user_id, channel_id)
+            .await
     };
     say_ai_reply(ctx, msg, content).await;
 }
@@ -495,15 +499,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
             if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3)
                 || rng().random::<f32>() < 0.01
             {
-                say_free_reply(
-                    bot,
-                    ctx,
-                    msg,
-                    response_to_all,
-                    &response_to_all_model,
-                    is_debug_channel,
-                )
-                .await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
             return;
         }
@@ -536,15 +532,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
             if is_debug_channel {
                 // まなみが自由に応答するコーナー
-                say_free_reply(
-                    bot,
-                    ctx,
-                    msg,
-                    response_to_all,
-                    &response_to_all_model,
-                    is_debug_channel,
-                )
-                .await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
         }
     }

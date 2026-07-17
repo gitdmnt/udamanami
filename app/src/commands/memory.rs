@@ -78,9 +78,9 @@ pub async fn run(options: Vec<ResolvedOption<'_>>, ctx: CommandContext<'_>) -> S
 }
 
 async fn list(sub_options: &[ResolvedOption<'_>], ctx: &CommandContext<'_>) -> String {
-    let Some(page) = sub_options.iter().find_map(|o| match (o.name, &o.value) {
-        ("page", ResolvedValue::Integer(i)) => Some(*i),
-        _ => Some(1),
+    let Some(page) = sub_options.first().map(|o| match (o.name, &o.value) {
+        ("page", ResolvedValue::Integer(i)) => *i,
+        _ => 1,
     }) else {
         return format!("使い方: {}", USAGE);
     };

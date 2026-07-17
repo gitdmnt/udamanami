@@ -1,7 +1,7 @@
 //! まなみのLLM機能を提供するモジュール。
 //! LLM AgentのLoop、ツールの呼び出し、会話履歴の管理などを行う。
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 
 use anyhow::Result;
@@ -26,7 +26,8 @@ pub struct ManamiAi {
     model: Mutex<String>,
     effort: Mutex<String>,
     system_prompt: String,
-    conversation: Mutex<VecDeque<ChatMessage>>,
+    // 会話バッファはチャンネルごとに分ける。キーは Discord のチャンネル ID（ChannelId::get() の u64）。
+    conversations: Mutex<HashMap<u64, VecDeque<ChatMessage>>>,
 }
 
 impl ManamiAi {
@@ -67,7 +68,7 @@ impl ManamiAi {
             model: Mutex::new(default_model.to_owned()),
             effort: Mutex::new(default_effort.to_owned()),
             system_prompt: system_prompt.to_owned(),
-            conversation: Mutex::new(VecDeque::new()),
+            conversations: Mutex::new(HashMap::new()),
         })
     }
 
@@ -76,29 +77,34 @@ impl ManamiAi {
         self.system_prompt = instruction.to_owned();
     }
 
-    /// 会話バッファにユーザー発言を追加する。話者名は Role に保持し、
-    /// LLM 送信時（to_rig）に本文の先頭へ付与する。
-    pub fn add_user_log(&self, user: &str, message: &str) {
-        self.push(ChatMessage::user(user, message));
+    /// 指定チャンネルの会話バッファにユーザー発言を追加する。話者名はLLM 送信時（to_rig）に本文の先頭へ付与する。
+    pub fn add_user_log(&self, channel_id: u64, user: &str, message: &str) {
+        self.push(channel_id, ChatMessage::user(user, message));
     }
 
-    /// 会話バッファにまなみの発言を追加する。
-    pub fn add_model_log(&self, message: &str) {
-        self.push(ChatMessage::assistant(message));
+    /// 指定チャンネルの会話バッファにまなみの発言を追加する。
+    pub fn add_model_log(&self, channel_id: u64, message: &str) {
+        self.push(channel_id, ChatMessage::assistant(message));
     }
 
-    /// 会話バッファにメッセージを追加する。最大 500 件まで保持する。
-    fn push(&self, message: ChatMessage) {
-        let mut buf = self.conversation.lock().unwrap();
+    /// 指定チャンネルの会話バッファにメッセージを追加する。チャンネルごとに最大 500 件まで保持する。
+    // buf は map（ロックガード）から借用するので、ガードは本文全体で保持する必要がある。
+    #[allow(clippy::significant_drop_tightening)]
+    fn push(&self, channel_id: u64, message: ChatMessage) {
+        let mut map = self.conversations.lock().unwrap();
+        let buf = map.entry(channel_id).or_default();
         buf.push_back(message);
         if buf.len() > 500 {
             buf.pop_front();
         }
     }
 
-    /// 会話バッファに複数のメッセージを追加する。最大 500 件まで保持する。
-    pub fn add_log_bulk(&self, messages: Vec<(Role, &str)>) {
-        let mut buf = self.conversation.lock().unwrap();
+    /// 指定チャンネルの会話バッファに複数のメッセージを追加する。チャンネルごとに最大 500 件まで保持する。
+    // buf は map（ロックガード）から借用するので、ガードは本文全体で保持する必要がある。
+    #[allow(clippy::significant_drop_tightening)]
+    pub fn add_log_bulk(&self, channel_id: u64, messages: Vec<(Role, &str)>) {
+        let mut map = self.conversations.lock().unwrap();
+        let buf = map.entry(channel_id).or_default();
         for (role, message) in messages {
             let msg = match role {
                 Role::User { name } => ChatMessage::user(&name, message),
@@ -112,15 +118,18 @@ impl ManamiAi {
         }
     }
 
-    pub fn clear(&self) {
-        self.conversation.lock().unwrap().clear();
+    /// 指定チャンネルの会話バッファを消す。他チャンネルのログには触れない。
+    pub fn clear(&self, channel_id: u64) {
+        self.conversations.lock().unwrap().remove(&channel_id);
     }
 
-    pub fn debug(&self) -> String {
-        self.conversation
+    pub fn debug(&self, channel_id: u64) -> String {
+        self.conversations
             .lock()
             .unwrap()
-            .iter()
+            .get(&channel_id)
+            .into_iter()
+            .flatten()
             .map(|m| {
                 let role = match &m.role {
                     Role::User { name } => format!("user ({})", name),
@@ -158,9 +167,11 @@ impl ManamiAi {
         &self,
         db: &crate::db::BotDatabase,
         target_user_id: &str,
+        channel_id: u64,
     ) -> Result<String> {
         let model = self.get_model();
-        self.generate_with_model(&model, db, target_user_id).await
+        self.generate_with_model(&model, db, target_user_id, channel_id)
+            .await
     }
 
     /// 現在のモデルを使ってメッセージを生成する。モデル名が空文字列なら現在のモデルにフォールバックする。
@@ -170,6 +181,7 @@ impl ManamiAi {
         model: &str,
         db: &crate::db::BotDatabase,
         target_user_id: &str,
+        channel_id: u64,
     ) -> Result<String> {
         // 全レスモード未設定時などモデルが空なら、現在のモデルにフォールバックする。
         let model = if model.trim().is_empty() {
@@ -181,8 +193,14 @@ impl ManamiAi {
         let effort = self.effort.lock().unwrap().clone();
 
         // ロックは await をまたがず、ここでコピーして解放する。
-        let messages: Vec<ChatMessage> =
-            self.conversation.lock().unwrap().iter().cloned().collect();
+        // 混線防止のため、対象チャンネルのバッファだけを読む。
+        let messages: Vec<ChatMessage> = self
+            .conversations
+            .lock()
+            .unwrap()
+            .get(&channel_id)
+            .map(|buf| buf.iter().cloned().collect())
+            .unwrap_or_default();
 
         if messages.is_empty() {
             return Ok("やっほー！　どうしたの？".to_owned());
@@ -214,7 +232,7 @@ impl ManamiAi {
             target_user_id,
         )
         .await?;
-        self.add_model_log(&reply);
+        self.add_model_log(channel_id, &reply);
         Ok(reply)
     }
 
