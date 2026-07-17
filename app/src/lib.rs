@@ -377,15 +377,20 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     // AIのためにメッセージを保存する。会話バッファはチャンネルごとに分かれるので全チャンネルで積む。
     // ボット（まなみ自身を含む）の発言は積まない。まなみの発言は add_model_log 側で積まれる。
     if !msg.author.bot {
-        bot.ai
-            .add_user_log(msg.channel_id.get(), user_name, &msg.content);
+        bot.ai.add_user_log(
+            msg.channel_id.get(),
+            user_name,
+            &msg.content,
+            msg.timestamp.to_utc(),
+        );
     }
 }
 
 /// AI の生成結果を整形してチャンネルに送信する。
 async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<String>) {
+    // 生成側（generate_with_model）で先頭の時刻・名前接頭辞は正規化済みなので、ここでは整形しない。
     let content = match content {
-        Ok(content) => content.replace("うだまなみ: ", ""),
+        Ok(content) => content,
         Err(e) => format!("Error sending message: {e:?}"),
     };
     // Discord の文字数上限を超えると say が失敗するので、上限ごとに分割して送る。

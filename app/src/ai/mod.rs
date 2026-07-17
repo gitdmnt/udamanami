@@ -5,6 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 
 use rig::providers::openai;
 
@@ -77,14 +78,21 @@ impl ManamiAi {
         self.system_prompt = instruction.to_owned();
     }
 
-    /// 指定チャンネルの会話バッファにユーザー発言を追加する。話者名はLLM 送信時（to_rig）に本文の先頭へ付与する。
-    pub fn add_user_log(&self, channel_id: u64, user: &str, message: &str) {
-        self.push(channel_id, ChatMessage::user(user, message));
+    /// 指定チャンネルの会話バッファにユーザー発言を追加する。話者名・時刻はLLM 送信時（to_rig）に本文の先頭へ付与する。
+    /// `timestamp` は発言時刻（Discord 送信時刻）を UTC で渡す。
+    pub fn add_user_log(
+        &self,
+        channel_id: u64,
+        user: &str,
+        message: &str,
+        timestamp: DateTime<Utc>,
+    ) {
+        self.push(channel_id, ChatMessage::user(user, message, timestamp));
     }
 
-    /// 指定チャンネルの会話バッファにまなみの発言を追加する。
+    /// 指定チャンネルの会話バッファにまなみの発言を追加する。時刻は返信生成時刻 (UTC).
     pub fn add_model_log(&self, channel_id: u64, message: &str) {
-        self.push(channel_id, ChatMessage::assistant(message));
+        self.push(channel_id, ChatMessage::assistant(message, Utc::now()));
     }
 
     /// 指定チャンネルの会話バッファにメッセージを追加する。チャンネルごとに最大 500 件まで保持する。
@@ -96,25 +104,6 @@ impl ManamiAi {
         buf.push_back(message);
         if buf.len() > 500 {
             buf.pop_front();
-        }
-    }
-
-    /// 指定チャンネルの会話バッファに複数のメッセージを追加する。チャンネルごとに最大 500 件まで保持する。
-    // buf は map（ロックガード）から借用するので、ガードは本文全体で保持する必要がある。
-    #[allow(clippy::significant_drop_tightening)]
-    pub fn add_log_bulk(&self, channel_id: u64, messages: Vec<(Role, &str)>) {
-        let mut map = self.conversations.lock().unwrap();
-        let buf = map.entry(channel_id).or_default();
-        for (role, message) in messages {
-            let msg = match role {
-                Role::User { name } => ChatMessage::user(&name, message),
-                Role::Assistant => ChatMessage::assistant(message),
-            };
-            buf.push_back(msg);
-        }
-        let len = buf.len();
-        if len > 500 {
-            buf.drain(0..(len - 500));
         }
     }
 
@@ -232,6 +221,9 @@ impl ManamiAi {
             target_user_id,
         )
         .await?;
+        // まなみが履歴を模倣して先頭に付けてしまう時刻・名前の接頭辞を剥がす。
+        // ここで正規化してからバッファへ積むことで、次ターンの二重焼き（[時刻][時刻]…）も防ぐ。
+        let reply = decorate_output::strip_leading_prefix(&reply);
         self.add_model_log(channel_id, &reply);
         Ok(reply)
     }
