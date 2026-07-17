@@ -51,12 +51,15 @@ impl ChatMessage {
     }
 }
 
+/// UTC 時刻を JST・分精度の `YYYY-MM-DD HH:MM` へ整形する。
+pub fn stamp_jst(ts: &DateTime<Utc>) -> String {
+    let jst = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
+    ts.with_timezone(&jst).format("%Y-%m-%d %H:%M").to_string()
+}
+
 /// UTC 時刻を JST・分精度の `[YYYY-MM-DD HH:MM]` へ整形する。
 fn stamp(ts: &DateTime<Utc>) -> String {
-    let jst = FixedOffset::east_opt(9 * 3600).expect("valid JST offset");
-    ts.with_timezone(&jst)
-        .format("[%Y-%m-%d %H:%M]")
-        .to_string()
+    format!("[{}]", stamp_jst(ts))
 }
 
 #[cfg(test)]

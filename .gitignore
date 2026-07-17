@@ -7,5 +7,7 @@ db.sqlite
 .env
 app/deploy/*.env
 !app/deploy/*.env.example
+# wrangler dev がローカルで読む秘密情報 (AUTH_TOKEN / OPENAI_API_KEY)。
+workers/.dev.vars
 
 .wrangler/

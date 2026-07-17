@@ -99,10 +99,16 @@ async fn main() -> anyhow::Result<()> {
     )
     .await;
 
+    // 会話セッションの自動要約タスクと同じ Bot を共有するため Arc で持つ。
+    let bot = std::sync::Arc::new(bot);
+
     let mut client = Client::builder(&token, intents)
-        .event_handler(bot)
+        .event_handler_arc(bot.clone())
         .await
         .expect("Err creating client");
+
+    // ready を待たなくてよい。D1 を見るだけで gateway には依存しない。
+    tokio::spawn(udamanami::summarizer::run(bot, client.http.clone()));
 
     client.start().await?;
 

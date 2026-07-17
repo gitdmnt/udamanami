@@ -16,10 +16,10 @@ mod models;
 mod prompt;
 mod tools;
 
-pub use message::{ChatMessage, Role};
+pub use message::{stamp_jst, ChatMessage, Role};
 pub use models::available_models;
 
-use prompt::{MANAMI_PROMPT, MATOME_PROMPT};
+use prompt::{MANAMI_PROMPT, MATOME_PROMPT, MEMORY_SUMMARY_PROMPT};
 
 pub struct ManamiAi {
     client: openai::Client,
@@ -73,11 +73,6 @@ impl ManamiAi {
         })
     }
 
-    /// システムプロンプトを変更する。会話バッファはクリアされない。
-    pub fn set_system_instruction(&mut self, instruction: &str) {
-        self.system_prompt = instruction.to_owned();
-    }
-
     /// 指定チャンネルの会話バッファにユーザー発言を追加する。話者名・時刻はLLM 送信時（to_rig）に本文の先頭へ付与する。
     /// `timestamp` は発言時刻（Discord 送信時刻）を UTC で渡す。
     pub fn add_user_log(
@@ -110,24 +105,6 @@ impl ManamiAi {
     /// 指定チャンネルの会話バッファを消す。他チャンネルのログには触れない。
     pub fn clear(&self, channel_id: u64) {
         self.conversations.lock().unwrap().remove(&channel_id);
-    }
-
-    pub fn debug(&self, channel_id: u64) -> String {
-        self.conversations
-            .lock()
-            .unwrap()
-            .get(&channel_id)
-            .into_iter()
-            .flatten()
-            .map(|m| {
-                let role = match &m.role {
-                    Role::User { name } => format!("user ({})", name),
-                    Role::Assistant => "model".into(),
-                };
-                format!("{role}: {}", m.content)
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     /// 現在のモデルを変更する。会話バッファはクリアされない。
@@ -236,5 +213,31 @@ impl ManamiAi {
         let model = self.default_model.clone();
         let effort = "low";
         engine::run_completion(&self.client, &model, effort, MATOME_PROMPT, messages).await
+    }
+
+    /// 会話セッションを長期記憶用に要約する。記憶に値しないとモデルが判断したときは `None`。
+    ///
+    /// `channel_name` はプロンプト末尾に添える。ログ本文にはチャンネル名が含まれないので、
+    /// これを渡さないとモデルは「どのチャンネルの会話か」を判断できない
+    /// (夢日記チャンネルの話を事実として要約してしまう)。
+    pub async fn generate_memory_summary(
+        &self,
+        channel_name: &str,
+        messages: Vec<ChatMessage>,
+    ) -> Result<Option<String>> {
+        if messages.is_empty() {
+            return Ok(None);
+        }
+        let model = self.default_model.clone();
+        let preamble = format!("{MEMORY_SUMMARY_PROMPT}\n\n## このログのチャンネル\n#{channel_name}");
+        let summary =
+            engine::run_completion_text(&self.client, &model, "low", &preamble, messages).await?;
+
+        let summary = summary.trim();
+        if summary.is_empty() || summary == "SKIP" {
+            Ok(None)
+        } else {
+            Ok(Some(summary.to_owned()))
+        }
     }
 }

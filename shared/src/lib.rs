@@ -68,6 +68,26 @@ pub struct ChannelReplySetting {
     pub reply_rate: Option<u32>,
 }
 
+/// 未要約メッセージを持つチャンネルのうち、無言が続いたか、未要約が一定件数たまったものだけが返る。
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SummarizeCandidate {
+    pub channel_id: ChannelId,
+    pub name: String,
+    /// どこまで要約済みか。`None` は実行時デフォルトにフォールバック
+    pub last_summarized_at: Option<String>,
+    pub first_pending_at: String,
+    /// 未要約のうち最も新しいメッセージの時刻
+    pub last_message_at: String,
+    pub pending_count: i64,
+}
+
+/// 自動要約の進捗。巻き戻りを防ぐため単調増加
+#[derive(Debug, Deserialize, Serialize)]
+pub struct SetChannelSummarized {
+    pub channel_id: ChannelId,
+    pub last_summarized_at: String,
+}
+
 // ---------------- ユーザー ----------------
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -160,6 +180,17 @@ pub struct CalcVarWithUsername {
 pub struct Memory {
     pub title: String,
     pub content: String,
+    /// 記憶の出所。`None` は remember ツール由来(手動), 自動要約は `Some("auto_summary")`
+    #[serde(default)]
+    pub source: Option<String>,
+    /// 会話が行われたチャンネル名。`None` は手動記憶。どのチャンネルの話かで内容が現実かどうかが
+    /// 変わる(夢日記など)ので、本文とは別の列として持つ。
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// 会話が行われた日時(RFC3339)。`None` は手動記憶。作成時刻(`timestamp`)とは別で、
+    /// 過去ログをまとめて要約したときは作成時刻とずれる。
+    #[serde(default)]
+    pub occurred_at: Option<String>,
 }
 
 /// 既存メモリ1件を新しい内容で置き換える。chunk とベクトルを作り直す。
@@ -179,6 +210,12 @@ pub struct MemorySearchResult {
     pub content: String,
     pub title: String,
     pub timestamp: String,
+    /// 会話が行われたチャンネル名。手動記憶なら `None`。
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// 会話が行われた日時(RFC3339)。手動記憶なら `None`。
+    #[serde(default)]
+    pub occurred_at: Option<String>,
     pub score: f64,
 }
 
@@ -196,6 +233,12 @@ pub struct MemoryDetail {
     pub title: String,
     pub timestamp: String,
     pub content: String,
+    /// 会話が行われたチャンネル名。手動記憶なら `None`。
+    #[serde(default)]
+    pub channel_name: Option<String>,
+    /// 会話が行われた日時(RFC3339)。手動記憶なら `None`。
+    #[serde(default)]
+    pub occurred_at: Option<String>,
 }
 
 #[cfg(test)]

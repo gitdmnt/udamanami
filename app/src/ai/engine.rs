@@ -141,14 +141,15 @@ pub async fn run_agent(
     }
 }
 
-/// `CompletionClient` を使って1回だけのメッセージを生成する。ツールは使わない。
-pub async fn run_completion(
+/// ツールなしで1回だけモデルを呼び、応答を Block 列に畳んで返す。
+/// 整形は呼び出し側に委ねる(Discord へ貼るなら decorate、機械処理なら本文だけ拾う)。
+async fn complete_once(
     client: &openai::Client,
     model: &str,
     effort: &str,
     preamble: &str,
     messages: Vec<ChatMessage>,
-) -> Result<String> {
+) -> Result<Vec<Block>> {
     let mut rig_messages: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
 
     // rig の builder は prompt を末尾メッセージとして付けるので、
@@ -166,11 +167,75 @@ pub async fn run_completion(
         .build();
 
     let response = completion_model.completion(request).await?;
+    Ok(compress(response.choice))
+}
 
-    let reply = compress(response.choice)
+/// `CompletionClient` を使って1回だけのメッセージを生成する。ツールは使わない。
+/// 出力は Discord へ貼る前提で装飾済み(reasoning は `> -# ` 付きになる)。
+pub async fn run_completion(
+    client: &openai::Client,
+    model: &str,
+    effort: &str,
+    preamble: &str,
+    messages: Vec<ChatMessage>,
+) -> Result<String> {
+    let reply = complete_once(client, model, effort, preamble, messages)
+        .await?
         .into_iter()
         .map(Block::decorate)
         .collect::<Vec<_>>()
         .join("\n");
     Ok(reply)
+}
+
+/// decorate せず本文テキストだけを返す。reasoning の `> -# ` 装飾を記憶に混ぜたくない用途で使う。
+pub async fn run_completion_text(
+    client: &openai::Client,
+    model: &str,
+    effort: &str,
+    preamble: &str,
+    messages: Vec<ChatMessage>,
+) -> Result<String> {
+    Ok(text_only(
+        complete_once(client, model, effort, preamble, messages).await?,
+    ))
+}
+
+/// Text ブロックだけを連結する。Reasoning / ToolCall は落とす。連結子は挟まない
+/// (decorate 経路の `join("\n")` と取り違えると記憶に余計な改行が混じる)。
+fn text_only(blocks: Vec<Block>) -> String {
+    blocks
+        .into_iter()
+        .filter_map(|block| match block {
+            Block::Text(text) => Some(text),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn text_only_keeps_text_drops_reasoning_and_toolcall() {
+        let blocks = vec![
+            Block::Text("a".to_owned()),
+            Block::Reasoning("秘密".to_owned()),
+            Block::ToolCall {
+                name: "recall".to_owned(),
+                args: "{}".to_owned(),
+            },
+            Block::Text("b".to_owned()),
+        ];
+        // 隣接 Text は連結子なしで繋がる。reasoning は記憶へ漏れない。
+        assert_eq!(text_only(blocks), "ab");
+    }
+
+    #[test]
+    fn text_only_is_empty_without_text_blocks() {
+        assert_eq!(text_only(vec![Block::Reasoning("x".to_owned())]), "");
+        assert_eq!(text_only(vec![]), "");
+    }
 }

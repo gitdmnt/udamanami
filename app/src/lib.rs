@@ -55,6 +55,7 @@ pub mod calculator;
 pub mod cclemon;
 pub mod db;
 pub mod parser;
+pub mod summarizer;
 
 pub struct Bot {
     // Discordサーバーの情報

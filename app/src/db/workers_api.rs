@@ -8,8 +8,8 @@ use serde::Serialize;
 use udamanami_shared::{
     CalcVar, CalcVarWithUsername, Channel, ChannelId, ChannelReplySetting, DeleteCalcVar,
     DeleteMessage, GetMessages, Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message,
-    MessageId, MessageOrder, SetUserProfile, UpdateMemory, UpdateMessage, User, UserId,
-    UserProfile,
+    MessageId, MessageOrder, SetChannelSummarized, SetUserProfile, SummarizeCandidate,
+    UpdateMemory, UpdateMessage, User, UserId, UserProfile,
 };
 
 pub struct WorkersApi {
@@ -159,6 +159,31 @@ impl WorkersApi {
             .await
     }
 
+    /// 自動要約の候補チャンネルを取得する(GET /channel/summary/candidates)。
+    /// 未要約メッセージが 1 件も無いチャンネルは返らない。
+    pub async fn get_summarize_candidates(
+        &self,
+        idle_before: String,
+        min_pending: u32,
+    ) -> anyhow::Result<Vec<SummarizeCandidate>> {
+        let params = [
+            ("idle_before", idle_before),
+            ("min_pending", min_pending.to_string()),
+        ];
+        self.get_with_query("/channel/summary/candidates", &params)
+            .await
+    }
+
+    /// 自動要約の進捗を前進させる(PUT /channel/summary)。単調増加でのみ進む。
+    pub async fn set_channel_summarized(
+        &self,
+        progress: &SetChannelSummarized,
+    ) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::PUT, "/channel/summary", Some(progress))
+            .await?;
+        Ok(())
+    }
+
     // ---------------- calc var ----------------
 
     /// 変数をupsertする(POST /calcvar)
@@ -241,12 +266,21 @@ impl WorkersApi {
             .bearer_auth(&self.auth_token)
             .send()
             .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("workers API error: {path} returned {status}: {text}");
-        }
+        let response = Self::ensure_success(response, path).await?;
         Ok(response.json().await?)
+    }
+
+    /// 非 2xx なら本文を読んでエラーにする。成功時はボディ未読の Response をそのまま返す。
+    async fn ensure_success(
+        response: reqwest::Response,
+        path: &str,
+    ) -> anyhow::Result<reqwest::Response> {
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        let status = response.status();
+        let text = response.text().await.unwrap_or_default();
+        anyhow::bail!("workers API error: {path} returned {status}: {text}");
     }
 
     async fn send<B: Serialize + ?Sized + Sync>(
@@ -264,12 +298,7 @@ impl WorkersApi {
         }
 
         let response = request.send().await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            let text = response.text().await.unwrap_or_default();
-            anyhow::bail!("workers API error: {path} returned {status}: {text}");
-        }
-        Ok(response)
+        Self::ensure_success(response, path).await
     }
 
     async fn request_text<B: Serialize + ?Sized + Sync>(

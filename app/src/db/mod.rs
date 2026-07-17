@@ -187,6 +187,45 @@ impl BotDatabase {
             .await
     }
 
+    /// 自動要約の対象にすべきチャンネルを取得する。
+    /// `idle_before` 間発言がないか、未要約が `min_pending` 件たまったものが返る。
+    /// 未要約が 0 件のチャンネルは返らないので、新しい発言が無ければ空になる。
+    pub async fn fetch_summarize_candidates(
+        &self,
+        idle_before: DateTime<Utc>,
+        min_pending: u32,
+    ) -> anyhow::Result<Vec<dto::SummarizeCandidate>> {
+        self.api
+            .get_summarize_candidates(idle_before.to_rfc3339(), min_pending)
+            .await
+    }
+
+    /// 期間を指定してチャンネルのログを古い順に取得する。
+    pub async fn fetch_log_by_range(
+        &self,
+        channel_id: &ChannelId,
+        from: Option<DateTime<Utc>>,
+        to: Option<DateTime<Utc>>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<MessageInfo>> {
+        self.get_messages(channel_id, limit, MessageOrder::Asc, from, to)
+            .await
+    }
+
+    /// 自動要約の進捗を前進させる。要約と memory 登録の両方が成功したときだけ呼ぶこと。
+    pub async fn set_channel_summarized(
+        &self,
+        channel_id: &ChannelId,
+        at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        self.api
+            .set_channel_summarized(&dto::SetChannelSummarized {
+                channel_id: channel_id.get().to_string(),
+                last_summarized_at: at.to_rfc3339(),
+            })
+            .await
+    }
+
     pub async fn fetch_oldest_message(
         &self,
         channel_id: &ChannelId,
@@ -195,17 +234,6 @@ impl BotDatabase {
             .get_messages(channel_id, 1, MessageOrder::Asc, None, None)
             .await?;
         Ok(messages.into_iter().next())
-    }
-
-    pub async fn fetch_log_by_count(
-        &self,
-        channel_id: &ChannelId,
-        n: usize,
-    ) -> anyhow::Result<Vec<MessageInfo>> {
-        let messages = self
-            .get_messages(channel_id, n, MessageOrder::Desc, None, None)
-            .await?;
-        Ok(messages.into_iter().rev().collect())
     }
 
     pub async fn fetch_log_by_duration(
@@ -298,11 +326,33 @@ impl BotDatabase {
             .collect())
     }
 
-    pub async fn upsert_memory(&self, title: &str, content: &str) -> anyhow::Result<()> {
+    pub async fn create_memory(&self, title: &str, content: &str) -> anyhow::Result<()> {
         self.api
             .create_memory(&dto::Memory {
                 title: title.to_owned(),
                 content: content.to_owned(),
+                source: None,
+                channel_name: None,
+                occurred_at: None,
+            })
+            .await
+    }
+
+    /// 自動要約の記憶を、出所(チャンネル名・会話日時)付きで登録する。
+    pub async fn create_summary_memory(
+        &self,
+        title: &str,
+        content: &str,
+        channel_name: &str,
+        occurred_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        self.api
+            .create_memory(&dto::Memory {
+                title: title.to_owned(),
+                content: content.to_owned(),
+                source: Some("auto_summary".to_owned()),
+                channel_name: Some(channel_name.to_owned()),
+                occurred_at: Some(occurred_at.to_rfc3339()),
             })
             .await
     }
@@ -381,5 +431,37 @@ impl MessageInfo {
         } else {
             ChatMessage::user(&self.user_name, &self.content, self.timestamp)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai::Role;
+
+    fn info(user_id: u64, name: &str) -> MessageInfo {
+        MessageInfo {
+            message_id: MessageId::from(1u64),
+            user_id: UserId::from(user_id),
+            user_name: name.to_owned(),
+            timestamp: Utc::now(),
+            content: "やあ".to_owned(),
+        }
+    }
+
+    #[test]
+    fn to_chat_message_dispatches_by_userid() {
+        let me = UserId::from(999u64);
+
+        match info(1, "宇田").to_chat_message(&me).role {
+            Role::User { name } => assert_eq!(name, "宇田"),
+            Role::Assistant => panic!("他人の発言は User になるはず"),
+        }
+
+        // user_name が "まなみ" でも、自分の user_id なら人間扱いしない(退行防止)。
+        assert!(matches!(
+            info(999, "まなみ").to_chat_message(&me).role,
+            Role::Assistant
+        ));
     }
 }
