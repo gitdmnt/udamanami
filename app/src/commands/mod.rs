@@ -9,6 +9,7 @@ use std::time::Duration;
 
 use serenity::all::ResolvedOption;
 
+pub mod allowreply;
 pub mod auto;
 pub mod bf;
 pub mod calc;
@@ -29,6 +30,7 @@ pub mod listvar;
 pub mod memory;
 pub mod model;
 pub mod ping;
+pub mod summarize;
 pub mod unjail;
 pub mod var;
 pub mod varbulk;
@@ -162,6 +164,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         endauto::SLASH_ENDAUTO_COMMAND,
         bf::SLASH_BF_COMMAND,
         channel::SLASH_CHANNEL_COMMAND,
+        allowreply::SLASH_ALLOWREPLY_COMMAND,
         dice::SLASH_DICE_COMMAND,
         fetch::SLASH_FETCH_COMMAND,
         model::SLASH_MODEL_COMMAND,
@@ -178,6 +181,7 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
         unjail::SLASH_UNJAIL_COMMAND,
         imakita::SLASH_IMAKITA_COMMAND,
         memory::SLASH_MEMORY_COMMAND,
+        summarize::SLASH_SUMMARIZE_COMMAND,
     ]
     .into_iter()
     .filter(|command| !disabled_commands.contains(&command.name))

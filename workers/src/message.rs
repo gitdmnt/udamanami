@@ -76,19 +76,14 @@ pub async fn delete_message(mut req: Request, ctx: RouteContext<()>) -> Result<R
 /// クエリパラメータ: channel_id (必須), limit (必須), order (Asc/Desc), from, to
 pub async fn get_messages(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = req.url()?;
-    let param = |key: &str| {
-        url.query_pairs()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.into_owned())
-    };
 
-    let Some(channel_id) = param("channel_id") else {
+    let Some(channel_id) = crate::query_param(&url, "channel_id") else {
         return Response::error("Missing query parameter: channel_id", 400);
     };
-    let Some(limit) = param("limit").and_then(|v| v.parse::<usize>().ok()) else {
+    let Some(limit) = crate::query_param(&url, "limit").and_then(|v| v.parse::<usize>().ok()) else {
         return Response::error("Missing or invalid query parameter: limit", 400);
     };
-    let order = match param("order").as_deref() {
+    let order = match crate::query_param(&url, "order").as_deref() {
         Some("Desc") => "DESC",
         _ => "ASC",
     };
@@ -107,8 +102,8 @@ pub async fn get_messages(req: Request, ctx: RouteContext<()>) -> Result<Respons
         ))
         .bind(&[
             channel_id.into(),
-            crate::opt_to_js(param("from")),
-            crate::opt_to_js(param("to")),
+            crate::opt_to_js(crate::query_param(&url, "from")),
+            crate::opt_to_js(crate::query_param(&url, "to")),
             limit.into(),
         ])?
         .run()

@@ -32,19 +32,38 @@ use db::BotDatabase;
 
 pub mod commands;
 
+/// まなみが自発的に応答する確率の既定値 (%).
+const DEFAULT_REPLY_RATE: u32 = 30;
+
+/// チャンネル設定から自発反応の (許可, 割合%) を解決する。
+/// Noneの場合、debug チャンネルでは許可、他は不許可
+pub(crate) fn resolve_reply_setting(
+    setting: Option<&udamanami_shared::ChannelReplySetting>,
+    is_debug_channel: bool,
+) -> (bool, u32) {
+    let enabled = setting
+        .and_then(|s| s.reply_enabled)
+        .unwrap_or(is_debug_channel);
+    let rate = setting
+        .and_then(|s| s.reply_rate)
+        .unwrap_or(DEFAULT_REPLY_RATE);
+    (enabled, rate)
+}
+
 pub mod ai;
 pub mod calculator;
 pub mod cclemon;
 pub mod db;
 pub mod parser;
+pub mod summarizer;
 
 pub struct Bot {
     // Discordサーバーの情報
     // サーバーID
     pub guild_id: GuildId,
 
-    // チャンネルのID
-    pub channel_ids: Vec<ChannelId>,
+    // 代筆先が未設定のユーザーの既定の送信先
+    pub default_channel_id: ChannelId,
     pub debug_channel_id: ChannelId,
 
     // まなみの情報
@@ -80,7 +99,7 @@ pub struct Bot {
 impl Bot {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        channel_ids: Vec<ChannelId>,
+        default_channel_id: ChannelId,
         debug_channel_id: ChannelId,
 
         guild_id: GuildId,
@@ -107,7 +126,7 @@ impl Bot {
         Self {
             jail_process,
             jail_id,
-            channel_ids,
+            default_channel_id,
             debug_channel_id,
             guild_id,
             jail_mark_role_id,
@@ -124,11 +143,10 @@ impl Bot {
     }
 
     pub async fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
-        let default_channel_id = self.channel_ids[0];
         self.database
-            .fetch_user_room_pointer(user_id, default_channel_id)
+            .fetch_user_room_pointer(user_id, self.default_channel_id)
             .await
-            .unwrap_or(default_channel_id)
+            .unwrap_or(self.default_channel_id)
     }
 
     pub async fn change_room_pointer(
@@ -374,16 +392,23 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         error!("Error adding message: {e:?}");
     }
 
-    // AIのためにメッセージを保存する
-    if msg.channel_id.get() == bot.debug_channel_id.get() && !msg.author.bot {
-        bot.ai.add_user_log(user_name, &msg.content);
+    // AIのためにメッセージを保存する。会話バッファはチャンネルごとに分かれるので全チャンネルで積む。
+    // ボット（まなみ自身を含む）の発言は積まない。まなみの発言は add_model_log 側で積まれる。
+    if !msg.author.bot {
+        bot.ai.add_user_log(
+            msg.channel_id.get(),
+            user_name,
+            &msg.content,
+            msg.timestamp.to_utc(),
+        );
     }
 }
 
 /// AI の生成結果を整形してチャンネルに送信する。
 async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<String>) {
+    // 生成側（generate_with_model）で先頭の時刻・名前接頭辞は正規化済みなので、ここでは整形しない。
     let content = match content {
-        Ok(content) => content.replace("うだまなみ: ", ""),
+        Ok(content) => content,
         Err(e) => format!("Error sending message: {e:?}"),
     };
     // Discord の文字数上限を超えると say が失敗するので、上限ごとに分割して送る。
@@ -446,25 +471,27 @@ async fn say_free_reply(
     msg: &Message,
     response_to_all: bool,
     response_to_all_model: &str,
-    is_debug_channel: bool,
 ) {
     // まなみは「いま応答している相手」= このメッセージの author に対してプロフィールを読み書きする。
-    // ただし AI 会話バッファに載るのは debug チャンネルのメッセージだけ（save_guild_message 参照）。
-    // 非 debug チャンネルの偶発応答（1%）では author の発言はバッファに無く、モデルが見ている文脈は
-    // 別チャンネルの別人なので、author をプロフィール対象にすると無関係な会話由来の情報を
-    // 誤って書き込んでしまう。その場合は対象を空にしてプロフィールの読み書きを無効化する。
-    let target_user_id = if is_debug_channel {
-        msg.author.id.get().to_string()
-    } else {
-        String::new()
-    };
+    // 会話バッファはチャンネルごとに分かれ、各チャンネルが自分の文脈を持つので、
+    // どのチャンネルでも応答相手（author）を対象にプロフィールを読み書きする。
+    let target_user_id = msg.author.id.get().to_string();
+    // 会話バッファはチャンネルごとに分かれているので、応答も必ずこのチャンネルのログだけを使う。
+    let channel_id = msg.channel_id.get();
     let content = if response_to_all {
         bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
         bot.ai
-            .generate_with_model(response_to_all_model, &bot.database, &target_user_id)
+            .generate_with_model(
+                response_to_all_model,
+                &bot.database,
+                &target_user_id,
+                channel_id,
+            )
             .await
     } else {
-        bot.ai.generate(&bot.database, &target_user_id).await
+        bot.ai
+            .generate(&bot.database, &target_user_id, channel_id)
+            .await
     };
     say_ai_reply(ctx, msg, content).await;
 }
@@ -491,19 +518,19 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         // コマンド部分を抽出
         Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
         None => {
-            // 全レスモードの場合は必ず返答、そうでないときは3割の確率で返答。debug room以外でも1%の確率で返答。
-            if is_debug_channel && (response_to_all || rng().random::<f32>() < 0.3)
-                || rng().random::<f32>() < 0.01
+            // ランダム返信
+            let setting = bot
+                .database
+                .fetch_channel_reply_setting(&msg.channel_id)
+                .await
+                .ok()
+                .flatten();
+            let (enabled, rate) = resolve_reply_setting(setting.as_ref(), is_debug_channel);
+            if enabled
+                && ((is_debug_channel && response_to_all)
+                    || rng().random::<f32>() < rate as f32 / 100.0)
             {
-                say_free_reply(
-                    bot,
-                    ctx,
-                    msg,
-                    response_to_all,
-                    &response_to_all_model,
-                    is_debug_channel,
-                )
-                .await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
             return;
         }
@@ -536,15 +563,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
 
             if is_debug_channel {
                 // まなみが自由に応答するコーナー
-                say_free_reply(
-                    bot,
-                    ctx,
-                    msg,
-                    response_to_all,
-                    &response_to_all_model,
-                    is_debug_channel,
-                )
-                .await;
+                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
             }
         }
     }
@@ -564,6 +583,79 @@ async fn has_privilege(bot: &Bot, ctx: &Context, msg: &Message) -> bool {
         return false;
     }
     true
+}
+
+#[cfg(test)]
+mod reply_setting_tests {
+    use super::{resolve_reply_setting, DEFAULT_REPLY_RATE};
+    use udamanami_shared::ChannelReplySetting;
+
+    fn setting(reply_enabled: Option<bool>, reply_rate: Option<u32>) -> ChannelReplySetting {
+        ChannelReplySetting {
+            channel_id: "1".to_owned(),
+            reply_enabled,
+            reply_rate,
+        }
+    }
+
+    #[test]
+    fn unset_channel_defaults_to_debug_only() {
+        // 行が無いチャンネル: debug だけが既定で許可され、他は黙る。
+        assert_eq!(
+            resolve_reply_setting(None, true),
+            (true, DEFAULT_REPLY_RATE)
+        );
+        assert_eq!(
+            resolve_reply_setting(None, false),
+            (false, DEFAULT_REPLY_RATE)
+        );
+    }
+
+    #[test]
+    fn null_columns_fall_back_to_defaults() {
+        // マイグレーション直後の既存行(両方 NULL)は未設定と同じ扱い。
+        let s = setting(None, None);
+        assert_eq!(
+            resolve_reply_setting(Some(&s), false),
+            (false, DEFAULT_REPLY_RATE)
+        );
+        assert_eq!(
+            resolve_reply_setting(Some(&s), true),
+            (true, DEFAULT_REPLY_RATE)
+        );
+    }
+
+    #[test]
+    fn explicit_setting_overrides_the_debug_default() {
+        // 明示設定は debug かどうかに関わらず優先される。
+        let enabled = setting(Some(true), Some(50));
+        assert_eq!(resolve_reply_setting(Some(&enabled), false), (true, 50));
+
+        let disabled = setting(Some(false), Some(50));
+        assert_eq!(resolve_reply_setting(Some(&disabled), true), (false, 50));
+    }
+
+    #[test]
+    fn rate_and_enabled_resolve_independently() {
+        // 割合だけ設定済みなら、許可は既定(debug 判定)にフォールバックする。
+        let rate_only = setting(None, Some(5));
+        assert_eq!(resolve_reply_setting(Some(&rate_only), false), (false, 5));
+        assert_eq!(resolve_reply_setting(Some(&rate_only), true), (true, 5));
+
+        // 許可だけ設定済み(トグルONのみ)なら、割合は既定になる。
+        let enabled_only = setting(Some(true), None);
+        assert_eq!(
+            resolve_reply_setting(Some(&enabled_only), false),
+            (true, DEFAULT_REPLY_RATE)
+        );
+    }
+
+    #[test]
+    fn zero_rate_is_kept_and_never_replies() {
+        // 0% は「許可されているが反応しない」。rng() < 0.0 は常に偽。
+        let s = setting(Some(true), Some(0));
+        assert_eq!(resolve_reply_setting(Some(&s), false), (true, 0));
+    }
 }
 
 #[cfg(test)]

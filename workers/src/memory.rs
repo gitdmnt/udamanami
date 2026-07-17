@@ -91,6 +91,8 @@ struct VectorizeVector {
 #[derive(Serialize)]
 struct VectorMeta {
     memory_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    source: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -180,7 +182,7 @@ async fn build_embedded_chunks(
             memory_id: memory_id.to_string(),
             chunk_index: idx,
             content: chunk_content,
-            embedding: vec![], // このあと OpenAI でまとめて埋める。
+            embedding: vec![],
         });
         start = end;
         idx += 1;
@@ -196,6 +198,30 @@ async fn build_embedded_chunks(
         chunk.embedding = embedding;
     }
     Ok(chunks)
+}
+
+/// memory 行を INSERT する prepared statement を組み立てる。列を足すときの二重同期を防ぐため一本化。
+fn insert_memory_stmt(
+    d1: &D1Database,
+    memory_id: &str,
+    title: String,
+    timestamp: String,
+    source: Option<String>,
+    channel_name: Option<String>,
+    occurred_at: Option<String>,
+) -> Result<D1PreparedStatement> {
+    d1.prepare(
+        "INSERT INTO memory (memory_id, title, timestamp, source, channel_name, occurred_at)
+         VALUES (?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&[
+        memory_id.into(),
+        title.into(),
+        timestamp.into(),
+        crate::opt_to_js(source),
+        crate::opt_to_js(channel_name),
+        crate::opt_to_js(occurred_at),
+    ])
 }
 
 /// INSERT する memory_chunk 行の prepared statement を組み立てる。
@@ -219,8 +245,12 @@ fn insert_chunk_stmts(d1: &D1Database, chunks: &[Chunk]) -> Result<Vec<D1Prepare
         .collect()
 }
 
-/// chunk 群を Vectorize に upsert する。
-async fn upsert_vectors(ctx: &RouteContext<()>, chunks: Vec<Chunk>) -> Result<()> {
+/// chunk 群を Vectorize に upsert する。`source` は memory 単位なので全 chunk に同じ値が載る。
+async fn upsert_vectors(
+    ctx: &RouteContext<()>,
+    chunks: Vec<Chunk>,
+    source: Option<&str>,
+) -> Result<()> {
     let vectors: Vec<VectorizeVector> = chunks
         .into_iter()
         .map(|chunk| VectorizeVector {
@@ -228,6 +258,7 @@ async fn upsert_vectors(ctx: &RouteContext<()>, chunks: Vec<Chunk>) -> Result<()
             values: chunk.embedding,
             metadata: VectorMeta {
                 memory_id: chunk.memory_id,
+                source: source.map(str::to_owned),
             },
         })
         .collect();
@@ -294,23 +325,22 @@ pub(super) async fn create_memory(mut req: Request, ctx: RouteContext<()>) -> Re
         return Response::error("memory content must not be empty", 400);
     }
 
-    // D1 に memory とその chunk を書き込む。
     let d1 = ctx.env.d1("DB")?;
     let timestamp = Date::now().to_string();
     let mut stmts = Vec::with_capacity(chunks.len() + 1);
-    stmts.push(
-        d1.prepare("INSERT INTO memory (memory_id, title, timestamp) VALUES (?, ?, ?)")
-            .bind(&[
-                memory_id.clone().into(),
-                memory.title.into(),
-                timestamp.into(),
-            ])?,
-    );
+    stmts.push(insert_memory_stmt(
+        &d1,
+        &memory_id,
+        memory.title,
+        timestamp,
+        memory.source.clone(),
+        memory.channel_name,
+        memory.occurred_at,
+    )?);
     stmts.extend(insert_chunk_stmts(&d1, &chunks)?);
     let _ = d1.batch(stmts).await?;
 
-    // Vectorize に upsert する。
-    upsert_vectors(&ctx, chunks).await?;
+    upsert_vectors(&ctx, chunks, memory.source.as_deref()).await?;
 
     Response::from_json(&serde_json::json!({ "memory_id": memory_id }))
 }
@@ -325,16 +355,21 @@ pub(super) async fn update_memory(mut req: Request, ctx: RouteContext<()>) -> Re
 
     let d1 = ctx.env.d1("DB")?;
 
-    // 対象メモリの存在確認。無ければ 404。
-    let exists = d1
-        .prepare("SELECT memory_id FROM memory WHERE memory_id = ?")
-        .bind(&[update.memory_id.clone().into()])?
-        .first::<serde_json::Value>(None)
-        .await?
-        .is_some();
-    if !exists {
-        return Response::error("Memory not found", 404);
+    // 作り直しで出所メタデータを失わないよう、既存の値を読んで引き継ぐ。無ければ 404。
+    #[derive(Deserialize)]
+    struct ProvenanceRow {
+        source: Option<String>,
+        channel_name: Option<String>,
+        occurred_at: Option<String>,
     }
+    let Some(existing) = d1
+        .prepare("SELECT source, channel_name, occurred_at FROM memory WHERE memory_id = ?")
+        .bind(&[update.memory_id.clone().into()])?
+        .first::<ProvenanceRow>(None)
+        .await?
+    else {
+        return Response::error("Memory not found", 404);
+    };
 
     let api_key = ctx.env.secret("OPENAI_API_KEY")?.to_string();
     let chunks = build_embedded_chunks(&api_key, &update.memory_id, &update.content).await?;
@@ -343,30 +378,28 @@ pub(super) async fn update_memory(mut req: Request, ctx: RouteContext<()>) -> Re
         return Response::error("memory content must not be empty", 400);
     }
 
-    // 先に古いベクトルを Vectorize から消す(D1 の chunk 行はまだ残っている)。
     delete_vectors_of_memory(&d1, &ctx, &update.memory_id).await?;
 
-    // D1 を作り直す: memory 行を消す(memory_chunk は CASCADE で連鎖削除される)。
-    // その後、同じ memory_id で memory とその chunk を入れ直す。
+    // memory 行を消す(memory_chunk は CASCADE)→ 同じ memory_id で入れ直す。
     let timestamp = Date::now().to_string();
     let mut stmts = Vec::with_capacity(chunks.len() + 2);
     stmts.push(
         d1.prepare("DELETE FROM memory WHERE memory_id = ?")
             .bind(&[update.memory_id.clone().into()])?,
     );
-    stmts.push(
-        d1.prepare("INSERT INTO memory (memory_id, title, timestamp) VALUES (?, ?, ?)")
-            .bind(&[
-                update.memory_id.clone().into(),
-                update.title.into(),
-                timestamp.into(),
-            ])?,
-    );
+    stmts.push(insert_memory_stmt(
+        &d1,
+        &update.memory_id,
+        update.title,
+        timestamp,
+        existing.source.clone(),
+        existing.channel_name,
+        existing.occurred_at,
+    )?);
     stmts.extend(insert_chunk_stmts(&d1, &chunks)?);
     let _ = d1.batch(stmts).await?;
 
-    // 新しいベクトルを Vectorize に upsert する。
-    upsert_vectors(&ctx, chunks).await?;
+    upsert_vectors(&ctx, chunks, existing.source.as_deref()).await?;
 
     Response::from_json(&serde_json::json!({ "memory_id": update.memory_id }))
 }
@@ -381,29 +414,8 @@ pub(super) async fn delete_memory(mut req: Request, ctx: RouteContext<()>) -> Re
 
     let d1 = ctx.env.d1("DB")?;
 
-    // Vectorize から消すために、先に chunk_id を集める。
-    #[derive(Deserialize)]
-    struct ChunkIdRow {
-        chunk_id: String,
-    }
-    let rows = d1
-        .prepare("SELECT chunk_id FROM memory_chunk WHERE memory_id = ?")
-        .bind(&[memory_id.clone().into()])?
-        .run()
-        .await?
-        .results::<ChunkIdRow>()?;
-
-    if !rows.is_empty() {
-        let ids: Vec<String> = rows.into_iter().map(|r| r.chunk_id).collect();
-        let index = vectorize(&ctx)?;
-        let js = serde_wasm_bindgen::to_value(&ids).map_err(|e| wb_err("serialize ids", e))?;
-        let promise = index
-            .delete_by_ids(js)
-            .map_err(|e| js_err("vectorize.deleteByIds", e))?;
-        JsFuture::from(promise)
-            .await
-            .map_err(|e| js_err("await vectorize.deleteByIds", e))?;
-    }
+    // 先に Vectorize から消す。D1 の memory_chunk は次の DELETE FROM memory で CASCADE 削除される。
+    delete_vectors_of_memory(&d1, &ctx, &memory_id).await?;
 
     let _ = d1
         .prepare("DELETE FROM memory WHERE memory_id = ?")
@@ -419,16 +431,11 @@ pub(super) async fn delete_memory(mut req: Request, ctx: RouteContext<()>) -> Re
 /// クエリパラメータ: q (必須), limit (任意, 既定 5)
 pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = req.url()?;
-    let param = |key: &str| {
-        url.query_pairs()
-            .find(|(k, _)| k == key)
-            .map(|(_, v)| v.into_owned())
-    };
 
-    let Some(q) = param("q").filter(|s| !s.is_empty()) else {
+    let Some(q) = crate::query_param(&url, "q").filter(|s| !s.is_empty()) else {
         return Response::error("Missing query parameter: q", 400);
     };
-    let limit = param("limit")
+    let limit = crate::query_param(&url, "limit")
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(5)
         .clamp(1, 100);
@@ -484,10 +491,13 @@ pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result
         content: String,
         title: String,
         timestamp: String,
+        channel_name: Option<String>,
+        occurred_at: Option<String>,
     }
     let rows = d1
         .prepare(format!(
-            "SELECT c.chunk_id, c.memory_id, c.chunk_index, c.content, m.title, m.timestamp
+            "SELECT c.chunk_id, c.memory_id, c.chunk_index, c.content,
+                    m.title, m.timestamp, m.channel_name, m.occurred_at
              FROM memory_chunk c
              JOIN memory m ON c.memory_id = m.memory_id
              WHERE c.chunk_id IN ({placeholders})"
@@ -507,6 +517,8 @@ pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result
             content: r.content,
             title: r.title,
             timestamp: r.timestamp,
+            channel_name: r.channel_name,
+            occurred_at: r.occurred_at,
         })
         .collect();
 
@@ -537,26 +549,31 @@ pub(super) async fn list_memories(_req: Request, ctx: RouteContext<()>) -> Resul
 /// chunk を chunk_index 順に連結して本文を復元する。
 pub(super) async fn get_memory(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = req.url()?;
-    let Some(memory_id) = url
-        .query_pairs()
-        .find(|(k, _)| k == "memory_id")
-        .map(|(_, v)| v.into_owned())
-    else {
+    let Some(memory_id) = crate::query_param(&url, "memory_id") else {
         return Response::error("Missing query parameter: memory_id", 400);
     };
     let d1 = ctx.env.d1("DB")?;
 
-    // 1. memory 本体(タイトル・時刻)を引く。無ければ 404。
+    #[derive(Deserialize)]
+    struct MetaRow {
+        memory_id: String,
+        title: String,
+        timestamp: String,
+        channel_name: Option<String>,
+        occurred_at: Option<String>,
+    }
     let Some(meta) = d1
-        .prepare("SELECT memory_id, title, timestamp FROM memory WHERE memory_id = ?")
+        .prepare(
+            "SELECT memory_id, title, timestamp, channel_name, occurred_at
+             FROM memory WHERE memory_id = ?",
+        )
         .bind(&[memory_id.clone().into()])?
-        .first::<MemoryListItem>(None)
+        .first::<MetaRow>(None)
         .await?
     else {
         return Response::error("Memory not found", 404);
     };
 
-    // 2. chunk を index 順に連結して本文を復元する。
     #[derive(Deserialize)]
     struct ChunkContentRow {
         content: String,
@@ -581,5 +598,7 @@ pub(super) async fn get_memory(req: Request, ctx: RouteContext<()>) -> Result<Re
         "title": meta.title,
         "timestamp": meta.timestamp,
         "content": content,
+        "channel_name": meta.channel_name,
+        "occurred_at": meta.occurred_at,
     }))
 }

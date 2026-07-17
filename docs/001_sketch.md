@@ -4,10 +4,12 @@
 - LLM API呼び出し
 - D1へDBを移行
 - terraformの導入
+- 記憶の永続化とその呼び出し（`remember` / `recall` ツール、D1 + Vectorize）
+- 会話セッションの自動要約（`app/src/summarizer.rs`）
 
 ## これからの予定
 
-- 記憶の永続化とその呼び出し
+- コマンド実行環境
 
 ## リポジトリ構造
 

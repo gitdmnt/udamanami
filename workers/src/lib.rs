@@ -17,6 +17,12 @@ pub(crate) fn opt_to_js<T: Into<wasm_bindgen::JsValue>>(v: Option<T>) -> wasm_bi
     v.map_or(wasm_bindgen::JsValue::NULL, Into::into)
 }
 
+pub(crate) fn query_param(url: &Url, key: &str) -> Option<String> {
+    url.query_pairs()
+        .find(|(k, _)| k == key)
+        .map(|(_, v)| v.into_owned())
+}
+
 #[event(fetch)]
 async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
     // 認証
@@ -47,6 +53,13 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/user/profile", user::get_profile)
         // チャンネル
         .post_async("/channel", channel::upsert_channel)
+        .put_async("/channel/reply", channel::set_reply_setting)
+        .get_async("/channel/reply", channel::get_reply_setting)
+        .get_async(
+            "/channel/summary/candidates",
+            channel::summarize_candidates,
+        )
+        .put_async("/channel/summary", channel::set_summarized)
         // 計算機の変数
         .post_async("/calcvar", calcvar::upsert_var)
         .get_async("/calcvar", calcvar::get_vars)

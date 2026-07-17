@@ -5,6 +5,18 @@ use rig::completion::ToolDefinition;
 /// 意味検索でヒットさせる記憶の既定件数。
 const DEFAULT_RECALL_LIMIT: usize = 5;
 
+/// args から文字列引数を取り出す。キー欠落・非文字列は空文字列。
+fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> &'a str {
+    args.get(key).and_then(|v| v.as_str()).unwrap_or("")
+}
+
+/// 会話日時(RFC3339)を JST 表記にする。パースできなければ素の文字列を返す。
+fn occurred_jst(occurred_at: &str) -> String {
+    chrono::DateTime::parse_from_rfc3339(occurred_at)
+        .map(|t| crate::ai::stamp_jst(&t.with_timezone(&chrono::Utc)))
+        .unwrap_or_else(|_| occurred_at.to_owned())
+}
+
 pub struct Remember;
 pub struct Recall;
 pub struct Amend;
@@ -17,12 +29,8 @@ impl Tool for Remember {
     }
 
     async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
-        let title = ctx.args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let content = ctx
-            .args
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let title = str_arg(&ctx.args, "title");
+        let content = str_arg(&ctx.args, "content");
         if title.is_empty() || content.is_empty() {
             return Err("title と content は必須だよ。".into());
         }
@@ -37,7 +45,7 @@ impl Tool for Recall {
     }
 
     async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
-        let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+        let query = str_arg(&ctx.args, "query");
         if query.is_empty() {
             return Err("query は必須だよ。".into());
         }
@@ -57,17 +65,9 @@ impl Tool for Amend {
     }
 
     async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
-        let memory_id = ctx
-            .args
-            .get("memory_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let title = ctx.args.get("title").and_then(|v| v.as_str()).unwrap_or("");
-        let content = ctx
-            .args
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let memory_id = str_arg(&ctx.args, "memory_id");
+        let title = str_arg(&ctx.args, "title");
+        let content = str_arg(&ctx.args, "content");
         if memory_id.is_empty() || title.is_empty() || content.is_empty() {
             return Err("memory_id と title と content は必須だよ。".into());
         }
@@ -82,11 +82,7 @@ impl Tool for Read {
     }
 
     async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
-        let memory_id = ctx
-            .args
-            .get("memory_id")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let memory_id = str_arg(&ctx.args, "memory_id");
         if memory_id.is_empty() {
             return Err("memory_id は必須だよ。".into());
         }
@@ -177,7 +173,7 @@ fn read_def() -> ToolDefinition {
 }
 
 async fn remember(db: &BotDatabase, title: &str, content: &str) -> Result<String, String> {
-    db.upsert_memory(title, content)
+    db.create_memory(title, content)
         .await
         .map_err(|e| format!("記憶の保存に失敗しちゃった。Error: {e}"))?;
     Ok(format!("「{title}」を記憶したよ！"))
@@ -193,9 +189,17 @@ async fn recall(db: &BotDatabase, query: &str, limit: usize) -> Result<String, S
         return Ok(format!("「{query}」に関する記憶は見つからなかったよ。"));
     }
 
+    // チャンネル名は title(#チャンネル の会話)が、会話日時は occurred_at が担う。
     let body = results
         .iter()
-        .map(|r| format!("- [memory_id: {}] {}: {}", r.memory_id, r.title, r.content))
+        .map(|r| {
+            let when = r
+                .occurred_at
+                .as_deref()
+                .map(|at| format!("（{}）", occurred_jst(at)))
+                .unwrap_or_default();
+            format!("- [memory_id: {}] {}{}: {}", r.memory_id, r.title, when, r.content)
+        })
         .collect::<Vec<_>>()
         .join("\n");
     Ok(format!("「{query}」に関する記憶だよ:\n{body}"))
@@ -206,9 +210,14 @@ async fn read(db: &BotDatabase, memory_id: &str) -> Result<String, String> {
         .get_memory(memory_id)
         .await
         .map_err(|e| format!("記憶の取得に失敗しちゃった。Error: {e}"))?;
+    // 自動要約は会話日時(occurred_at)を、手動記憶は作成時刻(timestamp)を添える。
+    let when = memory
+        .occurred_at
+        .as_deref()
+        .map_or_else(|| memory.timestamp.clone(), occurred_jst);
     Ok(format!(
         "[memory_id: {}] {}（{}）\n{}",
-        memory.memory_id, memory.title, memory.timestamp, memory.content
+        memory.memory_id, memory.title, when, memory.content
     ))
 }
 
@@ -222,4 +231,20 @@ async fn amend(
         .await
         .map_err(|e| format!("記憶の更新に失敗しちゃった。Error: {e}"))?;
     Ok(format!("「{title}」の記憶を更新したよ！"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn occurred_jst_formats_rfc3339_to_jst() {
+        // UTC 03:34 は JST 12:34。
+        assert_eq!(occurred_jst("2026-07-17T03:34:00+00:00"), "2026-07-17 12:34");
+    }
+
+    #[test]
+    fn occurred_jst_passes_through_unparseable() {
+        assert_eq!(occurred_jst("not a date"), "not a date");
+    }
 }

@@ -37,6 +37,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # D1 スキーマを Worker コードより先に反映する（migration -> deploy）。
+      # 適用済み migration は wrangler がスキップするので毎回実行しても冪等。
+      # SQL を流すだけでビルドは不要なので、Rust ビルド前に置いて fail-fast させる。
+      - name: Apply D1 migrations
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          workingDirectory: workers
+          command: d1 migrations apply udamanami --remote
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown

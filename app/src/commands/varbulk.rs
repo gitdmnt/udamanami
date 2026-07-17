@@ -30,12 +30,12 @@ pub fn register() -> serenity::builder::CreateCommand {
 }
 
 fn parse_options(options: Vec<ResolvedOption<'_>>) -> String {
-    options
-        .iter()
-        .fold(String::new(), |input, option| match (option.name, &option.value) {
+    options.iter().fold(String::new(), |input, option| {
+        match (option.name, &option.value) {
             ("definitions", ResolvedValue::String(s)) => (*s).to_owned(),
             _ => input,
-        })
+        }
+    })
 }
 
 async fn run_body(input: String, ctx: &CommandContext<'_>) -> String {

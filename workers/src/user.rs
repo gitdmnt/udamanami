@@ -48,11 +48,7 @@ pub async fn set_room_pointer(mut req: Request, ctx: RouteContext<()>) -> Result
 /// クエリパラメータ: user_id (必須)
 pub async fn get_room_pointer(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = req.url()?;
-    let Some(user_id) = url
-        .query_pairs()
-        .find(|(k, _)| k == "user_id")
-        .map(|(_, v)| v.into_owned())
-    else {
+    let Some(user_id) = crate::query_param(&url, "user_id") else {
         return Response::error("Missing query parameter: user_id", 400);
     };
 
@@ -105,11 +101,7 @@ pub async fn set_profile(mut req: Request, ctx: RouteContext<()>) -> Result<Resp
 /// 対象ユーザーのプロフィールを返す。行が無ければ null。
 pub async fn get_profile(req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let url = req.url()?;
-    let Some(user_id) = url
-        .query_pairs()
-        .find(|(k, _)| k == "user_id")
-        .map(|(_, v)| v.into_owned())
-    else {
+    let Some(user_id) = crate::query_param(&url, "user_id") else {
         return Response::error("Missing query parameter: user_id", 400);
     };
 
