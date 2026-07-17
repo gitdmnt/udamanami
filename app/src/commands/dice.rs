@@ -90,8 +90,8 @@ fn parse_options(options: Vec<ResolvedOption<'_>>) -> Result<Dice, &str> {
 
     let dice = literal.map_or_else(
         || {
-            let num = num.map_or(1, |i| i);
-            let dice = dice.map_or(6, |i| i);
+            let num = num.unwrap_or(1);
+            let dice = dice.unwrap_or(6);
             let operator = operator.map(|s| s.into());
             let cmp: Option<(CmpOperator, u128)> = if operator.is_some() && operand.is_some() {
                 #[allow(clippy::unnecessary_unwrap)]

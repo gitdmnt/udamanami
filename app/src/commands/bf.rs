@@ -98,7 +98,7 @@ fn run_body(parsed: Result<(Vec<BrainfuckCommand>, &str), &str>) -> String {
                 let output = output.split("\n").take(16).collect::<Vec<_>>();
                 format!(
                     "```\n{}\n...のこり{}行は省略しちゃうね！\n```",
-                    &output.join("\n"),
+                    output.join("\n"),
                     output.len() - 16
                 )
             } else if output.len() > 1960 {
