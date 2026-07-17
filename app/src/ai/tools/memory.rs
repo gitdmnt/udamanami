@@ -95,7 +95,11 @@ fn remember_def() -> ToolDefinition {
         name: "remember".into(),
         description: "
         ユーザーの好み、事実、チャンネルでのひとまとめの会話内容など、後の会話で思い出したい情報を永続的な記憶として保存するツールです。
-        一時的でその場限りの情報は保存しないでください。
+        - 誰が何を言ったか
+        - 決まったこと、約束したこと、予定
+        - 各人の好み・事実・状況の変化
+        - 印象に残る発言やトピック
+        などを、ユーザーの名前や話題と関連付けて豊かに記憶してください。
         保存した記憶はRecallツールで取得できます。
 
 ".into(),
@@ -198,7 +202,10 @@ async fn recall(db: &BotDatabase, query: &str, limit: usize) -> Result<String, S
                 .as_deref()
                 .map(|at| format!("（{}）", occurred_jst(at)))
                 .unwrap_or_default();
-            format!("- [memory_id: {}] {}{}: {}", r.memory_id, r.title, when, r.content)
+            format!(
+                "- [memory_id: {}] {}{}: {}",
+                r.memory_id, r.title, when, r.content
+            )
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -240,7 +247,10 @@ mod tests {
     #[test]
     fn occurred_jst_formats_rfc3339_to_jst() {
         // UTC 03:34 は JST 12:34。
-        assert_eq!(occurred_jst("2026-07-17T03:34:00+00:00"), "2026-07-17 12:34");
+        assert_eq!(
+            occurred_jst("2026-07-17T03:34:00+00:00"),
+            "2026-07-17 12:34"
+        );
     }
 
     #[test]
