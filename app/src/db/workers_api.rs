@@ -8,7 +8,8 @@ use serde::Serialize;
 use udamanami_shared::{
     CalcVar, CalcVarWithUsername, Channel, ChannelId, ChannelReplySetting, DeleteCalcVar,
     DeleteMessage, GetMessages, Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message,
-    MessageId, MessageOrder, SetUserProfile, UpdateMemory, UpdateMessage, User, UserId, UserProfile,
+    MessageId, MessageOrder, SetUserProfile, UpdateMemory, UpdateMessage, User, UserId,
+    UserProfile,
 };
 
 pub struct WorkersApi {

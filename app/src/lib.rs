@@ -61,8 +61,8 @@ pub struct Bot {
     // サーバーID
     pub guild_id: GuildId,
 
-    // チャンネルのID
-    pub channel_ids: Vec<ChannelId>,
+    // 代筆先が未設定のユーザーの既定の送信先
+    pub default_channel_id: ChannelId,
     pub debug_channel_id: ChannelId,
 
     // まなみの情報
@@ -98,7 +98,7 @@ pub struct Bot {
 impl Bot {
     #[allow(clippy::too_many_arguments)]
     pub async fn new(
-        channel_ids: Vec<ChannelId>,
+        default_channel_id: ChannelId,
         debug_channel_id: ChannelId,
 
         guild_id: GuildId,
@@ -125,7 +125,7 @@ impl Bot {
         Self {
             jail_process,
             jail_id,
-            channel_ids,
+            default_channel_id,
             debug_channel_id,
             guild_id,
             jail_mark_role_id,
@@ -142,11 +142,10 @@ impl Bot {
     }
 
     pub async fn get_user_room_pointer(&self, user_id: &UserId) -> ChannelId {
-        let default_channel_id = self.channel_ids[0];
         self.database
-            .fetch_user_room_pointer(user_id, default_channel_id)
+            .fetch_user_room_pointer(user_id, self.default_channel_id)
             .await
-            .unwrap_or(default_channel_id)
+            .unwrap_or(self.default_channel_id)
     }
 
     pub async fn change_room_pointer(

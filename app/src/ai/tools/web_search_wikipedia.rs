@@ -12,7 +12,11 @@ impl Tool for WebSearchWikipedia {
 
     async fn call(ctx: ToolCallContext<'_>) -> Result<String, String> {
         let query = ctx.args.get("query").and_then(|v| v.as_str()).unwrap_or("");
-        let lang = ctx.args.get("lang").and_then(|v| v.as_str()).unwrap_or("ja");
+        let lang = ctx
+            .args
+            .get("lang")
+            .and_then(|v| v.as_str())
+            .unwrap_or("ja");
         search(query, lang).await
     }
 }

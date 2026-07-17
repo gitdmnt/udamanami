@@ -29,12 +29,10 @@ async fn main() -> anyhow::Result<()> {
         | GatewayIntents::MESSAGE_CONTENT
         | GatewayIntents::DIRECT_MESSAGES;
 
-    let channel_ids = env_var("ROOMS_ID").map_or(vec![], |rooms| {
-        rooms
-            .split(',')
-            .filter_map(|id| ChannelId::from_str(id.trim()).ok())
-            .collect()
-    });
+    // 代筆先を /channel で設定していないユーザーの既定の送信先。
+    let default_channel_id = env_var_required("DEFAULT_CHANNEL_ID").and_then(|id| {
+        ChannelId::from_str(id.trim()).context("'DEFAULT_CHANNEL_ID' is not a valid channel ID")
+    })?;
 
     let debug_channel_id = env_var("DEBUG_ROOM_ID")
         .map(|id| ChannelId::from_str(&id).unwrap())
@@ -88,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
     let database = BotDatabase::new(workers_api_url, workers_api_token);
 
     let bot = Bot::new(
-        channel_ids,
+        default_channel_id,
         debug_channel_id,
         guild_id,
         jail_mark_role_id,
