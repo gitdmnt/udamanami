@@ -6,9 +6,9 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use udamanami_shared::{
-    CalcVar, CalcVarWithUsername, Channel, ChannelId, DeleteCalcVar, DeleteMessage, GetMessages,
-    Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message, MessageId, MessageOrder,
-    SetUserProfile, UpdateMemory, UpdateMessage, User, UserId, UserProfile,
+    CalcVar, CalcVarWithUsername, Channel, ChannelId, ChannelReplySetting, DeleteCalcVar,
+    DeleteMessage, GetMessages, Memory, MemoryDetail, MemoryListItem, MemorySearchResult, Message,
+    MessageId, MessageOrder, SetUserProfile, UpdateMemory, UpdateMessage, User, UserId, UserProfile,
 };
 
 pub struct WorkersApi {
@@ -137,6 +137,25 @@ impl WorkersApi {
         self.request_text(reqwest::Method::POST, "/channel", Some(channel))
             .await?;
         Ok(())
+    }
+
+    /// 自発反応の設定を部分更新する(PUT /channel/reply)。None のフィールドは据え置き。
+    pub async fn set_channel_reply_setting(
+        &self,
+        setting: &ChannelReplySetting,
+    ) -> anyhow::Result<()> {
+        self.request_text(reqwest::Method::PUT, "/channel/reply", Some(setting))
+            .await?;
+        Ok(())
+    }
+
+    /// 自発反応の設定を取得する(GET /channel/reply)。未登録なら None。
+    pub async fn get_channel_reply_setting(
+        &self,
+        channel_id: ChannelId,
+    ) -> anyhow::Result<Option<ChannelReplySetting>> {
+        self.get_with_query("/channel/reply", &[("channel_id", channel_id)])
+            .await
     }
 
     // ---------------- calc var ----------------

@@ -47,6 +47,8 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get_async("/user/profile", user::get_profile)
         // チャンネル
         .post_async("/channel", channel::upsert_channel)
+        .put_async("/channel/reply", channel::set_reply_setting)
+        .get_async("/channel/reply", channel::get_reply_setting)
         // 計算機の変数
         .post_async("/calcvar", calcvar::upsert_var)
         .get_async("/calcvar", calcvar::get_vars)

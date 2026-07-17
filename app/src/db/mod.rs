@@ -161,6 +161,32 @@ impl BotDatabase {
             .await
     }
 
+    /// チャンネルの自発反応設定を部分更新する。`None` のフィールドは据え置き。
+    pub async fn set_channel_reply_setting(
+        &self,
+        channel_id: &ChannelId,
+        reply_enabled: Option<bool>,
+        reply_rate: Option<u32>,
+    ) -> anyhow::Result<()> {
+        self.api
+            .set_channel_reply_setting(&dto::ChannelReplySetting {
+                channel_id: channel_id.get().to_string(),
+                reply_enabled,
+                reply_rate,
+            })
+            .await
+    }
+
+    /// チャンネルの自発反応設定を取得する。未登録なら `None`。
+    pub async fn fetch_channel_reply_setting(
+        &self,
+        channel_id: &ChannelId,
+    ) -> anyhow::Result<Option<dto::ChannelReplySetting>> {
+        self.api
+            .get_channel_reply_setting(channel_id.get().to_string())
+            .await
+    }
+
     pub async fn fetch_oldest_message(
         &self,
         channel_id: &ChannelId,

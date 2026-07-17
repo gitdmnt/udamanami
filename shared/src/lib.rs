@@ -57,6 +57,17 @@ pub struct Channel {
     pub name: String,
 }
 
+/// チャンネルごとの自発反応設定。`None` は「未設定 → 実行時デフォルト」を表す。
+/// 頻繁な [`Channel`] upsert 経路とは分離し、name/is_thread を上書きせず部分更新する。
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ChannelReplySetting {
+    pub channel_id: ChannelId,
+    /// 自発反応を許可するか。
+    pub reply_enabled: Option<bool>,
+    /// 自発反応する割合(%)。0..=100。
+    pub reply_rate: Option<u32>,
+}
+
 // ---------------- ユーザー ----------------
 
 #[derive(Debug, Deserialize, Serialize)]
