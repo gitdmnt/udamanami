@@ -97,7 +97,7 @@ impl ManamiAi {
         let mut map = self.conversations.lock().unwrap();
         let buf = map.entry(channel_id).or_default();
         buf.push_back(message);
-        if buf.len() > 500 {
+        if buf.len() > 10 {
             buf.pop_front();
         }
     }
@@ -229,7 +229,8 @@ impl ManamiAi {
             return Ok(None);
         }
         let model = self.default_model.clone();
-        let preamble = format!("{MEMORY_SUMMARY_PROMPT}\n\n## このログのチャンネル\n#{channel_name}");
+        let preamble =
+            format!("{MEMORY_SUMMARY_PROMPT}\n\n## このログのチャンネル\n#{channel_name}");
         let summary =
             engine::run_completion_text(&self.client, &model, "low", &preamble, messages).await?;
 
