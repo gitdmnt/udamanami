@@ -77,7 +77,7 @@ async fn main() -> anyhow::Result<()> {
     let llm_model = env_var("LLM_MODEL")
         .or_else(|| ai::available_models().into_iter().next())
         .unwrap_or_else(|| "gpt-5.4-nano".to_owned());
-    let llm_effort = env_var("LLM_EFFORT").unwrap_or_else(|| "minimal".to_owned());
+    let llm_effort = env_var("LLM_EFFORT").unwrap_or_else(|| "none".to_owned());
     let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model, &llm_effort)?;
 
     let workers_api_url = env_var("WORKERS_API_URL").context("'WORKERS_API_URL' was not found")?;
