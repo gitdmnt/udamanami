@@ -11,6 +11,8 @@ mod memory;
 mod message;
 mod user;
 
+use constant_time_eq::constant_time_eq;
+
 /// D1バインド用: None は JsValue::UNDEFINED になり D1_TYPE_ERROR を起こすため、
 /// 明示的に JsValue::NULL へ落とす。
 pub(crate) fn opt_to_js<T: Into<wasm_bindgen::JsValue>>(v: Option<T>) -> wasm_bindgen::JsValue {
@@ -32,7 +34,8 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .get("Authorization")?
         .unwrap_or_default()
         .replace("Bearer ", "");
-    if authorized != expected {
+
+    if constant_time_eq(authorized.as_bytes(), expected.as_bytes()) {
         return Response::error("Unauthorized", 401);
     }
 
@@ -55,10 +58,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .post_async("/channel", channel::upsert_channel)
         .put_async("/channel/reply", channel::set_reply_setting)
         .get_async("/channel/reply", channel::get_reply_setting)
-        .get_async(
-            "/channel/summary/candidates",
-            channel::summarize_candidates,
-        )
+        .get_async("/channel/summary/candidates", channel::summarize_candidates)
         .put_async("/channel/summary", channel::set_summarized)
         // 計算機の変数
         .post_async("/calcvar", calcvar::upsert_var)
