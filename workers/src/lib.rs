@@ -35,7 +35,7 @@ async fn fetch(req: Request, env: Env, _ctx: Context) -> Result<Response> {
         .unwrap_or_default()
         .replace("Bearer ", "");
 
-    if constant_time_eq(authorized.as_bytes(), expected.as_bytes()) {
+    if !constant_time_eq(authorized.as_bytes(), expected.as_bytes()) {
         return Response::error("Unauthorized", 401);
     }
 
