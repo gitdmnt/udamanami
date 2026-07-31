@@ -498,7 +498,7 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     let is_debug_channel = msg.channel_id.get() == bot.debug_channel_id.get();
 
     // if message does not contains any command, respond with AI
-    let command_pattern = Regex::new(r"(?ms)(^!|まなみ(?:ちゃん)?)(.*)").unwrap();
+    let command_pattern = Regex::new(r"(?ms)(^!|まなみ(?:ちゃん)?)(.+)").unwrap();
     let input_string = match command_pattern.captures(&msg.content) {
         // コマンド部分を抽出
         Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
