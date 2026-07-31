@@ -12,6 +12,7 @@ use dashmap::DashMap;
 
 use regex::Regex;
 use serenity::all::{MessageId, MessageUpdateEvent};
+use serenity::http::Typing;
 use serenity::{
     all::{ActivityData, Command},
     async_trait,
@@ -78,9 +79,6 @@ pub struct Bot {
     // ログなどを保存するDB
     pub database: BotDatabase,
 
-    // 全レスモードのデータ
-    pub reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>>,
-
     // 有効なコマンドのデータ
     pub slash_commands: Vec<ManamiSlashCommand>,
     pub prefix_commands: Vec<ManamiPrefixCommand>,
@@ -118,8 +116,6 @@ impl Bot {
         let variables = database.retrieve_eval_context().await;
         let jail_process = Arc::new(DashMap::new());
         let jail_id = Arc::new(Mutex::new(0));
-        let reply_to_all_mode: Arc<Mutex<ReplyToAllModeData>> =
-            Arc::new(Mutex::new(ReplyToAllModeData::blank()));
         let prefix_commands = prefix_commands(disabled_commands);
         let slash_commands = slash_commands(disabled_commands);
 
@@ -134,7 +130,6 @@ impl Bot {
             commit_hash,
             commit_date,
             variables,
-            reply_to_all_mode,
             ai,
             prefix_commands,
             slash_commands,
@@ -397,6 +392,7 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     if !msg.author.bot {
         bot.ai.add_user_log(
             msg.channel_id.get(),
+            msg.author.id.get(),
             user_name,
             &msg.content,
             msg.timestamp.to_utc(),
@@ -404,11 +400,12 @@ async fn save_guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
     }
 }
 
-/// AI の生成結果を整形してチャンネルに送信する。
-async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<String>) {
-    // 生成側（generate_with_model）で先頭の時刻・名前接頭辞は正規化済みなので、ここでは整形しない。
+/// AI の生成結果を整形してチャンネルに送信する。まなみが黙ると決めたときは何も送らない。
+async fn say_ai_reply(ctx: &Context, msg: &Message, content: anyhow::Result<Option<String>>) {
+    // 生成側（generate）で先頭の時刻・名前接頭辞は正規化済みなので、ここでは整形しない。
     let content = match content {
-        Ok(content) => content,
+        Ok(None) => return,
+        Ok(Some(content)) => content,
         Err(e) => format!("Error sending message: {e:?}"),
     };
     // Discord の文字数上限を超えると say が失敗するので、上限ごとに分割して送る。
@@ -463,36 +460,30 @@ fn split_for_discord(content: &str) -> Vec<String> {
     chunks
 }
 
-/// 全レスモードの状態に応じて返答を生成し、チャンネルに送信する。
-/// 全レスモード中なら期限を更新して全レス用モデルを、そうでなければ現在のモデルを使う。
-async fn say_free_reply(
-    bot: &Bot,
-    ctx: &Context,
-    msg: &Message,
-    response_to_all: bool,
-    response_to_all_model: &str,
-) {
-    // まなみは「いま応答している相手」= このメッセージの author に対してプロフィールを読み書きする。
-    // 会話バッファはチャンネルごとに分かれ、各チャンネルが自分の文脈を持つので、
-    // どのチャンネルでも応答相手（author）を対象にプロフィールを読み書きする。
+/// 返答を生成してチャンネルに送信する。
+/// `addressed` は名指しで呼ばれたかどうか。trueなら必ず返し、falseならまなみの判断で黙る場合もある。
+async fn say_free_reply(bot: &Bot, ctx: &Context, msg: &Message, addressed: bool) {
+    // まなみは「いま応答している相手」= このメッセージの author のプロフィールを読み書きする。
+    // 会話バッファはチャンネルごとに分かれ、各チャンネルが自分の文脈を持つ。
     let target_user_id = msg.author.id.get().to_string();
     // 会話バッファはチャンネルごとに分かれているので、応答も必ずこのチャンネルのログだけを使う。
     let channel_id = msg.channel_id.get();
-    let content = if response_to_all {
-        bot.reply_to_all_mode.lock().unwrap().renew(); // 期限更新
-        bot.ai
-            .generate_with_model(
-                response_to_all_model,
-                &bot.database,
-                &target_user_id,
-                channel_id,
-            )
-            .await
-    } else {
-        bot.ai
-            .generate(&bot.database, &target_user_id, channel_id)
-            .await
-    };
+
+    let typing = addressed.then(|| Typing::start(ctx.http.clone(), msg.channel_id));
+    let started = typing.is_some();
+    let (http, channel) = (ctx.http.clone(), msg.channel_id);
+
+    let content = bot
+        .ai
+        .generate(
+            &bot.database,
+            &target_user_id,
+            channel_id,
+            addressed,
+            move || (!started).then(|| Typing::start(http, channel)),
+        )
+        .await;
+
     say_ai_reply(ctx, msg, content).await;
 }
 
@@ -504,16 +495,10 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
         return;
     }
 
-    // 全レスモード中？
-    let (response_to_all, response_to_all_model) = {
-        let mode = bot.reply_to_all_mode.lock().unwrap();
-        (mode.is_active(), mode.model.clone())
-    };
     let is_debug_channel = msg.channel_id.get() == bot.debug_channel_id.get();
 
     // if message does not contains any command, respond with AI
-    let command_pattern =
-        Regex::new(r"(?ms)((?:まなみ(?:ちゃん)?(?:\s|、|は|って|の)?)|!)(.*)").unwrap();
+    let command_pattern = Regex::new(r"(?ms)(^!|まなみ(?:ちゃん)?)(.*)").unwrap();
     let input_string = match command_pattern.captures(&msg.content) {
         // コマンド部分を抽出
         Some(caps) => caps.get(2).unwrap().as_str().to_owned(),
@@ -526,11 +511,8 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 .ok()
                 .flatten();
             let (enabled, rate) = resolve_reply_setting(setting.as_ref(), is_debug_channel);
-            if enabled
-                && ((is_debug_channel && response_to_all)
-                    || rng().random::<f32>() < rate as f32 / 100.0)
-            {
-                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
+            if enabled && rng().random::<f32>() < rate as f32 / 100.0 {
+                say_free_reply(bot, ctx, msg, false).await;
             }
             return;
         }
@@ -561,9 +543,9 @@ async fn guild_message(bot: &Bot, ctx: &Context, msg: &Message) {
                 }
             }
 
+            // 「まなみ」で始まるかコマンド記号で始まる発言がコマンドとして解決されなかった場合、debugチャンネルならLLMで応答する。
             if is_debug_channel {
-                // まなみが自由に応答するコーナー
-                say_free_reply(bot, ctx, msg, response_to_all, &response_to_all_model).await;
+                say_free_reply(bot, ctx, msg, true).await;
             }
         }
     }

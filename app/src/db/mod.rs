@@ -429,7 +429,12 @@ impl MessageInfo {
         if self.user_id == *my_userid {
             ChatMessage::assistant(&self.content, self.timestamp)
         } else {
-            ChatMessage::user(&self.user_name, &self.content, self.timestamp)
+            ChatMessage::user(
+                self.user_id.get(),
+                &self.user_name,
+                &self.content,
+                self.timestamp,
+            )
         }
     }
 }
@@ -454,7 +459,10 @@ mod tests {
         let me = UserId::from(999u64);
 
         match info(1, "宇田").to_chat_message(&me).role {
-            Role::User { name } => assert_eq!(name, "宇田"),
+            Role::User { id, name } => {
+                assert_eq!(id, 1);
+                assert_eq!(name, "宇田");
+            }
             Role::Assistant => panic!("他人の発言は User になるはず"),
         }
 

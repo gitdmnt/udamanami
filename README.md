@@ -4,7 +4,9 @@ Discord ボット「うだまなみ」の実装です。
 
 serenity でメッセージとスラッシュコマンドを処理し、雑談には OpenAI 互換の
 LLM（rig 経由）を、ログや変数の保存には SQLite（sea-orm）を使います。
-使うモデルは環境変数と `/model` コマンドで切り替えられます。
+雑談の応答は2段で生成します。何をどんな調子で言うかを決める planner と、それをまなみの
+言い回しに写す performer に分かれ、それぞれのモデルは環境変数と `/model` コマンドで
+切り替えられます。
 Discord への外向き接続だけで動き、受信ポートは開けません。
 
 ## ローカルでの実行
@@ -53,6 +55,9 @@ GCP Compute Engine（Container-Optimized OS）へロールアウトします。
 | `LLM_API_KEY` | ✓ | LLM の API キー（`OPENAI_API_KEY` でも可） |
 | `LLM_MODELS` | | 選べるモデル（カンマ区切り。未設定時は既定の 3 モデル） |
 | `LLM_MODEL` | | 既定モデル（未設定時は `LLM_MODELS` の先頭） |
+| `LLM_EFFORT` | | 既定の reasoning effort（未設定時は `none`） |
+| `LLM_PLANNER_MODEL` / `LLM_PLANNER_EFFORT` | | 応答方針を決める段（未設定時は `LLM_MODEL` / `LLM_EFFORT`） |
+| `LLM_PERFORMER_MODEL` / `LLM_PERFORMER_EFFORT` | | まなみの言い回しに写す段（未設定時は `LLM_MODEL` / `none`） |
 | `LLM_BASE_URL` | | OpenAI 互換の base URL（既定 `https://api.openai.com/v1`） |
 | `DEFAULT_CHANNEL_ID` | ✓ | 代筆先が未設定のときの既定の送信先 |
 | `DEBUG_ROOM_ID` | | AI 雑談・起動あいさつ用チャンネル |

@@ -38,6 +38,25 @@ gcloud compute ssh udamanami-bot --zone us-central1-a --command 'sudo docker log
 
 ツール呼び出しの失敗ログはWorkersの方のログを見るべきときもある。
 
+### まなみの応答方針(監査ログ)
+
+雑談の応答は2段で生成される。
+第1段(プランナー)が何をどう言うかを構造化データで決め、第2段(演者)がそれをまなみの言い回しに写す。
+第1段の出力そのものは Discord に出ないので、`manami::plan` ターゲットのログで追う。
+
+```sh
+gcloud compute ssh udamanami-bot --zone us-central1-a --command \
+  'sudo docker logs udamanami --tail 500' | grep manami::plan
+```
+
+`should_reply=false` の行は「まなみが黙ると決めた」ことを示す。
+発言が無いのに行が出ていれば正常な沈黙で、行そのものが無ければ確率のゲート(`/allowreply`)で弾かれたか、そもそも第1段まで到達していない。
+
+`planner failed; falling back` は第1段が使えず退避の方針で応答したことを示す。
+`error` フィールドにモデルが返した文字列そのものが入るので、スキーマ違反なのか `LLM_BASE_URL` 側が `text.format` を無視したのかを切り分けられる。
+
+`docker logs` は現在のコンテナぶんしか残らないため、過去に遡っての監査はできない。
+
 ### データAPI(Cloudflare Worker)
 
 ランタイムのエラーや例外はこちらに出る。

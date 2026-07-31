@@ -18,8 +18,22 @@ use super::decorate_output::{compress, Block};
 use super::message::ChatMessage;
 use super::tools;
 
-/// `AgentRun` を使って、ツール呼び出しを含む複数ターンの会話を進める。
-pub async fn run_agent(
+/// 型つきエージェント実行の結果。
+pub struct TypedRun<T> {
+    /// スキーマに沿ってパースした値。
+    pub value: T,
+    /// パース前の本文そのもの。監査ログに残すために持つ。
+    pub raw: String,
+    /// 実行中に流れた reasoning とツール呼び出しの痕跡。装飾は呼び出し側に委ねる。
+    pub blocks: Vec<Block>,
+}
+
+/// `AgentRun` を使って、ツール呼び出しを含む複数ターンの会話を進め、最終出力を `T` として受け取る。
+///
+/// `T` のスキーマは `output_schema` として渡す。rig の openai プロバイダは Responses API を叩き、
+/// これを `text.format` の `json_schema`(strict) へ写す。制約が掛かるのは最終メッセージだけなので、
+/// 途中のターンでのツール呼び出しは妨げられない。
+pub async fn run_agent_typed<T>(
     client: &openai::Client,
     model: &str,
     effort: &str,
@@ -27,13 +41,18 @@ pub async fn run_agent(
     messages: Vec<ChatMessage>,
     db: &crate::db::BotDatabase,
     target_user_id: &str,
-) -> Result<String> {
-    let history: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
+) -> Result<TypedRun<T>>
+where
+    T: serde::de::DeserializeOwned + schemars::JsonSchema,
+{
+    // rig の `with_history` は prompt より前の履歴を受け取る契約なので、末尾は履歴から抜く。
+    // 両方に入れると直近の発言が二重にモデルへ渡る。
+    let mut history: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
     let prompt = history
-        .last()
-        .ok_or_else(|| anyhow::anyhow!("no messages to send"))?
-        .clone();
+        .pop()
+        .ok_or_else(|| anyhow::anyhow!("no messages to send"))?;
 
+    let schema = schemars::schema_for!(T);
     let tool_defs = tools::definitions();
     let tool_names: BTreeSet<String> = tool_defs
         .iter()
@@ -56,6 +75,7 @@ pub async fn run_agent(
                     .messages(history)
                     .preamble(system_prompt.to_owned())
                     .tools(tool_defs.clone()) // ここでツールを登録
+                    .output_schema(schema.clone()) // 最終出力を T のスキーマに縛る
                     .additional_params(json!({ "reasoning": { "effort": effort } }))
                     .build();
 
@@ -130,12 +150,17 @@ pub async fn run_agent(
             }
 
             // 最終ステップ
-            AgentRunStep::Done(_) => {
-                let out = response_blocks
-                    .into_iter()
-                    .map(Block::decorate)
-                    .collect::<Vec<_>>();
-                return Ok(out.join("\n"));
+            AgentRunStep::Done(response) => {
+                // `output` は最終ターンの連結テキスト。構造化出力ではこれが JSON 本体になる。
+                let raw = response.output;
+                let value = serde_json::from_str::<T>(&raw).map_err(|e| {
+                    anyhow::anyhow!("failed to parse structured output: {e}: {raw}")
+                })?;
+                return Ok(TypedRun {
+                    value,
+                    raw,
+                    blocks: response_blocks,
+                });
             }
         }
     }
@@ -143,6 +168,27 @@ pub async fn run_agent(
 
 /// ツールなしで1回だけモデルを呼び、応答を Block 列に畳んで返す。
 /// 整形は呼び出し側に委ねる(Discord へ貼るなら decorate、機械処理なら本文だけ拾う)。
+async fn complete_raw(
+    client: &openai::Client,
+    model: &str,
+    effort: &str,
+    preamble: &str,
+    prompt: RigMessage,
+    history: Vec<RigMessage>,
+) -> Result<Vec<Block>> {
+    let completion_model = client.completion_model(model);
+    let request = completion_model
+        .completion_request(prompt)
+        .messages(history)
+        .preamble(preamble.to_owned())
+        .additional_params(json!({"reasoning": {"effort": effort}}))
+        .build();
+
+    let response = completion_model.completion(request).await?;
+    Ok(compress(response.choice))
+}
+
+/// 会話ログだけを渡して1回だけ生成する。
 async fn complete_once(
     client: &openai::Client,
     model: &str,
@@ -151,23 +197,27 @@ async fn complete_once(
     messages: Vec<ChatMessage>,
 ) -> Result<Vec<Block>> {
     let mut rig_messages: Vec<RigMessage> = messages.iter().map(ChatMessage::to_rig).collect();
-
-    // rig の builder は prompt を末尾メッセージとして付けるので、
-    // バッファ末尾を prompt、それ以前を chat_history に割り当てる。
     let prompt = rig_messages
         .pop()
         .ok_or_else(|| anyhow::anyhow!("no messages to send"))?;
 
-    let completion_model = client.completion_model(model);
-    let request = completion_model
-        .completion_request(prompt)
-        .messages(rig_messages)
-        .preamble(preamble.to_owned())
-        .additional_params(json!({"reasoning": {"effort": effort}}))
-        .build();
+    complete_raw(client, model, effort, preamble, prompt, rig_messages).await
+}
 
-    let response = completion_model.completion(request).await?;
-    Ok(compress(response.choice))
+/// まなみのRPを生成する。
+pub async fn run_performer(
+    client: &openai::Client,
+    model: &str,
+    effort: &str,
+    preamble: &str,
+    history: Vec<ChatMessage>,
+    brief: &str,
+) -> Result<String> {
+    let history: Vec<RigMessage> = history.iter().map(ChatMessage::to_rig).collect();
+    let prompt = RigMessage::user(brief.to_owned());
+
+    let blocks = complete_raw(client, model, effort, preamble, prompt, history).await?;
+    Ok(text_only(blocks))
 }
 
 /// `CompletionClient` を使って1回だけのメッセージを生成する。ツールは使わない。

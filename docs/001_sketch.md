@@ -6,6 +6,7 @@
 - terraformの導入
 - 記憶の永続化とその呼び出し（`remember` / `recall` ツール、D1 + Vectorize）
 - 会話セッションの自動要約（`app/src/summarizer.rs`）
+- 応答生成の2段化（planner が `ResponsePlan` を決め、performer がまなみの言い回しに写す）
 
 ## これからの予定
 
