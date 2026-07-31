@@ -3,14 +3,9 @@
 /// コマンドの実装は各コマンドのモジュールに分けて実装する
 use std::pin::Pin;
 
-use std::time::Instant;
-
-use std::time::Duration;
-
 use serenity::all::ResolvedOption;
 
 pub mod allowreply;
-pub mod auto;
 pub mod bf;
 pub mod calc;
 pub mod calcsay;
@@ -20,7 +15,6 @@ pub mod clear;
 pub mod deletevar;
 pub mod dice;
 pub mod effort;
-pub mod endauto;
 pub mod fetch;
 pub mod help;
 pub mod imakita;
@@ -35,46 +29,14 @@ pub mod unjail;
 pub mod var;
 pub mod varbulk;
 
-// 全レスモード用のデータ?
-#[derive(Clone)]
-pub struct ReplyToAllModeData {
-    pub until: Option<Instant>,
-    pub model: String,
-    pub duration: Duration,
-}
+/// 応答生成の段を選ぶ必須オプション。`/model` と `/effort` が共有する。
+pub fn stage_option(description: &str) -> serenity::builder::CreateCommandOption {
+    use serenity::model::application::CommandOptionType;
 
-impl Default for ReplyToAllModeData {
-    fn default() -> Self {
-        Self::blank()
-    }
-}
-
-impl ReplyToAllModeData {
-    pub const fn blank() -> Self {
-        Self {
-            until: None,
-            model: String::new(),
-            duration: Duration::from_secs(0),
-        }
-    }
-
-    pub fn set(&mut self, model: String, duration: Duration) {
-        self.until = Instant::now().checked_add(duration);
-        self.model = model;
-        self.duration = duration;
-    }
-
-    pub fn renew(&mut self) {
-        self.until = Some(Instant::now() + self.duration);
-    }
-
-    const fn end(&mut self) {
-        self.until = None;
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.until.is_some_and(|until| until > Instant::now())
-    }
+    serenity::builder::CreateCommandOption::new(CommandOptionType::String, "stage", description)
+        .required(true)
+        .add_string_choice("planner（何を言うかを決めるフェーズ）", "planner")
+        .add_string_choice("performer（まなみのRPにするフェーズ）", "performer")
 }
 
 // これ以上この構造体に依存するコマンドが増える前にリファクタしたい
@@ -160,8 +122,6 @@ pub fn slash_commands(disabled_commands: &[&str]) -> Vec<ManamiSlashCommand> {
     [
         help::SLASH_HELP_COMMAND,
         ping::SLASH_PING_COMMAND,
-        auto::SLASH_AUTO_COMMAND,
-        endauto::SLASH_ENDAUTO_COMMAND,
         bf::SLASH_BF_COMMAND,
         channel::SLASH_CHANNEL_COMMAND,
         allowreply::SLASH_ALLOWREPLY_COMMAND,

@@ -78,7 +78,22 @@ async fn main() -> anyhow::Result<()> {
         .or_else(|| ai::available_models().into_iter().next())
         .unwrap_or_else(|| "gpt-5.4-nano".to_owned());
     let llm_effort = env_var("LLM_EFFORT").unwrap_or_else(|| "none".to_owned());
-    let ai = ai::ManamiAi::manami(&llm_base_url, &llm_api_key, &llm_model, &llm_effort)?;
+
+    // 雑談は2段で生成する。判断を担うプランナーには思考予算を割き、RPは小さいモデルと effort なしで回す。
+    // 段ごとの指定が無ければ、どちらも従来の LLM_MODEL / LLM_EFFORT にfallback.
+    let planner_model = env_var("LLM_PLANNER_MODEL").unwrap_or_else(|| llm_model.clone());
+    let planner_effort = env_var("LLM_PLANNER_EFFORT").unwrap_or_else(|| llm_effort.clone());
+    let performer_model = env_var("LLM_PERFORMER_MODEL").unwrap_or(llm_model);
+    let performer_effort = env_var("LLM_PERFORMER_EFFORT").unwrap_or_else(|| "none".to_owned());
+
+    let ai = ai::ManamiAi::manami(
+        &llm_base_url,
+        &llm_api_key,
+        &planner_model,
+        &planner_effort,
+        &performer_model,
+        &performer_effort,
+    )?;
 
     let workers_api_url = env_var("WORKERS_API_URL").context("'WORKERS_API_URL' was not found")?;
     let workers_api_token =

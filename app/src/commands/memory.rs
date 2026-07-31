@@ -107,13 +107,12 @@ async fn list(sub_options: &[ResolvedOption<'_>], ctx: &CommandContext<'_>) -> S
         .iter()
         .map(|m| format!("- `{}` {}", m.memory_id, m.title))
         .collect::<Vec<_>>();
-    let body = memories_string
-        .get(((page - 1) * 20)..(page * 20).min(memories_string.len()));
+    let body = memories_string.get(((page - 1) * 20)..(page * 20).min(memories_string.len()));
 
-    match body {
-        Some(body_vec) => format!("記憶の一覧だよ:\n{}", body_vec.join("\n")),
-        None => String::from("そのページは範囲外だよ")
-    }
+    body.map_or_else(
+        || "そのページは範囲外だよ".to_owned(),
+        |body_vec| format!("記憶の一覧だよ:\n{}", body_vec.join("\n")),
+    )
 }
 
 async fn get(sub_options: &[ResolvedOption<'_>], ctx: &CommandContext<'_>) -> String {

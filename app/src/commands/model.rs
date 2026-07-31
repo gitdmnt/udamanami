@@ -3,14 +3,16 @@ use serenity::{
     model::application::{CommandOptionType, ResolvedValue},
 };
 
-use crate::ai::available_models;
+use crate::ai::{available_models, Stage};
 
 use crate::{commands::ManamiSlashCommand, Bot};
 use serenity::model::application::ResolvedOption;
 
+use super::stage_option;
+
 pub const SLASH_MODEL_COMMAND: ManamiSlashCommand = ManamiSlashCommand {
     name: "model",
-    usage: "/model <model>",
+    usage: "/model <stage> [model]",
     description: "使うモデルを変えるよ！",
     register,
     run: |option, ctx| {
@@ -30,6 +32,7 @@ pub fn register() -> CreateCommand {
 
     CreateCommand::new("model")
         .description("使うモデルを変えるよ")
+        .add_option(stage_option("どのフェーズのモデルを変えるか"))
         .add_option(model_option)
 }
 
@@ -37,21 +40,32 @@ pub async fn run(option: Vec<ResolvedOption<'_>>, bot: &Bot) -> String {
     run_body(parse(option), bot).await
 }
 
-fn parse(option: Vec<ResolvedOption<'_>>) -> Option<String> {
-    option
-        .iter()
-        .fold(None, |model, option| match (option.name, &option.value) {
-            ("model", ResolvedValue::String(s)) => Some((*s).to_owned()),
-            _ => model,
-        })
+fn parse(option: Vec<ResolvedOption<'_>>) -> (Option<Stage>, Option<String>) {
+    option.iter().fold((None, None), |(stage, model), option| {
+        match (option.name, &option.value) {
+            ("stage", ResolvedValue::String(s)) => (Stage::parse(s), model),
+            ("model", ResolvedValue::String(s)) => (stage, Some((*s).to_owned())),
+            _ => (stage, model),
+        }
+    })
 }
 
-async fn run_body(model: Option<String>, bot: &Bot) -> String {
+async fn run_body((stage, model): (Option<Stage>, Option<String>), bot: &Bot) -> String {
+    let Some(stage) = stage else {
+        return "planner と performer, どっちのモデルを変えるか教えて！".to_owned();
+    };
+
     model.map_or_else(
-        || format!("今のモデルは{}だよ", bot.ai.get_model()),
+        || {
+            format!(
+                "今の{}のモデルは{}だよ",
+                stage.label(),
+                bot.ai.get_model(stage)
+            )
+        },
         |model| {
-            bot.ai.set_model(model.clone());
-            format!("モデルを{model}に変更したよ")
+            bot.ai.set_model(stage, model.clone());
+            format!("{}のモデルを{model}に変更したよ", stage.label())
         },
     )
 }
