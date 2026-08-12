@@ -30,6 +30,7 @@ serde = { version = "1.0.219", features = ["derive"] }
 schemars = "1.0.4"
 chrono = { version = "0.4.41", features = ["serde"] }
 udamanami-shared = { path = "../shared" }
+chrono-tz = "0.10.4"
 
 [lints.clippy]
 nursery = { level = "warn", priority = -1 }
