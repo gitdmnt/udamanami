@@ -6,7 +6,7 @@ pub struct Watch;
 #[serenity::async_trait]
 impl Tool for Watch {
     async fn call(_: ToolCallContext<'_>) -> Result<String, String> {
-        let now = chrono::Utc::now();
+        let now = chrono::Utc::now().with_timezone(&chrono_tz::Asia::Tokyo);
         let formatted_time = now.format("%Y-%m-%d %H:%M:%S").to_string();
         Ok(format!(
             "まなみの時計によると、現在時刻は {formatted_time} だよ！"
