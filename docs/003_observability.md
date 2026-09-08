@@ -20,6 +20,19 @@ Worker側のsecret(`OPENAI_API_KEY` / `AUTH_TOKEN`)は Cloudflare 側に `wrangl
 
 ## ログの見方
 
+### 前提: 2026-09-09 以前は、botのログは1行も存在しなかった
+
+botは `tracing` のマクロを各所で呼んでいたが、`tracing-subscriber` を依存に持たず、subscriberも初期化していなかった。
+subscriberを張らないtracingのマクロは出力先を持たないので、`info!` も `error!` も静かに捨てられる。
+このため以下のgrep手順は、書かれてはいたが一度も何かを返したことがなかった。
+
+実際、2026-09-02から6日半にわたって自動要約が失敗し続けた事故では、`error!("summarizer: failed on ...")` が833回評価されながら `docker logs` に1行も残らなかった。
+`docker logs` に出ていたのはentrypointの1行とパニックだけで、全部で5行だった。
+
+現在は `main()` の先頭で subscriber を初期化している。
+既定は `info`、絞りたいときは `RUST_LOG` で上書きする。
+e2-microのjson-fileドライバは 10MB × 3 に制限されているので、出力量が読めないうちは `docker logs udamanami | wc -l` で実測すること。
+
 ### bot本体(GCE)
 
 コンテナ名は `udamanami`。
@@ -92,3 +105,50 @@ wrangler d1 migrations list udamanami --remote
 
 `--json` の出力は先頭が長いので、`tail` で切ると配列の頭が欠けて誤読しやすい。
 全体をパースして読むこと。
+
+## D1 の上限で踏んだ罠
+
+D1は**1文あたりのbindパラメータを100個までしか受け付けない**。
+この上限は `d1.batch()` の中でも文ごとに個別適用されるので、batchにまとめても緩和されない。
+超えるとprepareの時点で `too many SQL variables at offset N: SQLITE_ERROR` になり、batchはトランザクションなので同じbatch内の他の文もまとめてロールバックする。
+
+2026-09の事故はこれだった。
+`PUT /channel/summary` の確定UPDATEが `channel_id` 1個 + `message_id` 最大200個をバインドしていて、未要約が100件たまったチャンネルでは必ず101個以上になった。
+確定が失敗する一方でLLM呼び出しと記憶の作成はその前に完了していたため、10分ごとに同じ200件を要約し直して833件の重複記憶を作った。
+
+不変条件は2つに分かれており、両方揃わないと閉じない。
+
+- 「コードが定数を超えない」: `shared/src/lib.rs` の `confirm_pending_chunks` のユニットテスト(`cargo test --workspace` で走る)
+- 「定数がプラットフォームの実際の上限を超えていない」: `workers/tests/d1_bind_probe.sh`(実D1に投げる。読み書きは発生しない)
+
+`workers/tests/summary_state.sh` は素のsqlite3を使うのでこの上限を検査できない。
+素のSQLiteの `SQLITE_MAX_VARIABLE_NUMBER` は32766なので、201バインドの文もそこでは通る。
+
+Vectorizeの `deleteByIds` にも同じく100件の上限がある(限界表にもAPIリファレンスにも記載が無いが、超えると `too many ids in payload; max id count is 100 [code: 40007]` が返る)。
+
+### 暴走の指紋を見るクエリ
+
+このクラスの事故は、根本原因が何であれ次の2つで見つかる。
+どちらも読み取りのみ。
+
+```sh
+# 進捗が止まったチャンネル。15〜30分あけて2回引いて、pending_countが動いていなければ再発。
+wrangler d1 execute udamanami --remote --json --command \
+  "SELECT name, pending_count, last_summarized_message_id IS NULL AS stuck
+   FROM channel WHERE pending_count > 0 ORDER BY pending_count DESC"
+
+# 同一の会話を何度も要約していないか。occurred_at の重複が指紋になる。
+wrangler d1 execute udamanami --remote --json --command \
+  "SELECT channel_name, occurred_at, COUNT(*) AS n FROM memory
+   WHERE source='auto_summary' GROUP BY 1,2 HAVING n > 1 ORDER BY n DESC"
+```
+
+ただし後者は、LLM呼び出しの前で失敗する経路(`skip_reason` 分岐)では記憶が作られないので反応しない。
+費用は出ないが進捗は止まるので、その変種は前者でしか見つからない。
+
+### memory.timestamp は時系列順に並ばない
+
+`memory.timestamp` はJavaScriptの `Date` 文字列(`"Fri Sep 04 2026 08:22:10 GMT+0000 ..."`)で入っている。
+辞書順が時系列順にならないので、この列への `MIN` / `MAX` / `ORDER BY` は静かに誤った答えを返す。
+`'F'` < `'T'` なのでFridayがThursdayより前に並ぶ。
+障害調査で「いつから始まったか」を引くときは、この列を素直に使わないこと。

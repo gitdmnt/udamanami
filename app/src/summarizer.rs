@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use dashmap::DashSet;
+use dashmap::DashMap;
 use serenity::model::id::{ChannelId, UserId};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tracing::{error, info, warn};
@@ -20,8 +20,14 @@ const IDLE_GAP: TimeDelta = TimeDelta::hours(6);
 const SESSION_MESSAGE_LIMIT: u32 = 100;
 const MAX_MESSAGES_PER_RUN: usize = 200;
 
-/// 1 tick が LLM を叩く上限。
+/// 1 tick が LLM を叩く上限。見送ったチャンネルは枠を消費しない。
 const MAX_CHANNELS_PER_TICK: usize = 3;
+/// 連続失敗がこの回数に達したチャンネルは、プロセスが生きている間、自動要約から外す。
+///
+/// 要約は LLM 呼び出しと記憶の作成が終わってから進捗を確定する。確定が失敗し続けると、
+/// 同じ範囲を何度でも要約し直して費用だけが積み上がる。実際に 2026-09 の事故では
+/// 833 回ぶんの要約が捨てられた。ここで打ち切って、支払いを有界にする。
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 /// 要約する価値があるとみなす人間の発言数の下限。
 const MIN_HUMAN_MESSAGES: usize = 1;
 /// 要約する価値があるとみなす人間の発言の総文字数の下限。
@@ -51,20 +57,20 @@ pub async fn run(bot: Arc<Bot>, http: Arc<serenity::http::Http>) {
     };
     info!("summarizer: started (self={my_userid})");
 
-    // 直前に失敗したチャンネルは、次に候補へ現れたとき1回だけ見送る。累積でも指数でもない。
-    let backoff: DashSet<ChannelId> = DashSet::new();
+    // チャンネルごとの連続失敗回数。成功したら消す。
+    let failures: DashMap<ChannelId, u32> = DashMap::new();
 
     let mut ticker = interval(TICK);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
-        tick_once(&bot, my_userid, &backoff).await;
+        tick_once(&bot, my_userid, &failures).await;
     }
 }
 
 /// 1 tick 分の処理。候補を引いて先頭から順に要約する。
 /// tick 同士は重ならない(このループの中で await するため)。
-async fn tick_once(bot: &Bot, my_userid: UserId, backoff: &DashSet<ChannelId>) {
+async fn tick_once(bot: &Bot, my_userid: UserId, failures: &DashMap<ChannelId, u32>) {
     let now = Utc::now();
     let candidates = match bot
         .database
@@ -78,34 +84,65 @@ async fn tick_once(bot: &Bot, my_userid: UserId, backoff: &DashSet<ChannelId>) {
         }
     };
 
-    for candidate in candidates.into_iter().take(MAX_CHANNELS_PER_TICK) {
+    let found = candidates.len();
+    let mut attempted = 0_usize;
+
+    for candidate in candidates {
+        if attempted >= MAX_CHANNELS_PER_TICK {
+            break;
+        }
         let Ok(channel_id) = candidate.channel_id.parse::<u64>().map(ChannelId::from) else {
             error!("summarizer: invalid channel_id: {}", candidate.channel_id);
             continue;
         };
 
-        // 直前に失敗したチャンネルは、この登場を1回だけ見送る。
-        if backoff.remove(&channel_id).is_some() {
+        // 打ち切ったチャンネルは飛ばす。候補は first_pending_at 昇順で返るので、
+        // 飛ばす側で枠を消費すると、詰まった1チャンネルが他を飢えさせる。
+        if failures
+            .get(&channel_id)
+            .is_some_and(|strikes| *strikes >= MAX_CONSECUTIVE_FAILURES)
+        {
             continue;
         }
 
+        attempted += 1;
         match summarize_channel(bot, my_userid, &candidate, now).await {
-            Ok(outcome) => match outcome {
-                Outcome::Summarized { title } => {
-                    info!("summarizer: remembered {title}");
+            Ok(outcome) => {
+                failures.remove(&channel_id);
+                match outcome {
+                    Outcome::Summarized { title } => {
+                        info!("summarizer: remembered {title}");
+                    }
+                    Outcome::Skipped(reason) => {
+                        info!("summarizer: skipped #{} ({reason})", candidate.name);
+                    }
+                    Outcome::Nothing => {}
                 }
-                Outcome::Skipped(reason) => {
-                    info!("summarizer: skipped #{} ({reason})", candidate.name);
-                }
-                Outcome::Nothing => {}
-            },
+            }
             Err(e) => {
                 // 進捗は前進していないので、次の機会に同じ範囲がリトライされる。
-                backoff.insert(channel_id);
-                error!("summarizer: failed on #{}: {e:?}", candidate.name);
+                let strikes = {
+                    let mut entry = failures.entry(channel_id).or_insert(0);
+                    *entry += 1;
+                    *entry
+                };
+                error!(
+                    "summarizer: failed on #{} ({strikes}/{MAX_CONSECUTIVE_FAILURES}): {e:?}",
+                    candidate.name
+                );
+                if strikes >= MAX_CONSECUTIVE_FAILURES {
+                    error!(
+                        "summarizer: giving up on #{} after {strikes} consecutive failures; \
+                         restart the bot after fixing the cause",
+                        candidate.name
+                    );
+                }
             }
         }
     }
+
+    // このtick行が出ていなければ、そもそも要約タスクが回っていない。
+    info!("summarizer: tick candidates={found} attempted={attempted}");
 }
 
 /// 1チャンネル分の未要約範囲を要約して記憶に落とす。

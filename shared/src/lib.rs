@@ -260,6 +260,73 @@ pub struct MemoryDetail {
     pub occurred_at: Option<String>,
 }
 
+// ---------------- プラットフォームの上限 ----------------
+
+/// D1 が 1 文あたりに受け付ける bind パラメータの上限。
+///
+/// `d1.batch()` に入れても文ごとに個別適用されるので、batch にまとめても緩和されない。
+/// 超えると prepare の時点で `too many SQL variables ... SQLITE_ERROR` になり、
+/// batch はトランザクションなので同じ batch の他の文もまとめてロールバックする。
+/// <https://developers.cloudflare.com/d1/platform/limits/>
+pub const D1_MAX_BOUND_PARAMS: usize = 100;
+
+/// Vectorize の `deleteByIds` 1 リクエストに載せられる id の上限。
+///
+/// 限界表にもAPIリファレンスにも記載が無いが、超えると API が
+/// `too many ids in payload; max id count is 100 [code: 40007]` を返す(2026-09 実測)。
+pub const VECTORIZE_MAX_DELETE_IDS: usize = 100;
+
+/// 固定バインドが `fixed` 個ある文に、あと何個の可変バインドを載せられるか。
+///
+/// 文に述語を足してバインドが増えたときは、`fixed` を必ず一緒に増やすこと。
+/// ここを更新し忘れると、上限を超えるのは実行時だけで、テストは緑のまま通る。
+#[must_use]
+pub const fn max_variable_bindings(fixed: usize) -> usize {
+    D1_MAX_BOUND_PARAMS.saturating_sub(fixed)
+}
+
+/// 確定 UPDATE 1 文ぶんの SQL とバインド値。
+#[derive(Debug, PartialEq, Eq)]
+pub struct ConfirmChunk {
+    pub sql: String,
+    pub bindings: Vec<String>,
+}
+
+/// `PUT /channel/summary` の確定 UPDATE を、D1 のバインド上限を超えない複数の文に分割する。
+///
+/// 各文は channel_id で1個バインドするので、1文に載る message_id は
+/// [`max_variable_bindings(1)`] 件まで。呼び出し側はこれらを cursor 文と同じ
+/// `d1.batch` に入れること。batch はトランザクションなので、分割しても原子性は保たれる。
+///
+/// 分割しても結果は1文のときと同じになる。更新条件は行ごとに独立で、`chunks()` の
+/// 返す部分集合は互いに素なので、和集合は入力の集合に一致する。
+/// 行トリガ `message_summary_state_after_confirm` の発火回数も文数ではなく行数で決まる。
+#[must_use]
+pub fn confirm_pending_chunks(
+    channel_id: &ChannelId,
+    message_ids: &[MessageId],
+) -> Vec<ConfirmChunk> {
+    const IDS_PER_STATEMENT: usize = max_variable_bindings(1);
+
+    message_ids
+        .chunks(IDS_PER_STATEMENT)
+        .map(|ids| {
+            let placeholders = vec!["?"; ids.len()].join(", ");
+            let mut bindings = Vec::with_capacity(ids.len() + 1);
+            bindings.push(channel_id.clone());
+            bindings.extend(ids.iter().cloned());
+            ConfirmChunk {
+                sql: format!(
+                    "UPDATE message SET summary_pending = 0
+                     WHERE channel_id = ? AND summary_pending = 1
+                       AND message_id IN ({placeholders})"
+                ),
+                bindings,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +385,50 @@ mod tests {
         // 名前すら空なら、注入すべきブロックは無い。
         let block = profile("  ", Some(""), None, None).to_prompt();
         assert!(block.is_empty());
+    }
+
+    #[test]
+    fn confirm_chunks_never_exceed_d1_bound_parameter_limit() {
+        // これがこの事故で落ちるべきだったテスト。
+        // 修正前は全 message_id を1文に載せていたので、n=100 で 101 バインドになり
+        // D1 が prepare の時点で拒否していた。件数トリガが pending_count >= 100 なので、
+        // 100..=200 は「たまたま起きうる値」ではなく「必ず通る値」である。
+        for n in [0_usize, 1, 98, 99, 100, 101, 199, 200, 201, 1000] {
+            let ids: Vec<MessageId> = (0..n).map(|i| format!("m{i}")).collect();
+            let chunks = confirm_pending_chunks(&"c1".to_owned(), &ids);
+
+            let mut seen: Vec<MessageId> = Vec::new();
+            for chunk in &chunks {
+                assert!(
+                    chunk.bindings.len() <= D1_MAX_BOUND_PARAMS,
+                    "n={n}: {} バインドは D1 の上限 {D1_MAX_BOUND_PARAMS} を超える",
+                    chunk.bindings.len()
+                );
+                // プレースホルダとバインド値の個数がずれると、D1 は
+                // "Wrong number of parameter bindings" で落ちる。
+                assert_eq!(chunk.sql.matches('?').count(), chunk.bindings.len());
+                // 先頭は channel_id、残りが message_id。
+                assert_eq!(chunk.bindings[0], "c1");
+                seen.extend_from_slice(&chunk.bindings[1..]);
+            }
+            // 取りこぼし・重複・順序の入れ替わりがあると、確定されない行が
+            // 永久に pending のまま残り、同じ暴走が再発する。
+            assert_eq!(seen, ids, "n={n}: 分割で ID の集合が変わった");
+        }
+    }
+
+    #[test]
+    fn max_variable_bindings_leaves_room_for_fixed_binds() {
+        assert_eq!(max_variable_bindings(0), D1_MAX_BOUND_PARAMS);
+        assert_eq!(max_variable_bindings(1), D1_MAX_BOUND_PARAMS - 1);
+        // 固定バインドが上限を食い切っても 0 に飽和するだけで、panic しない。
+        assert_eq!(max_variable_bindings(D1_MAX_BOUND_PARAMS + 5), 0);
+    }
+
+    #[test]
+    fn confirm_chunks_are_empty_for_no_ids() {
+        // 空なら文を1つも作らない。空の IN () は SQL として不正なので、
+        // 呼び出し側が batch に空文を入れてしまうことを防ぐ。
+        assert!(confirm_pending_chunks(&"c1".to_owned(), &[]).is_empty());
     }
 }

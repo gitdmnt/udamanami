@@ -1,4 +1,15 @@
 #!/bin/sh
+#
+# このスクリプトが検査するのは migration 0005 の「SQL としての意味」だけである。
+#
+# 素の sqlite3 を mktemp のファイルに流しており、D1 の API 層を一切通らない。
+# したがって D1 側の上限(1文あたり bind パラメータ 100 個など)は原理的に検査できない。
+# 素の SQLite の SQLITE_MAX_VARIABLE_NUMBER は 32766 なので、201 バインドの文もここでは通る。
+# 実際 2026-09 の事故は、このスクリプトが緑のまま本番で 100% 失敗していた。
+#
+# バインド数の不変条件は shared/src/lib.rs の confirm_pending_chunks のテストが守る。
+# 「D1 の実際の上限が 100 のままか」は workers/tests/d1_bind_probe.sh でしか確かめられない。
+#
 set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
