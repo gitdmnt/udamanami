@@ -20,6 +20,10 @@ Worker側のsecret(`OPENAI_API_KEY` / `AUTH_TOKEN`)は Cloudflare 側に `wrangl
 
 ## ログの見方
 
+botのログの既定レベルは `info`。
+絞りたいときは `RUST_LOG` で上書きする。
+e2-microのjson-fileドライバは 10MB × 3 に制限されているので、出力量が読めないうちは `docker logs udamanami | wc -l` で実測する。
+
 ### bot本体(GCE)
 
 コンテナ名は `udamanami`。
@@ -92,3 +96,48 @@ wrangler d1 migrations list udamanami --remote
 
 `--json` の出力は先頭が長いので、`tail` で切ると配列の頭が欠けて誤読しやすい。
 全体をパースして読むこと。
+
+## D1 と Vectorize の上限
+
+D1は**1文あたりのbindパラメータを100個までしか受け付けない**。
+この上限は `d1.batch()` の中でも文ごとに個別適用されるので、batchにまとめても緩和されない。
+
+不変条件は2つに分かれており、両方揃わないと閉じない。
+
+- 「コードが定数を超えない」: `shared/src/lib.rs` の `confirm_pending_chunks` のユニットテスト(`cargo test --workspace` で走る)
+- 「定数がプラットフォームの実際の上限を超えていない」: `?` を100個と101個並べた `SELECT 1 WHERE 1 IN (...)` を実D1に投げ、101個だけが `too many SQL variables` で落ちることを確かめる(値を渡さないのでprepareで止まり、読み書きは発生しない)
+
+`workers/tests/summary_state.sh` は素のsqlite3を使うのでこの上限を検査できない。
+素のSQLiteの `SQLITE_MAX_VARIABLE_NUMBER` は32766なので、201バインドの文もそこでは通る。
+
+Vectorizeの `deleteByIds` にも同じく100件の上限がある(限界表にもAPIリファレンスにも記載が無いが、超えると `too many ids in payload; max id count is 100 [code: 40007]` が返る)。
+
+### 暴走の指紋を見るクエリ
+
+このクラスの事故は、根本原因が何であれ次の2つで見つかる。
+どちらも読み取りのみ。
+
+```sh
+# 進捗が止まったチャンネル。15〜30分あけて2回引いて、pending_countが動いていなければ再発。
+wrangler d1 execute udamanami --remote --json --command \
+  "SELECT name, pending_count, last_summarized_message_id IS NULL AS stuck
+   FROM channel WHERE pending_count > 0 ORDER BY pending_count DESC"
+
+# 同一の会話を何度も要約していないか。occurred_at の重複が指紋になる。
+wrangler d1 execute udamanami --remote --json --command \
+  "SELECT channel_name, occurred_at, COUNT(*) AS n FROM memory
+   WHERE source='auto_summary' GROUP BY 1,2 HAVING n > 1 ORDER BY n DESC"
+```
+
+ただし後者は、LLM呼び出しの前で失敗する経路(`skip_reason` 分岐)では記憶が作られないので反応しない。
+費用は出ないが進捗は止まるので、その変種は前者でしか見つからない。
+
+連続失敗でチャンネルを自動要約から外したときは、その瞬間にデバッグチャンネルへ1回だけ通知が出る。
+再起動するまで止まったままなので、通知を見たら原因を直して再起動する。
+
+### memory.timestamp は時系列順に並ばない
+
+`memory.timestamp` はJavaScriptの `Date` 文字列(`"Fri Sep 04 2026 08:22:10 GMT+0000 ..."`)で入っている。
+辞書順が時系列順にならないので、この列への `MIN` / `MAX` / `ORDER BY` は静かに誤った答えを返す。
+`'F'` < `'T'` なのでFridayがThursdayより前に並ぶ。
+障害調査で「いつから始まったか」を引くときは、この列を素直に使わないこと。

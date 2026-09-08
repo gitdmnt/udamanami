@@ -14,9 +14,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --workspace --all-features
+      - name: Check workers
+        run: |
+          cargo clippy --manifest-path workers/Cargo.toml \
+            --target wasm32-unknown-unknown --all-targets -- -D warnings
       - name: Test D1 summary state
         run: ./workers/tests/summary_state.sh
       - name: Check

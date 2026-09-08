@@ -260,6 +260,50 @@ pub struct MemoryDetail {
     pub occurred_at: Option<String>,
 }
 
+// ---------------- プラットフォームの上限 ----------------
+
+/// D1 が 1 文あたりに受け付ける bind パラメータの上限。
+///
+/// `d1.batch()` に入れても文ごとに個別適用されるので、batch にまとめても緩和されない。
+/// <https://developers.cloudflare.com/d1/platform/limits/>
+pub const D1_MAX_BOUND_PARAMS: usize = 100;
+
+/// 確定 UPDATE 1 文ぶんの SQL とバインド値。
+#[derive(Debug)]
+pub struct ConfirmChunk {
+    pub sql: String,
+    pub bindings: Vec<String>,
+}
+
+/// `PUT /channel/summary` の確定対象 message_id から、D1 のバインド上限に収まる UPDATE 文の列を返す。
+/// 呼び出し側はこれらを cursor 文と同じ `d1.batch` に入れること。
+#[must_use]
+pub fn confirm_pending_chunks(
+    channel_id: &ChannelId,
+    message_ids: &[MessageId],
+) -> Vec<ConfirmChunk> {
+    // channel_id が1個ぶん占める。
+    const IDS_PER_STATEMENT: usize = D1_MAX_BOUND_PARAMS - 1;
+
+    message_ids
+        .chunks(IDS_PER_STATEMENT)
+        .map(|ids| {
+            let placeholders = vec!["?"; ids.len()].join(", ");
+            let mut bindings = Vec::with_capacity(ids.len() + 1);
+            bindings.push(channel_id.clone());
+            bindings.extend(ids.iter().cloned());
+            ConfirmChunk {
+                sql: format!(
+                    "UPDATE message SET summary_pending = 0
+                     WHERE channel_id = ? AND summary_pending = 1
+                       AND message_id IN ({placeholders})"
+                ),
+                bindings,
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -318,5 +362,38 @@ mod tests {
         // 名前すら空なら、注入すべきブロックは無い。
         let block = profile("  ", Some(""), None, None).to_prompt();
         assert!(block.is_empty());
+    }
+
+    #[test]
+    fn confirm_chunks_never_exceed_d1_bound_parameter_limit() {
+        for n in [0_usize, 1, 98, 99, 100, 101, 199, 200, 201, 1000] {
+            let ids: Vec<MessageId> = (0..n).map(|i| format!("m{i}")).collect();
+            let chunks = confirm_pending_chunks(&"c1".to_owned(), &ids);
+
+            let mut seen: Vec<MessageId> = Vec::new();
+            for chunk in &chunks {
+                assert!(
+                    chunk.bindings.len() <= D1_MAX_BOUND_PARAMS,
+                    "n={n}: {} バインドは D1 の上限 {D1_MAX_BOUND_PARAMS} を超える",
+                    chunk.bindings.len()
+                );
+                // プレースホルダとバインド値の個数がずれると、D1 は
+                // "Wrong number of parameter bindings" で落ちる。
+                assert_eq!(chunk.sql.matches('?').count(), chunk.bindings.len());
+                // 先頭は channel_id、残りが message_id。
+                assert_eq!(chunk.bindings[0], "c1");
+                seen.extend_from_slice(&chunk.bindings[1..]);
+            }
+            // 取りこぼし・重複・順序の入れ替わりがあると、確定されない行が
+            // 永久に pending のまま残り、同じ暴走が再発する。
+            assert_eq!(seen, ids, "n={n}: 分割で ID の集合が変わった");
+        }
+    }
+
+    #[test]
+    fn confirm_chunks_are_empty_for_no_ids() {
+        // 空なら文を1つも作らない。空の IN () は SQL として不正なので、
+        // 呼び出し側が batch に空文を入れてしまうことを防ぐ。
+        assert!(confirm_pending_chunks(&"c1".to_owned(), &[]).is_empty());
     }
 }

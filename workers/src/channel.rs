@@ -1,7 +1,10 @@
 //! チャンネルのCRUD
 
 use serde::Deserialize;
-use udamanami_shared::{Channel, ChannelReplySetting, SetChannelSummarized, SummarizeCandidate};
+use udamanami_shared::{
+    confirm_pending_chunks, Channel, ChannelReplySetting, SetChannelSummarized,
+    SummarizeCandidate,
+};
 use worker::*;
 
 pub async fn upsert_channel(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
@@ -151,17 +154,14 @@ pub async fn set_summarized(mut req: Request, ctx: RouteContext<()>) -> Result<R
 
     let d1 = ctx.env.d1("DB")?;
 
-    let placeholders = vec!["?"; progress.message_ids.len()].join(", ");
-    let mut confirmed_bindings = Vec::with_capacity(progress.message_ids.len() + 1);
-    confirmed_bindings.push(progress.channel_id.clone().into());
-    confirmed_bindings.extend(progress.message_ids.into_iter().map(Into::into));
-    let confirm = d1
-        .prepare(format!(
-            "UPDATE message SET summary_pending = 0
-             WHERE channel_id = ? AND summary_pending = 1
-               AND message_id IN ({placeholders})"
-        ))
-        .bind(&confirmed_bindings)?;
+    // 確定 UPDATE は D1 のバインド上限に収まるよう分割する。
+    let mut statements = confirm_pending_chunks(&progress.channel_id, &progress.message_ids)
+        .into_iter()
+        .map(|chunk| {
+            let bindings = chunk.bindings.into_iter().map(Into::into).collect::<Vec<_>>();
+            d1.prepare(chunk.sql).bind(&bindings)
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     // D1 batch is transactional: exact-row confirmation and the compatibility
     // cursor either both commit or both roll back.
@@ -196,7 +196,8 @@ pub async fn set_summarized(mut req: Request, ctx: RouteContext<()>) -> Result<R
             progress.last_summarized_at.into(),
             last_message_id.into(),
         ])?;
-    let _ = d1.batch(vec![confirm, cursor]).await?;
+    statements.push(cursor);
+    let _ = d1.batch(statements).await?;
 
     Response::ok("Channel summary progress updated successfully")
 }

@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use chrono::{DateTime, TimeDelta, Utc};
-use dashmap::DashSet;
+use dashmap::DashMap;
 use serenity::model::id::{ChannelId, UserId};
 use tokio::time::{interval, Duration, MissedTickBehavior};
 use tracing::{error, info, warn};
@@ -20,8 +20,10 @@ const IDLE_GAP: TimeDelta = TimeDelta::hours(6);
 const SESSION_MESSAGE_LIMIT: u32 = 100;
 const MAX_MESSAGES_PER_RUN: usize = 200;
 
-/// 1 tick が LLM を叩く上限。
+/// 1 回の要約で何回 LLM API を叩けちゃうのか
 const MAX_CHANNELS_PER_TICK: usize = 3;
+/// 連続失敗がこの回数に達したチャンネルは自動要約から外す (API 叩きに失敗されると困るため)。
+const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 /// 要約する価値があるとみなす人間の発言数の下限。
 const MIN_HUMAN_MESSAGES: usize = 1;
 /// 要約する価値があるとみなす人間の発言の総文字数の下限。
@@ -51,20 +53,24 @@ pub async fn run(bot: Arc<Bot>, http: Arc<serenity::http::Http>) {
     };
     info!("summarizer: started (self={my_userid})");
 
-    // 直前に失敗したチャンネルは、次に候補へ現れたとき1回だけ見送る。累積でも指数でもない。
-    let backoff: DashSet<ChannelId> = DashSet::new();
+    // 各チャンネルが要約に連続で失敗した回数。
+    let failures: DashMap<ChannelId, u32> = DashMap::new();
 
     let mut ticker = interval(TICK);
     ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
     loop {
         ticker.tick().await;
-        tick_once(&bot, my_userid, &backoff).await;
+        tick_once(&bot, &http, my_userid, &failures).await;
     }
 }
 
 /// 1 tick 分の処理。候補を引いて先頭から順に要約する。
-/// tick 同士は重ならない(このループの中で await するため)。
-async fn tick_once(bot: &Bot, my_userid: UserId, backoff: &DashSet<ChannelId>) {
+async fn tick_once(
+    bot: &Bot,
+    http: &serenity::http::Http,
+    my_userid: UserId,
+    failures: &DashMap<ChannelId, u32>,
+) {
     let now = Utc::now();
     let candidates = match bot
         .database
@@ -78,33 +84,91 @@ async fn tick_once(bot: &Bot, my_userid: UserId, backoff: &DashSet<ChannelId>) {
         }
     };
 
-    for candidate in candidates.into_iter().take(MAX_CHANNELS_PER_TICK) {
+    let found = candidates.len();
+    let mut attempted = 0_usize;
+
+    for candidate in candidates {
+        if attempted >= MAX_CHANNELS_PER_TICK {
+            break;
+        }
         let Ok(channel_id) = candidate.channel_id.parse::<u64>().map(ChannelId::from) else {
             error!("summarizer: invalid channel_id: {}", candidate.channel_id);
             continue;
         };
 
-        // 直前に失敗したチャンネルは、この登場を1回だけ見送る。
-        if backoff.remove(&channel_id).is_some() {
+        if failures
+            .get(&channel_id)
+            .is_some_and(|strikes| *strikes >= MAX_CONSECUTIVE_FAILURES)
+        {
             continue;
         }
 
+        attempted += 1;
         match summarize_channel(bot, my_userid, &candidate, now).await {
-            Ok(outcome) => match outcome {
-                Outcome::Summarized { title } => {
-                    info!("summarizer: remembered {title}");
+            Ok(outcome) => {
+                failures.remove(&channel_id);
+                match outcome {
+                    Outcome::Summarized { title } => {
+                        info!("summarizer: remembered {title}");
+                    }
+                    Outcome::Skipped(reason) => {
+                        info!("summarizer: skipped #{} ({reason})", candidate.name);
+                    }
+                    Outcome::Nothing => {}
                 }
-                Outcome::Skipped(reason) => {
-                    info!("summarizer: skipped #{} ({reason})", candidate.name);
-                }
-                Outcome::Nothing => {}
-            },
+            }
             Err(e) => {
                 // 進捗は前進していないので、次の機会に同じ範囲がリトライされる。
-                backoff.insert(channel_id);
-                error!("summarizer: failed on #{}: {e:?}", candidate.name);
+                let strikes = {
+                    let mut entry = failures.entry(channel_id).or_insert(0);
+                    *entry += 1;
+                    *entry
+                };
+                error!(
+                    "summarizer: failed on #{} ({strikes}/{MAX_CONSECUTIVE_FAILURES}): {e:?}",
+                    candidate.name
+                );
+                if strikes == MAX_CONSECUTIVE_FAILURES {
+                    error!(
+                        "summarizer: giving up on #{} after {strikes} consecutive failures; \
+                         restart the bot after fixing the cause",
+                        candidate.name
+                    );
+                    notify_given_up(bot, http, &candidate, strikes, &e).await;
+                }
             }
         }
+    }
+
+    // このtick行が出ていなければ、そもそも要約タスクが回っていない。
+    info!("summarizer: tick candidates={found} attempted={attempted}");
+}
+
+/// 打ち切りをデバッグチャンネルで通知するよ
+async fn notify_given_up(
+    bot: &Bot,
+    http: &serenity::http::Http,
+    candidate: &udamanami_shared::SummarizeCandidate,
+    strikes: u32,
+    error: &anyhow::Error,
+) {
+    if bot.debug_channel_id == ChannelId::default() {
+        return;
+    }
+
+    // Discord の2000文字上限に当たると通知ごと落ちるからエラーの本文は省略する
+    let detail: String = format!("{error:?}").chars().take(500).collect();
+    let message = format!(
+        "自動要約を停止しました。\n\
+         チャンネル: #{} ({})\n\
+         連続失敗: {strikes}回\n\
+         最後のエラー: {detail}\n\
+         原因を直して bot を再起動するまで、このチャンネルの自動要約は止まったままです。",
+        channel_name(candidate),
+        candidate.channel_id,
+    );
+    if let Err(e) = bot.debug_channel_id.say(http, message).await {
+        warn!("summarizer: failed to notify debug channel: {e:?}");
     }
 }
 

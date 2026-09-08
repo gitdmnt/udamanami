@@ -1,4 +1,10 @@
 #!/bin/sh
+#
+# migration 0005 の「SQL としての意味」だけを検査する。
+# 素の sqlite3 を使うので、D1 の API 層の上限(1文あたり bind パラメータ 100 個)は検査できない。
+# バインド数の不変条件は shared/src/lib.rs の confirm_pending_chunks のテストが守る。
+# D1 の実際の上限が 100 のままかは、実 D1 に投げて確かめるしかない。
+#
 set -eu
 
 repo_dir=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
