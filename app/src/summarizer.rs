@@ -20,10 +20,9 @@ const IDLE_GAP: TimeDelta = TimeDelta::hours(6);
 const SESSION_MESSAGE_LIMIT: u32 = 100;
 const MAX_MESSAGES_PER_RUN: usize = 200;
 
-/// 1 tick が LLM を叩く上限。見送ったチャンネルは枠を消費しない。
+/// 1 回の要約で何回 LLM API を叩けちゃうのか
 const MAX_CHANNELS_PER_TICK: usize = 3;
-/// 連続失敗がこの回数に達したチャンネルは、プロセスが生きている間、自動要約から外す。
-/// 確定できないまま回り続けると同じ範囲を要約し直す費用だけが積み上がるので、支払いを有界にする。
+/// 連続失敗がこの回数に達したチャンネルは自動要約から外す (API 叩きに失敗されると困るため)。
 const MAX_CONSECUTIVE_FAILURES: u32 = 5;
 /// 要約する価値があるとみなす人間の発言数の下限。
 const MIN_HUMAN_MESSAGES: usize = 1;
