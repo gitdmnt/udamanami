@@ -127,7 +127,7 @@ async fn tick_once(
                 error!(
                     "summarizer: failed on #{} ({strikes}/{MAX_CONSECUTIVE_FAILURES}): {e:?}",
                     candidate.name
-                );。
+                );
                 if strikes == MAX_CONSECUTIVE_FAILURES {
                     error!(
                         "summarizer: giving up on #{} after {strikes} consecutive failures; \
