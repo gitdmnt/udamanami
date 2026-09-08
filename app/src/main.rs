@@ -21,9 +21,7 @@ fn env_var_required(key: &str) -> anyhow::Result<String> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // subscriber を張らない限り、tracing のマクロは評価されても出力先が無く、
-    // info!/warn!/error! は静かに捨てられる。これが無かったせいで、要約タスクが
-    // 6日半にわたって失敗し続けたログが docker logs に1行も残らなかった。
+    // subscriber を張らない限り、tracing のマクロは出力先が無く静かに捨てられる。
     // 既定は info。絞りたいときは RUST_LOG で上書きする。
     tracing_subscriber::fmt()
         .with_env_filter(

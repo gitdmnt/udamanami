@@ -154,11 +154,7 @@ pub async fn set_summarized(mut req: Request, ctx: RouteContext<()>) -> Result<R
 
     let d1 = ctx.env.d1("DB")?;
 
-    // D1 は1文あたり bind パラメータを 100 個までしか受け付けず、この上限は
-    // batch の中でも文ごとに個別適用される。全 message_id を1文に載せると
-    // channel_id と合わせて最大 201 個になり、prepare の時点で必ず拒否される。
-    // 分割は shared 側に置いてある(workers はワークスペースから exclude されていて
-    // ここに書いたテストは CI で走らないため)。
+    // 確定 UPDATE は D1 のバインド上限に収まるよう分割する。
     let mut statements = confirm_pending_chunks(&progress.channel_id, &progress.message_ids)
         .into_iter()
         .map(|chunk| {

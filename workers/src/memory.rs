@@ -27,6 +27,11 @@ struct Chunk {
 
 const CHUNK_SIZE: usize = 500; // 500文字ごとに分割してD1に保存する
 
+/// Vectorize の `deleteByIds` 1 リクエストに載せられる id の上限。
+/// 限界表にもAPIリファレンスにも記載が無いが、超えると
+/// `too many ids in payload; max id count is 100 [code: 40007]` が返る(2026-09 実測)。
+const VECTORIZE_MAX_DELETE_IDS: usize = 100;
+
 // ---------------- Vectorize のバインディング ----------------
 // worker 0.8.5 には Vectorize のラッパーがないので作成
 
@@ -298,10 +303,7 @@ async fn delete_vectors_of_memory(
 
     let ids: Vec<String> = rows.into_iter().map(|r| r.chunk_id).collect();
     let index = vectorize(ctx)?;
-    // deleteByIds は 1 リクエストあたり 100 件までしか受け付けない。
-    // 超えると code 40007 "too many ids in payload" で落ちる(限界表に記載は無い)。
-    // 長い記憶はチャンク数が 100 を超えうるので、必ず割ってから投げる。
-    for batch in ids.chunks(udamanami_shared::VECTORIZE_MAX_DELETE_IDS) {
+    for batch in ids.chunks(VECTORIZE_MAX_DELETE_IDS) {
         let js = serde_wasm_bindgen::to_value(batch).map_err(|e| wb_err("serialize ids", e))?;
         let promise = index
             .delete_by_ids(js)
@@ -443,10 +445,8 @@ pub(super) async fn search_memory(req: Request, ctx: RouteContext<()>) -> Result
     let limit = crate::query_param(&url, "limit")
         .and_then(|v| v.parse::<u32>().ok())
         .unwrap_or(5)
-        // 一致した chunk_id をそのまま IN リストに載せるので、limit がそのまま
-        // D1 のバインド数になる。固定バインドは 0 個なので上限そのものが天井。
-        // この文に述語(= 固定バインド)を足すときは max_variable_bindings の引数も増やすこと。
-        .clamp(1, udamanami_shared::max_variable_bindings(0) as u32);
+        // 一致した chunk_id をそのまま IN リストに載せるので、limit がそのままバインド数になる。
+        .clamp(1, udamanami_shared::D1_MAX_BOUND_PARAMS as u32);
 
     let api_key = ctx.env.secret("OPENAI_API_KEY")?.to_string();
 
