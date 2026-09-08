@@ -53,7 +53,7 @@ pub async fn run(bot: Arc<Bot>, http: Arc<serenity::http::Http>) {
     };
     info!("summarizer: started (self={my_userid})");
 
-    // チャンネルごとの連続失敗回数。成功したら消す。
+    // 各チャンネルが要約に連続で失敗した回数。
     let failures: DashMap<ChannelId, u32> = DashMap::new();
 
     let mut ticker = interval(TICK);
@@ -65,7 +65,6 @@ pub async fn run(bot: Arc<Bot>, http: Arc<serenity::http::Http>) {
 }
 
 /// 1 tick 分の処理。候補を引いて先頭から順に要約する。
-/// tick 同士は重ならない(このループの中で await するため)。
 async fn tick_once(
     bot: &Bot,
     http: &serenity::http::Http,
@@ -97,8 +96,6 @@ async fn tick_once(
             continue;
         };
 
-        // 打ち切ったチャンネルは飛ばす。候補は first_pending_at 昇順で返るので、
-        // 飛ばす側で枠を消費すると、詰まった1チャンネルが他を飢えさせる。
         if failures
             .get(&channel_id)
             .is_some_and(|strikes| *strikes >= MAX_CONSECUTIVE_FAILURES)
@@ -130,8 +127,7 @@ async fn tick_once(
                 error!(
                     "summarizer: failed on #{} ({strikes}/{MAX_CONSECUTIVE_FAILURES}): {e:?}",
                     candidate.name
-                );
-                // 打ち切りに達するのは1回だけ。以後この候補は上のガードで飛ぶ。
+                );。
                 if strikes == MAX_CONSECUTIVE_FAILURES {
                     error!(
                         "summarizer: giving up on #{} after {strikes} consecutive failures; \
@@ -148,7 +144,7 @@ async fn tick_once(
     info!("summarizer: tick candidates={found} attempted={attempted}");
 }
 
-/// 打ち切りをデバッグチャンネルに知らせる。`docker logs` はコンテナごと消えるので、残る場所にも出す。
+/// 打ち切りをデバッグチャンネルで通知するよ
 async fn notify_given_up(
     bot: &Bot,
     http: &serenity::http::Http,
@@ -160,7 +156,7 @@ async fn notify_given_up(
         return;
     }
 
-    // Discord の2000文字上限に当たると通知ごと落ちるので、エラー本文は切る。
+    // Discord の2000文字上限に当たると通知ごと落ちるからエラーの本文は省略する
     let detail: String = format!("{error:?}").chars().take(500).collect();
     let message = format!(
         "自動要約を停止しました。\n\
