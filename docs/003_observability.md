@@ -132,6 +132,9 @@ wrangler d1 execute udamanami --remote --json --command \
 ただし後者は、LLM呼び出しの前で失敗する経路(`skip_reason` 分岐)では記憶が作られないので反応しない。
 費用は出ないが進捗は止まるので、その変種は前者でしか見つからない。
 
+連続失敗でチャンネルを自動要約から外したときは、その瞬間にデバッグチャンネルへ1回だけ通知が出る。
+再起動するまで止まったままなので、通知を見たら原因を直して再起動する。
+
 ### memory.timestamp は時系列順に並ばない
 
 `memory.timestamp` はJavaScriptの `Date` 文字列(`"Fri Sep 04 2026 08:22:10 GMT+0000 ..."`)で入っている。
