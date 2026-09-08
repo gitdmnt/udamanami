@@ -22,6 +22,7 @@ Worker側のsecret(`OPENAI_API_KEY` / `AUTH_TOKEN`)は Cloudflare 側に `wrangl
 
 botのログの既定レベルは `info`。
 絞りたいときは `RUST_LOG` で上書きする。
+e2-microのjson-fileドライバは 10MB × 3 に制限されているので、出力量が読めないうちは `docker logs udamanami | wc -l` で実測する。
 
 ### bot本体(GCE)
 
