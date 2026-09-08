@@ -18,9 +18,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Test
         run: cargo test --workspace --all-features
-      # ルート Cargo.toml が exclude = ["workers"] を宣言しているため、
-      # cargo test/clippy --workspace は workers を一度もコンパイルしない。
-      # 明示的に叩かないと、Worker の破損は deploy まで露見しない。
       - name: Check workers
         run: |
           cargo clippy --manifest-path workers/Cargo.toml \
