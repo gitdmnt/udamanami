@@ -21,8 +21,6 @@ fn env_var_required(key: &str) -> anyhow::Result<String> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // subscriber を張らない限り、tracing のマクロは出力先が無く静かに捨てられる。
-    // 既定は info。絞りたいときは RUST_LOG で上書きする。
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
