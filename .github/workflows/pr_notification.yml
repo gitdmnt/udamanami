@@ -4,6 +4,8 @@ on:
   pull_request_target:
     types: [opened, synchronize]
 
+permissions: {}
+
 jobs:
   discord_notification:
     runs-on: ubuntu-latest
@@ -11,12 +13,11 @@ jobs:
       - name: Send Discord notification
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          EVENT_TYPE: ${{ github.event.action }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          USER_LOGIN: ${{ github.event.sender.login }}
         run: |
-          EVENT_TYPE="${{ github.event.action }}"
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_URL="${{ github.event.pull_request.html_url }}"
-          USER_LOGIN="${{ github.event.sender.login }}"
-
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then
             echo "Discord Webhook URL is not set."
             exit 1
@@ -31,5 +32,8 @@ jobs:
             exit 1
           fi
 
-          curl -H "Content-Type: application/json" -X POST -d "{\"content\":\"$MESSAGE\"}" "$DISCORD_WEBHOOK_URL"
-
+          # Build JSON with jq so quotes in the title can't inject fields,
+          # and only allow the fixed user mention (no @everyone / role pings from titles).
+          jq -n --arg content "$MESSAGE" \
+            '{content: $content, allowed_mentions: {parse: [], users: ["324551085320830986"]}}' \
+            | curl -fsS -H "Content-Type: application/json" -X POST --data-binary @- "$DISCORD_WEBHOOK_URL"
